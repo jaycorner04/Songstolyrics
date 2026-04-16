@@ -22,6 +22,12 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
 async function spawnWithRetries(command, args, options = {}) {
   let lastError = null;
 
@@ -124,8 +130,46 @@ async function fetchJson(url, options = {}) {
   return payload;
 }
 
+async function fetchResponse(url, options = {}) {
+  const response = await fetch(url, options);
+  return response;
+}
+
+async function discardResponseBody(response) {
+  try {
+    await response.body?.cancel();
+  } catch {}
+}
+
+async function runSurfaceChecks(baseUrl) {
+  const homepage = await fetchResponse(`${baseUrl}/`);
+  const homepageHtml = await homepage.text();
+
+  assert(homepage.ok, "Homepage did not respond successfully.");
+  assert(/text\/html/i.test(homepage.headers.get("content-type") || ""), "Homepage did not return HTML.");
+  assert(/song to lyrics/i.test(homepageHtml), "Homepage did not include the expected app title.");
+
+  const invalidConvertResponse = await fetchResponse(`${baseUrl}/api/convert`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "" })
+  });
+  const invalidConvertPayload = await invalidConvertResponse.json();
+  assert(invalidConvertResponse.status === 400, "Empty convert request should return 400.");
+  assert(
+    /youtube video link/i.test(`${invalidConvertPayload.error || ""}`),
+    "Empty convert request did not return the expected validation message."
+  );
+
+  const missingRenderResponse = await fetchResponse(`${baseUrl}/api/render/not-a-real-job`);
+  const missingRenderPayload = await missingRenderResponse.json();
+  assert(missingRenderResponse.status === 404, "Missing render job should return 404.");
+  assert(/could not be found/i.test(`${missingRenderPayload.error || ""}`), "Missing render job returned an unexpected message.");
+}
+
 async function runConvertChecks(baseUrl, urls) {
   const failures = [];
+  const successfulPayloads = [];
 
   for (const url of urls) {
     const startedAt = Date.now();
@@ -150,12 +194,38 @@ async function runConvertChecks(baseUrl, urls) {
       if (!payload.title || !Array.isArray(payload.lines) || !payload.lines.length) {
         failures.push(`Convert returned incomplete payload for ${url}`);
       }
+
+      if (!payload.audioUrl || !payload.audioUrl.startsWith("/api/audio/")) {
+        failures.push(`Convert did not return a valid audioUrl for ${url}`);
+      }
+
+      successfulPayloads.push(payload);
     } catch (error) {
       failures.push(`Convert failed for ${url}: ${error.message}`);
     }
   }
 
-  return failures;
+  return { failures, payloads: successfulPayloads };
+}
+
+async function runAudioCheck(baseUrl, convertPayload) {
+  const response = await fetchResponse(`${baseUrl}${convertPayload.audioUrl}`, {
+    redirect: "manual"
+  });
+  const cacheControl = response.headers.get("cache-control") || "";
+
+  assert(cacheControl.includes("no-store"), "Audio endpoint should disable caching.");
+
+  if (response.status === 302) {
+    const location = response.headers.get("location") || "";
+    assert(location.startsWith("http"), "Redirected audio endpoint did not return a valid target.");
+    await discardResponseBody(response);
+    return;
+  }
+
+  assert(response.ok, "Audio endpoint did not return a successful response.");
+  assert(/^audio\//i.test(response.headers.get("content-type") || ""), "Audio endpoint did not return audio content.");
+  await discardResponseBody(response);
 }
 
 async function runRenderCheck(baseUrl, inputUrl) {
@@ -216,8 +286,40 @@ async function runRenderCheck(baseUrl, inputUrl) {
   throw new Error("Render timed out before completion.");
 }
 
+async function runRenderArtifactChecks(baseUrl, jobId) {
+  const fileResponse = await fetchResponse(`${baseUrl}/api/render/${jobId}/file`);
+  assert(fileResponse.ok, "Render file endpoint did not return a successful response.");
+  assert(
+    /video\/mp4/i.test(fileResponse.headers.get("content-type") || ""),
+    "Render file endpoint did not return an MP4."
+  );
+  await discardResponseBody(fileResponse);
+
+  const downloadResponse = await fetchResponse(`${baseUrl}/api/render/${jobId}/download`);
+  const disposition = downloadResponse.headers.get("content-disposition") || "";
+  assert(downloadResponse.ok, "Render download endpoint did not return a successful response.");
+  assert(/attachment/i.test(disposition), "Render download endpoint did not return an attachment response.");
+  await discardResponseBody(downloadResponse);
+}
+
+async function restartServer(child, baseUrl) {
+  child.kill();
+  await wait(1500);
+
+  const restartedChild = await launchServerProcess(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true
+  });
+
+  await waitForServer(`${baseUrl}/api/health`);
+  await waitForServer(`${baseUrl}/api/readiness`);
+  return restartedChild;
+}
+
 (async () => {
-  const child = await launchServerProcess(process.execPath, ["src/server.js"], {
+  let child = await launchServerProcess(process.execPath, ["src/server.js"], {
     cwd: process.cwd(),
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -233,14 +335,24 @@ async function runRenderCheck(baseUrl, inputUrl) {
     const baseUrl = `http://127.0.0.1:${port}`;
     await waitForServer(`${baseUrl}/api/health`);
     await waitForServer(`${baseUrl}/api/readiness`);
+    await runSurfaceChecks(baseUrl);
     const links = process.env.E2E_LINKS
       ? process.env.E2E_LINKS.split(",").map((value) => value.trim()).filter(Boolean)
       : DEFAULT_LINKS;
-    const failures = await runConvertChecks(baseUrl, links);
+    const { failures, payloads } = await runConvertChecks(baseUrl, links);
 
-    if (process.env.E2E_SKIP_RENDER !== "true") {
+    if (payloads.length) {
+      await runAudioCheck(baseUrl, payloads[0]);
+    }
+
+    if (process.env.E2E_SKIP_RENDER !== "true" && payloads.length) {
       const renderLink = process.env.E2E_RENDER_LINK || links[1] || links[0];
       const renderJob = await runRenderCheck(baseUrl, renderLink);
+      await runRenderArtifactChecks(baseUrl, renderJob.id);
+      child = await restartServer(child, baseUrl);
+      const persistedJob = await fetchJson(`${baseUrl}/api/render/${renderJob.id}`);
+      assert(persistedJob.status === "completed", "Completed render job did not persist across restart.");
+      await runRenderArtifactChecks(baseUrl, renderJob.id);
       console.log(`render ok: ${JSON.stringify({ id: renderJob.id, videoUrl: renderJob.videoUrl })}`);
     }
 
