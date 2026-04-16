@@ -1,0 +1,17 @@
+node_modules/
+.env
+npm-debug.log*
+runtime/
+cache/
+uploads/
+renders/
+tmp/
+tmp-*/
+*.log
+*-player-script.js
+check-out-*.png
+ref-frame-*.png
+tmp-*.png
+tmp-convert-response.json
+verify-*.png
+reference_frames/
