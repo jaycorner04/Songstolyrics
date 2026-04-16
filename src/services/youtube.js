@@ -204,7 +204,7 @@ function normalizeTranscriptText(value = "") {
     `${value || ""}`
       .replace(/^>>\s*/g, "")
       .replace(/^\[[^\]]+\]\s*/g, "")
-      .replace(/[â™ªâ™«]+/g, "")
+      .replace(/[\u266A\u266B]+/g, "")
   );
 }
 
@@ -213,6 +213,108 @@ function tokenizeCaptionText(value = "") {
     .split(/\s+/)
     .map((word) => word.trim())
     .filter(Boolean);
+}
+
+function looksLikeNoisyCaptionTextLegacy(value = "") {
+  const normalized = normalizeTranscriptText(value).toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    /^(foreign speech|speech|music(?: and singing)?|singing|applause|cheering|laugh(?:s|ing)?|instrumental)$/i.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(perfect gift|carva(?:an)?(?: mini)?|subscribe|download now|available on|official trailer)\b/i.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  const words = tokenizeCaptionText(normalized);
+  const meaningfulWords = words.filter((word) => /[\p{L}]{2,}/u.test(word));
+
+  if (!meaningfulWords.length) {
+    return true;
+  }
+
+  if (meaningfulWords.length >= 4) {
+    const normalizedWords = meaningfulWords
+      .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}'’-]+/gu, ""))
+      .filter(Boolean);
+    const uniqueCount = new Set(normalizedWords).size;
+
+    if (uniqueCount <= Math.ceil(normalizedWords.length * 0.4)) {
+      return true;
+    }
+  }
+
+  const cleanedLength = normalized.replace(/[^\p{L}\p{N}\s'’-]+/gu, "").length;
+  const contentRatio = cleanedLength / Math.max(normalized.length, 1);
+
+  if (contentRatio < 0.55) {
+    return true;
+  }
+
+  return false;
+}
+
+function looksLikeNoisyCaptionTextClean(value = "") {
+  const normalized = normalizeTranscriptText(value).toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    /^(foreign speech|speech|music(?: and singing)?|singing|applause|cheering|laugh(?:s|ing)?|instrumental)$/i.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(perfect gift|carva(?:an)?(?: mini)?|subscribe|download now|available on|official trailer)\b/i.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  const words = tokenizeCaptionText(normalized);
+  const meaningfulWords = words.filter((word) => /[\p{L}]{2,}/u.test(word));
+
+  if (!meaningfulWords.length) {
+    return true;
+  }
+
+  if (meaningfulWords.length >= 4) {
+    const normalizedWords = meaningfulWords
+      .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}'\u2019-]+/gu, ""))
+      .filter(Boolean);
+    const uniqueCount = new Set(normalizedWords).size;
+
+    if (uniqueCount <= Math.ceil(normalizedWords.length * 0.4)) {
+      return true;
+    }
+  }
+
+  const cleanedLength = normalized.replace(/[^\p{L}\p{N}\s'\u2019-]+/gu, "").length;
+  const contentRatio = cleanedLength / Math.max(normalized.length, 1);
+
+  if (contentRatio < 0.55) {
+    return true;
+  }
+
+  return false;
 }
 
 function looksLikeNoisyCaptionText(value = "") {
@@ -507,7 +609,7 @@ function getCaptionTextReadability(cues = []) {
   const meaningfulTexts = normalizedTexts.filter(
     (text) =>
       text.split(/\s+/).filter(Boolean).length >= 2 &&
-      !looksLikeNoisyCaptionText(text)
+      !looksLikeNoisyCaptionTextClean(text)
   );
 
   if (!normalizedTexts.length || !meaningfulTexts.length) {
@@ -524,7 +626,7 @@ function getCaptionTextReadability(cues = []) {
   const uniqueRatio = frequencies.size / meaningfulTexts.length;
   const mostRepeatedCount = Math.max(...frequencies.values());
   const repetitionRatio = mostRepeatedCount / meaningfulTexts.length;
-  const noisyCount = normalizedTexts.filter((text) => looksLikeNoisyCaptionText(text)).length;
+  const noisyCount = normalizedTexts.filter((text) => looksLikeNoisyCaptionTextClean(text)).length;
   const noisyRatio = noisyCount / normalizedTexts.length;
 
   return (
@@ -538,7 +640,7 @@ function getCaptionTextReadability(cues = []) {
 function markCaptionCuesReadable(cues = []) {
   return cues.map((cue) => ({
     ...cue,
-    readableText: !looksLikeNoisyCaptionText(cue?.text || "")
+    readableText: !looksLikeNoisyCaptionTextClean(cue?.text || "")
   }));
 }
 
