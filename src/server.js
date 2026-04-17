@@ -176,6 +176,10 @@ function buildApiErrorMessage(error, req = {}) {
       return "Audio preview is blocked for this video on the server right now. Rendering may still work later if server-side YouTube access is available.";
     }
 
+    if (/^\/api\/video-frames\//i.test(requestPath)) {
+      return "The server could not sample live video frames for this song, so the app should fall back to artwork instead.";
+    }
+
     return "YouTube blocked audio access for this video on the server. Try another link or add a server cookie file.";
   }
 
@@ -1090,13 +1094,43 @@ async function runCommand(command, args, options = {}) {
 }
 
 async function sampleVideoFrames(videoId, durationSeconds = 0) {
-  const videoUrl = await resolveVideoUrl(videoId);
+  async function buildArtworkFallbackFrames() {
+    try {
+      const info = await getVideoInfo(videoId);
+      const metadata = await getVideoMetadata(videoId, info);
+      const candidates = [
+        ...(Array.isArray(metadata?.thumbnails) ? metadata.thumbnails.map((thumbnail) => thumbnail?.url) : []),
+        metadata?.poster || ""
+      ]
+        .map((entry) => normalizeWhitespace(entry || ""))
+        .filter(Boolean);
+
+      return candidates.filter((entry, index, list) => list.indexOf(entry) === index).slice(0, 4);
+    } catch {
+      return [];
+    }
+  }
+
+  const requestedDuration = Math.max(0, Number(durationSeconds || 0));
+
+  if (requestedDuration <= 0) {
+    return buildArtworkFallbackFrames();
+  }
+
+  let videoUrl = "";
+
+  try {
+    videoUrl = await resolveVideoUrl(videoId);
+  } catch {
+    return buildArtworkFallbackFrames();
+  }
+
   const tempDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), `song-to-lyrics-${videoId}-`));
-  const requestedDuration = Math.max(12, Number(durationSeconds || 0));
+  const samplingDuration = Math.max(12, requestedDuration);
   const frameCount = 4;
-  const startPadding = Math.min(6, Math.max(1.2, requestedDuration * 0.08));
-  const endPadding = Math.min(8, Math.max(1.8, requestedDuration * 0.12));
-  const usableDuration = Math.max(1, requestedDuration - startPadding - endPadding);
+  const startPadding = Math.min(6, Math.max(1.2, samplingDuration * 0.08));
+  const endPadding = Math.min(8, Math.max(1.8, samplingDuration * 0.12));
+  const usableDuration = Math.max(1, samplingDuration - startPadding - endPadding);
   const frames = [];
 
   try {
@@ -1131,6 +1165,8 @@ async function sampleVideoFrames(videoId, durationSeconds = 0) {
       const buffer = await fsp.readFile(outputPath);
       frames.push(`data:image/jpeg;base64,${buffer.toString("base64")}`);
     }
+  } catch {
+    return buildArtworkFallbackFrames();
   } finally {
     await fsp.rm(tempDirectory, { recursive: true, force: true }).catch(() => {});
   }
