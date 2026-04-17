@@ -5,7 +5,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const ffmpegPath = require("ffmpeg-static");
 const { previewAudioCacheRoot } = require("../config/runtime");
-const { buildYtDlpArgs } = require("./ytdlp");
+const { buildYtDlpArgs, resolveCookieFilePath } = require("./ytdlp");
 
 let ytdl = null;
 
@@ -29,6 +29,8 @@ const streamUrlCache = new Map();
 const inFlightStreamRequests = new Map();
 const downloadedAudioCache = new Map();
 const inFlightAudioDownloads = new Map();
+let cachedYtdlCookieAgent = null;
+let cachedYtdlCookieAgentKey = "";
 
 const STREAM_ATTEMPTS = {
   audio: [
@@ -120,6 +122,62 @@ function getCacheKey(kind, videoId) {
 
 function getDownloadedAudioCacheKey(videoId, outputDirectory) {
   return `${videoId}:${path.resolve(outputDirectory || AUDIO_CACHE_ROOT)}`;
+}
+
+function parseNetscapeCookieFile(cookieFilePath = "") {
+  const fileContents = fs.readFileSync(cookieFilePath, "utf8");
+
+  return fileContents
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split("\t"))
+    .filter((parts) => parts.length >= 7)
+    .map(([domain, includeSubdomains, cookiePath, secure, expiresAt, name, ...valueParts]) => ({
+      domain,
+      expirationDate: Number(expiresAt || 0) || 0,
+      hostOnly: `${includeSubdomains || ""}`.toUpperCase() !== "TRUE",
+      httpOnly: false,
+      name,
+      path: cookiePath || "/",
+      sameSite: "no_restriction",
+      secure: `${secure || ""}`.toUpperCase() === "TRUE",
+      session: Number(expiresAt || 0) === 0,
+      value: valueParts.join("\t")
+    }));
+}
+
+function getYtdlCookieAgent() {
+  if (!ytdl?.createAgent) {
+    return null;
+  }
+
+  const cookieFilePath = resolveCookieFilePath();
+
+  if (!cookieFilePath || !fs.existsSync(cookieFilePath)) {
+    cachedYtdlCookieAgent = null;
+    cachedYtdlCookieAgentKey = "";
+    return null;
+  }
+
+  const stats = fs.statSync(cookieFilePath);
+  const cacheKey = `${cookieFilePath}:${Number(stats.mtimeMs || 0)}:${Number(stats.size || 0)}`;
+
+  if (cachedYtdlCookieAgent && cachedYtdlCookieAgentKey === cacheKey) {
+    return cachedYtdlCookieAgent;
+  }
+
+  const cookies = parseNetscapeCookieFile(cookieFilePath);
+
+  if (!cookies.length) {
+    cachedYtdlCookieAgent = null;
+    cachedYtdlCookieAgentKey = "";
+    return null;
+  }
+
+  cachedYtdlCookieAgent = ytdl.createAgent(cookies);
+  cachedYtdlCookieAgentKey = cacheKey;
+  return cachedYtdlCookieAgent;
 }
 
 function getCachedStreamUrl(kind, videoId) {
@@ -309,7 +367,11 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
   }
 
   const info = await withTimeout(
-    () => ytdl.getInfo(toVideoUrl(videoId)),
+    () =>
+      ytdl.getInfo(toVideoUrl(videoId), {
+        agent: getYtdlCookieAgent() || undefined,
+        playerClients: ["WEB_EMBEDDED", "IOS", "ANDROID", "TV"]
+      }),
     YTDL_CORE_TIMEOUT_MS,
     "ytdl-core info lookup"
   );
