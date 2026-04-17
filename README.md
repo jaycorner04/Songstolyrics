@@ -116,6 +116,17 @@ npm run predeploy:check
 
 That wrapper runs `doctor`, `smoke`, and `e2e` in order with `NODE_ENV=production` and deploy-safe audio settings, then stops immediately if any step fails.
 
+## Auto push
+
+The repo now includes a local auto-push watcher:
+
+```bash
+npm run autopush:start
+```
+
+It watches the project, waits briefly for file activity to settle, then commits and pushes changes to the current branch automatically.
+Temporary watcher state is stored under `.autopush/`, and `.codex-temp/` is ignored so local Codex scratch files do not get pushed.
+
 ## Docker
 
 The project now includes a production Dockerfile. To build and run it:
