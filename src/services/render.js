@@ -7004,7 +7004,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     const selectedLyricStylePreset = resolveLyricStylePreset(payload?.lyricStyle || "auto");
     const requiresPlacementAnalysis =
-      selectedLyricStylePreset.key === "fulllength" || selectedLyricStylePreset.key === "aa";
+      selectedLyricStylePreset.key === "fulllength" ||
+      selectedLyricStylePreset.key === "aa" ||
+      selectedLyricStylePreset.key === "auto";
     const contrastMap = await buildLyricContrastMap(renderLines, backgroundPaths, backgroundPlan);
     const placementMap = requiresPlacementAnalysis
       ? await buildLyricPlacementMap(renderLines, backgroundPaths, backgroundPlan)
