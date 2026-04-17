@@ -5944,6 +5944,31 @@ async function probeAudioDurationSeconds(audioUrl) {
   }
 }
 
+async function createSilentAudioFallback(outputPath, durationSeconds) {
+  await ensureDirectory(path.dirname(outputPath));
+
+  await runCommand(
+    ffmpegPath,
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=channel_layout=stereo:sample_rate=44100",
+      "-t",
+      String(getRenderDurationSeconds(durationSeconds)),
+      "-c:a",
+      "pcm_s16le",
+      outputPath
+    ],
+    {
+      timeoutMs: 45000
+    }
+  );
+
+  return outputPath;
+}
+
 async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const renderDirectory = path.join(rendersRoot, job.id);
   await ensureDirectory(renderDirectory);
@@ -6027,20 +6052,41 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     });
 
     const audioResolution = await audioUrlPromise;
+    let audioUrl = "";
+    let usingSilentAudioFallback = false;
 
     if (audioResolution.error) {
-      throw audioResolution.error;
+      if (audioResolution.error?.code === "YOUTUBE_BOT_BLOCK") {
+        updateJob(job, {
+          stage: "Preparing fallback audio",
+          progress: 0.13
+        });
+        audioUrl = await createSilentAudioFallback(
+          path.join(audioInputDirectory, "silent-fallback.wav"),
+          durationSeconds
+        );
+        usingSilentAudioFallback = true;
+        renderNotes.push(
+          "YouTube blocked direct audio access for this video, so the render continued with a silent fallback track instead of stopping."
+        );
+        renderNotes.push(
+          "Final timing stays based on the video metadata and the lyric source that was already available."
+        );
+      } else {
+        throw audioResolution.error;
+      }
+    } else {
+      audioUrl = audioResolution.audioSource.input;
     }
 
-    let audioUrl = audioResolution.audioSource.input;
-
-    if (audioResolution.audioSource.recovered) {
+    if (audioResolution.audioSource?.recovered) {
       renderNotes.push(
         "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
       );
     }
 
-    const audioDurationSeconds = await probeAudioDurationSeconds(audioUrl);
+    const canUseAudioTranscription = !usingSilentAudioFallback;
+    const audioDurationSeconds = usingSilentAudioFallback ? 0 : await probeAudioDurationSeconds(audioUrl);
 
     if (audioDurationSeconds > 0 && audioDurationSeconds < durationSeconds - 1) {
       durationSeconds = getRenderDurationSeconds(audioDurationSeconds);
@@ -6064,6 +6110,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const cachedTranscriptions = new Map();
 
     async function getTranscription(stageLabel, progressValue, options = {}) {
+      if (!canUseAudioTranscription) {
+        throw new Error(
+          "Audio transcription was skipped because YouTube blocked server-side audio for this video."
+        );
+      }
+
       const cacheKey = buildTranscriptionCacheKey(options);
 
       if (cachedTranscriptions.has(cacheKey)) {
@@ -6195,7 +6247,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         renderLineSyncSource = "synced-lyrics";
         renderLinesAreTranscriptDerived = false;
         renderNotes.push("Using synced web lyrics as the primary timing source.");
-      } else if (payload.syncMode === "transcribed") {
+      } else if (payload.syncMode === "transcribed" && canUseAudioTranscription) {
         try {
           const transcription = await getTranscription(
             "Re-transcribing audio to lock final lyric timing",
@@ -6270,7 +6322,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           renderLinesAreTranscriptDerived = false;
           renderNotes.push(`Final audio timing refinement was unavailable: ${error.message}`);
         }
-      } else {
+      } else if (canUseAudioTranscription) {
         try {
           const transcription = await getTranscription("Transcribing audio to align lyrics", 0.16);
           const romanizedTranscriptLines = romanizeLyricLines(transcription.lines).lines;
@@ -6470,10 +6522,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           renderLinesAreTranscriptDerived = false;
           renderNotes.push(`Audio sync alignment was unavailable: ${error.message}`);
         }
+      } else {
+        renderLines = limitLyricLines(
+          applyLyricOffset(renderLines, lyricOffsetSeconds, durationSeconds),
+          durationSeconds
+        );
+        renderLineSyncSource = payload.syncMode;
+        renderLinesAreTranscriptDerived = false;
+        renderNotes.push(
+          "The render kept the existing lyric timing because YouTube blocked the audio needed for deeper sync alignment."
+        );
       }
     }
 
-    if (!renderLines.length) {
+    if (!renderLines.length && canUseAudioTranscription) {
       try {
         const transcription = await getTranscription(
           shouldUseRomanizedTeluguLyrics
@@ -6535,7 +6597,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
     }
 
-    if (payload.requireVerifiedSync !== false) {
+    if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
         stage: "Validating final lyric sync",
         progress: 0.3
@@ -6896,6 +6958,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
     }
 
+    if (payload.requireVerifiedSync !== false && !canUseAudioTranscription) {
+      renderNotes.push(
+        "Final sync verification was skipped because YouTube blocked the server-side audio needed for that safety pass."
+      );
+    }
+
     if (!renderLines.length) {
       await recordAdaptiveSignalSafely({
         channelTitle: payload.channelTitle,
@@ -6904,7 +6972,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         message: "No verified lyric lines were available after all render-time recovery steps."
       });
 
-      if (payload.requireVerifiedSync !== false) {
+      if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
         throw createRenderError(
           "No verified lyric lines were available for this video, so the app stopped before rendering.",
           422
