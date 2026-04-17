@@ -5,6 +5,7 @@ set -euo pipefail
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APP_URL="${APP_URL:-http://127.0.0.1:3000}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-240}"
+BUILD_MARKER="${BUILD_MARKER:-}"
 
 log() {
   printf '[deploy-remote] %s\n' "$1"
@@ -53,6 +54,29 @@ fetch_url() {
   node -e "fetch(process.argv[1]).then(async (res) => { if (!res.ok) process.exit(1); process.stdout.write(await res.text()); }).catch(() => process.exit(1));" "$url"
 }
 
+wait_for_build_marker() {
+  local deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
+  local expected_marker="$1"
+  local homepage_url="${APP_URL%/}/"
+
+  log "waiting for homepage build marker: ${expected_marker}"
+
+  while (( SECONDS < deadline )); do
+    local page
+    page="$(fetch_url "$homepage_url" 2>/dev/null || true)"
+
+    if [[ "$page" == *"$expected_marker"* ]]; then
+      log "homepage build marker matched"
+      return 0
+    fi
+
+    sleep 5
+  done
+
+  log "homepage build marker did not match before timeout"
+  return 1
+}
+
 wait_for_health() {
   local deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
   local health_url="${APP_URL%/}/api/health"
@@ -94,6 +118,7 @@ deploy_with_docker_container() {
     --restart unless-stopped \
     --env-file .env \
     -e RUNTIME_ROOT=/data \
+    -e BUILD_MARKER="$BUILD_MARKER" \
     -p 80:3000 \
     -p 3000:3000 \
     -v "$(pwd)/runtime:/data" \
@@ -129,6 +154,7 @@ if [[ ! -f package.json ]]; then
 fi
 
 log "deploying branch ${DEPLOY_BRANCH} from $(pwd)"
+BUILD_MARKER="${BUILD_MARKER:-$(git rev-parse --short HEAD)}"
 
 if command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]] && docker_compose_available; then
   deploy_with_docker_compose
@@ -143,3 +169,4 @@ else
 fi
 
 wait_for_health
+wait_for_build_marker "$BUILD_MARKER"
