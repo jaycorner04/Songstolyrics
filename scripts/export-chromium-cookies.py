@@ -135,12 +135,19 @@ def export_profile(browser: str, browser_root: Path, profile_name: str, domains:
 
     master_key = load_master_key(browser_root)
     temp_copy = Path(tempfile.gettempdir()) / f"codex-cookie-export-{browser}-{profile_name.replace(' ', '_')}.sqlite"
-    shutil.copy2(cookie_path, temp_copy)
+    db_target = str(temp_copy)
+    db_target_is_uri = False
+    try:
+        shutil.copy2(cookie_path, temp_copy)
+    except Exception:
+        db_target = f"file:{cookie_path.as_posix()}?mode=ro&immutable=1"
+        db_target_is_uri = True
 
     rows = []
     auth_hits = 0
+    connection = None
     try:
-        connection = sqlite3.connect(str(temp_copy))
+        connection = sqlite3.connect(db_target, uri=db_target_is_uri)
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
         cursor.execute(
@@ -181,10 +188,11 @@ def export_profile(browser: str, browser_root: Path, profile_name: str, domains:
             connection.close()
         except Exception:
             pass
-        try:
-            temp_copy.unlink()
-        except Exception:
-            pass
+        if temp_copy.exists():
+            try:
+                temp_copy.unlink()
+            except Exception:
+                pass
 
     if not rows:
         return None
