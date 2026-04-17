@@ -200,6 +200,14 @@ To stop the tunnel and free `localhost:3000` again:
 npm run live-debug:stop
 ```
 
+To keep `localhost:3000` pinned to the live EC2 app automatically, start the watchdog:
+
+```bash
+npm run live-debug:watch
+```
+
+The watchdog checks the local health endpoint every few seconds and reclaims port `3000` for the EC2 tunnel if a local `node src/server.js` process takes it over later.
+
 ## Docker
 
 The project now includes a production Dockerfile. To build and run it:
