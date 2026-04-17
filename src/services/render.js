@@ -833,6 +833,21 @@ function getRenderSize(payload = {}) {
     return MOBILE_VIDEO_SIZE;
   }
 
+  const clientViewport = payload.clientViewport;
+
+  if (
+    clientViewport &&
+    Number(clientViewport.width || 0) > 0 &&
+    Number(clientViewport.height || 0) > 0 &&
+    Number(clientViewport.height || 0) > Number(clientViewport.width || 0)
+  ) {
+    return MOBILE_VIDEO_SIZE;
+  }
+
+  if (payload.clientIsMobile) {
+    return MOBILE_VIDEO_SIZE;
+  }
+
   return VIDEO_SIZE;
 }
 
