@@ -2044,6 +2044,10 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
     ...baseOptions
   };
 
+  if (adaptiveProfile?.preferKnownAudioBlockRecovery) {
+    options.preferKnownAudioBlockRecovery = true;
+  }
+
   if (!adaptiveProfile?.preferStrongerFinalTranscription || options.preview) {
     return options;
   }
@@ -6016,7 +6020,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
     const audioUrlPromise = resolveAudioInput(payload.videoId, {
       outputDirectory: audioInputDirectory,
-      allowDownloadFallback: true
+      allowDownloadFallback: true,
+      preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
     }).then(
       (audioSource) => ({
         audioSource,
@@ -6038,6 +6043,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     if (audioResolution.error) {
       if (audioResolution.error?.code === "YOUTUBE_BOT_BLOCK") {
+        await recordAdaptiveSignalSafely({
+          channelTitle: payload.channelTitle,
+          title: payload.title || payload.song?.title || "",
+          category: "youtube_bot_block",
+          message: audioResolution.error.message || ""
+        });
+
         if (!allowSilentAudioFallback) {
           const blockedAudioError = createRenderError(
             "YouTube blocked audio access for this video. Add a YouTube cookie file on the server or try another link.",
@@ -7148,7 +7160,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const recoveredAudioSource = await resolveAudioInput(payload.videoId, {
             outputDirectory: audioInputDirectory,
             allowDownloadFallback: true,
-            preferLocal: true
+            preferLocal: true,
+            preferKnownBlockRecovery: true
           });
 
           if (

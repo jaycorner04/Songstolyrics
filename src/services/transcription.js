@@ -193,7 +193,8 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
 
   try {
     const remoteAudio = await resolveAudioInput(videoId, {
-      allowDownloadFallback: false
+      allowDownloadFallback: false,
+      preferKnownBlockRecovery: options.preferKnownAudioBlockRecovery === true
     });
 
     if (remoteAudio?.sourceType === "remote" && remoteAudio.input) {
@@ -213,7 +214,8 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
       outputDirectory,
       preferLocal: true,
       allowDownloadFallback: true,
-      downloadTimeoutMs: effectiveDownloadTimeoutMs
+      downloadTimeoutMs: effectiveDownloadTimeoutMs,
+      preferKnownBlockRecovery: options.preferKnownAudioBlockRecovery === true
     });
 
     if (resolvedAudio?.sourceType === "file" && resolvedAudio.input) {
@@ -221,6 +223,12 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
     }
   } catch {
     // Fall back to the legacy transcription downloader below.
+  }
+
+  if (options.preferKnownAudioBlockRecovery === true) {
+    throw new Error(
+      "Known YouTube audio block recovery was already attempted for this source, and no stable transcription audio could be prepared."
+    );
   }
 
   const outputTemplate = path.join(outputDirectory, "audio.%(ext)s");

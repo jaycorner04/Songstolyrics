@@ -118,6 +118,10 @@ function classifyAdaptiveFailure(errorMessage = "", notes = []) {
     categories.push("transcription_timeout");
   }
 
+  if (/youtube_bot_block|blocked audio access|not a bot|cookie file on the server|temporarily blocked audio access/i.test(message)) {
+    categories.push("youtube_bot_block");
+  }
+
   if (/no lyrics|lyrics unavailable|no usable lyric|no verified lyric lines|no lyric lines were available/i.test(message)) {
     categories.push("lyrics_unavailable");
   }
@@ -215,6 +219,8 @@ function getAdaptiveFlags(record = {}, channelTitle = "") {
       Number(signals.transcription_timeout || 0) >= 1 ||
       Number(signals.sparse_transcript || 0) >= 1 ||
       Number(signals.sync_rejected || 0) >= 1,
+    preferKnownAudioBlockRecovery:
+      Number(signals.youtube_bot_block || 0) >= 1,
     knownLyricsRisk:
       Number(signals.lyrics_unavailable || 0) >= 1 ||
       Number(signals.sync_rejected || 0) >= 1

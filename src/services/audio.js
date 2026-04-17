@@ -463,6 +463,33 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     const outputTemplate = path.join(outputDirectory, `${baseName}.%(ext)s`);
     let lastError = null;
 
+    if (options.preferKnownBlockRecovery) {
+      try {
+        const rememberedRecoveryUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
+
+        if (rememberedRecoveryUrl) {
+          const transcodedPath = await transcodeRemoteAudioUrlToFile(
+            rememberedRecoveryUrl,
+            outputDirectory,
+            videoId,
+            Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+          );
+          const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+          if (downloadedFilePath || transcodedPath) {
+            const usableFilePath = downloadedFilePath || transcodedPath;
+            downloadedAudioCache.set(cacheKey, {
+              expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+              filePath: usableFilePath
+            });
+            return usableFilePath;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
     for (const attempt of AUDIO_DOWNLOAD_ATTEMPTS) {
       try {
         const ytDlpArgs = buildYtDlpArgs({
@@ -675,11 +702,25 @@ async function resolveAudioUrl(videoId) {
 async function resolveAudioInput(videoId, options = {}) {
   const allowDownloadFallback = options.allowDownloadFallback !== false;
   const preferLocal = options.preferLocal === true;
+  const preferKnownBlockRecovery = options.preferKnownBlockRecovery === true;
   const outputDirectory = options.outputDirectory || AUDIO_CACHE_ROOT;
   let streamError = null;
 
   if (!preferLocal) {
     try {
+      if (preferKnownBlockRecovery) {
+        const rememberedRecoveryUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
+
+        if (rememberedRecoveryUrl) {
+          return {
+            input: rememberedRecoveryUrl,
+            sourceType: "remote",
+            mimeType: "audio/mp4",
+            recovered: true
+          };
+        }
+      }
+
       const audioUrl = await resolveAudioUrl(videoId);
       return {
         input: audioUrl,
@@ -701,7 +742,10 @@ async function resolveAudioInput(videoId, options = {}) {
     throw streamError || createAudioError("Could not resolve a usable audio source for that YouTube video.", 502);
   }
 
-  const filePath = await downloadAudioFile(videoId, outputDirectory, options);
+  const filePath = await downloadAudioFile(videoId, outputDirectory, {
+    ...options,
+    preferKnownBlockRecovery
+  });
 
   return {
     input: filePath,
