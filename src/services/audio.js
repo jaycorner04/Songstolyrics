@@ -475,6 +475,31 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     const baseName = toSafeBaseName(videoId);
     const outputTemplate = path.join(outputDirectory, `${baseName}.%(ext)s`);
     let lastError = null;
+    const cachedRemoteAudioUrl = getCachedStreamUrl("audio", videoId);
+
+    if (cachedRemoteAudioUrl) {
+      try {
+        const transcodedPath = await transcodeRemoteAudioUrlToFile(
+          cachedRemoteAudioUrl,
+          outputDirectory,
+          videoId,
+          Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+        );
+        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+        if (downloadedFilePath || transcodedPath) {
+          const usableFilePath = downloadedFilePath || transcodedPath;
+          downloadedAudioCache.set(cacheKey, {
+            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+            filePath: usableFilePath
+          });
+          return usableFilePath;
+        }
+      } catch (error) {
+        lastError = error;
+        clearCachedStreamUrl("audio", videoId);
+      }
+    }
 
     if (options.preferKnownBlockRecovery) {
       try {
