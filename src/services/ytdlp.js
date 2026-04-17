@@ -14,6 +14,14 @@ function parseEnvList(value = "") {
     .filter(Boolean);
 }
 
+function toEnvToken(value = "") {
+  return `${value || ""}`
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+}
+
 function getScopedEnvName(kind = "") {
   return `YTDLP_${String(kind || "").toUpperCase()}_CLIENTS`;
 }
@@ -56,14 +64,33 @@ function resolveCookieFilePath() {
   return "";
 }
 
-function resolveProxyUrl() {
-  return normalizeWhitespace(
-    process.env.YTDLP_PROXY_URL ||
-      process.env.YTDLP_PROXY ||
-      process.env.HTTP_PROXY ||
-      process.env.HTTPS_PROXY ||
-      ""
-  );
+function resolveProxyUrl(target = "") {
+  const token = toEnvToken(target);
+  const scopedNames = token
+    ? [
+        `YTDLP_${token}_PROXY_URL`,
+        `YTDLP_${token}_PROXY`,
+        `${token}_PROXY_URL`,
+        `${token}_PROXY`
+      ]
+    : [];
+
+  const fallbackNames = [
+    "YTDLP_PROXY_URL",
+    "YTDLP_PROXY",
+    "HTTP_PROXY",
+    "HTTPS_PROXY"
+  ];
+
+  for (const envName of [...scopedNames, ...fallbackNames]) {
+    const value = normalizeWhitespace(process.env[envName] || "");
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
 }
 
 function buildYtDlpArgs(options = {}) {
@@ -90,7 +117,7 @@ function buildYtDlpArgs(options = {}) {
     }
   }
 
-  const proxyUrl = resolveProxyUrl();
+  const proxyUrl = resolveProxyUrl(kind);
 
   if (proxyUrl) {
     args.push("--proxy", proxyUrl);

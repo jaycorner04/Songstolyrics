@@ -78,6 +78,7 @@ async function getRuntimeDiagnostics() {
   const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
   const cookieFile = resolveCookieFilePath();
   const proxyUrl = resolveProxyUrl();
+  const ytdlCoreProxyUrl = resolveProxyUrl("ytdlCore");
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -95,6 +96,12 @@ async function getRuntimeDiagnostics() {
     ytDlpProxy: buildCheck(
       Boolean(proxyUrl),
       proxyUrl || "not configured (set YTDLP_PROXY_URL for proxy-backed YouTube access)",
+      false
+    ),
+    ytdlCoreProxy: buildCheck(
+      Boolean(ytdlCoreProxyUrl),
+      ytdlCoreProxyUrl ||
+        "not configured (set YTDL_CORE_PROXY_URL if the cookie-backed ytdl-core fallback should use a different proxy)",
       false
     ),
     runtimeRoot: buildCheck(fs.existsSync(runtimeRoot), runtimeRoot, true)

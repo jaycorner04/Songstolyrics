@@ -191,7 +191,7 @@ function getYtdlCookieAgent() {
     return null;
   }
 
-  const proxyUrl = resolveProxyUrl();
+  const proxyUrl = resolveProxyUrl("ytdlCore");
   cachedYtdlCookieAgent =
     proxyUrl && ytdl?.createProxyAgent
       ? ytdl.createProxyAgent(proxyUrl, cookies)
