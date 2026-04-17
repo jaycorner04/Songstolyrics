@@ -10,17 +10,31 @@ log() {
   printf '[deploy-remote] %s\n' "$1"
 }
 
-docker_compose_available() {
-  docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1
-}
-
-run_docker_compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
+docker_cmd() {
+  if docker info >/dev/null 2>&1; then
+    docker "$@"
     return
   fi
 
-  docker-compose "$@"
+  sudo -n docker "$@"
+}
+
+docker_compose_available() {
+  docker_cmd compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1
+}
+
+run_docker_compose() {
+  if docker_cmd compose version >/dev/null 2>&1; then
+    docker_cmd compose "$@"
+    return
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+
+  sudo -n docker-compose "$@"
 }
 
 fetch_url() {
@@ -66,6 +80,26 @@ deploy_with_docker_compose() {
   run_docker_compose up -d --build --remove-orphans
 }
 
+docker_container_available() {
+  docker_cmd inspect song-to-lyrics >/dev/null 2>&1
+}
+
+deploy_with_docker_container() {
+  log "detected single-container docker deployment"
+  mkdir -p runtime
+  docker_cmd build -t song-to-lyrics .
+  docker_cmd rm -f song-to-lyrics >/dev/null 2>&1 || true
+  docker_cmd run -d \
+    --name song-to-lyrics \
+    --restart unless-stopped \
+    --env-file .env \
+    -e RUNTIME_ROOT=/data \
+    -p 80:3000 \
+    -p 3000:3000 \
+    -v "$(pwd)/runtime:/data" \
+    song-to-lyrics >/dev/null
+}
+
 deploy_with_pm2() {
   log "detected pm2 deployment"
   npm ci --omit=dev
@@ -98,6 +132,8 @@ log "deploying branch ${DEPLOY_BRANCH} from $(pwd)"
 
 if command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]] && docker_compose_available; then
   deploy_with_docker_compose
+elif command -v docker >/dev/null 2>&1 && docker_container_available; then
+  deploy_with_docker_container
 elif command -v pm2 >/dev/null 2>&1; then
   deploy_with_pm2
 elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '^song-to-lyrics'; then
