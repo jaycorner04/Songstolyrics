@@ -1315,6 +1315,17 @@ app.post(
       renderMode: body?.renderMode === "fast" ? "fast" : "standard",
       lyricStyle: `${body?.lyricStyle || "auto"}`,
       lyricFont: `${body?.lyricFont || "arial"}`,
+      clientViewport:
+        body?.clientViewport &&
+        typeof body.clientViewport === "object" &&
+        !Array.isArray(body.clientViewport)
+          ? {
+              width: Number(body.clientViewport.width || 0),
+              height: Number(body.clientViewport.height || 0),
+              devicePixelRatio: Number(body.clientViewport.devicePixelRatio || 1)
+            }
+          : null,
+      clientIsMobile: Boolean(body?.clientIsMobile),
       useStyleColor: Boolean(body?.useStyleColor),
       styleColor: `${body?.styleColor || "#7fe8ff"}`,
       neonGlow: Number(body?.neonGlow || 70),
