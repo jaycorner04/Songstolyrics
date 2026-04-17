@@ -130,21 +130,36 @@ function parseNetscapeCookieFile(cookieFilePath = "") {
   return fileContents
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"))
-    .map((line) => line.split("\t"))
-    .filter((parts) => parts.length >= 7)
-    .map(([domain, includeSubdomains, cookiePath, secure, expiresAt, name, ...valueParts]) => ({
-      domain,
-      expirationDate: Number(expiresAt || 0) || 0,
-      hostOnly: `${includeSubdomains || ""}`.toUpperCase() !== "TRUE",
-      httpOnly: false,
-      name,
-      path: cookiePath || "/",
-      sameSite: "no_restriction",
-      secure: `${secure || ""}`.toUpperCase() === "TRUE",
-      session: Number(expiresAt || 0) === 0,
-      value: valueParts.join("\t")
-    }));
+    .filter(Boolean)
+    .map((line) => {
+      const isHttpOnly = line.startsWith("#HttpOnly_");
+      const normalizedLine = isHttpOnly ? line.replace(/^#HttpOnly_/, "") : line;
+
+      if (!normalizedLine || normalizedLine.startsWith("#")) {
+        return null;
+      }
+
+      const parts = normalizedLine.split("\t");
+
+      if (parts.length < 7) {
+        return null;
+      }
+
+      const [domain, includeSubdomains, cookiePath, secure, expiresAt, name, ...valueParts] = parts;
+      return {
+        domain,
+        expirationDate: Number(expiresAt || 0) || 0,
+        hostOnly: `${includeSubdomains || ""}`.toUpperCase() !== "TRUE",
+        httpOnly: isHttpOnly,
+        name,
+        path: cookiePath || "/",
+        sameSite: "no_restriction",
+        secure: `${secure || ""}`.toUpperCase() === "TRUE",
+        session: Number(expiresAt || 0) === 0,
+        value: valueParts.join("\t")
+      };
+    })
+    .filter(Boolean);
 }
 
 function getYtdlCookieAgent() {
@@ -383,8 +398,15 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
 
   if (kind === "audio") {
     const audioFormats = formats
-      .filter((format) => format?.url && format.hasAudio && !format.hasVideo)
+      .filter((format) => format?.url && format.hasAudio)
       .sort((left, right) => {
+        const leftAudioOnly = left.hasVideo ? 0 : 1;
+        const rightAudioOnly = right.hasVideo ? 0 : 1;
+
+        if (rightAudioOnly !== leftAudioOnly) {
+          return rightAudioOnly - leftAudioOnly;
+        }
+
         const leftBitrate = Number(left.audioBitrate || left.bitrate || 0);
         const rightBitrate = Number(right.audioBitrate || right.bitrate || 0);
         return rightBitrate - leftBitrate;
@@ -399,6 +421,17 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
         quality: "highestaudio",
         filter: "audioonly"
       });
+
+      return `${chosen?.url || ""}`.trim();
+    } catch {}
+
+    try {
+      const chosen = ytdl.chooseFormat(
+        formats.filter((format) => format?.url && format.hasAudio),
+        {
+          quality: "highest"
+        }
+      );
 
       return `${chosen?.url || ""}`.trim();
     } catch {
