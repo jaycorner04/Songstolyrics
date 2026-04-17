@@ -78,11 +78,13 @@ let activeLineIndex = -1;
 let renderPollTimer = null;
 let activeRenderJobId = "";
 let localDebugPollTimer = null;
+let localDebugRefreshInFlight = false;
 let musicBulletinTimer = null;
 let uploadedBackgrounds = [];
 let uploadedBackgroundVideo = null;
 let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
+const LOCAL_DEBUG_REFRESH_MS = 1200;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const lyricPreviewSamples = {
   default: ["City lights in stereo", "You keep running through my mind", "Tonight the echo feels alive"],
@@ -712,6 +714,12 @@ async function refreshLocalDebugPanel() {
     return;
   }
 
+  if (localDebugRefreshInFlight) {
+    return;
+  }
+
+  localDebugRefreshInFlight = true;
+
   try {
     const response = await fetch(`/api/local-debug/errors?ts=${Date.now()}`, {
       cache: "no-store",
@@ -726,7 +734,9 @@ async function refreshLocalDebugPanel() {
 
     const payload = await response.json();
     renderLocalDebugPanel(Array.isArray(payload.entries) ? payload.entries : []);
-  } catch {}
+  } catch {} finally {
+    localDebugRefreshInFlight = false;
+  }
 }
 
 function scheduleLocalDebugRefresh() {
@@ -741,7 +751,7 @@ function scheduleLocalDebugRefresh() {
   localDebugPollTimer = window.setTimeout(async () => {
     await refreshLocalDebugPanel();
     scheduleLocalDebugRefresh();
-  }, 4000);
+  }, LOCAL_DEBUG_REFRESH_MS);
 }
 
 async function reportLocalDebugError(payload = {}) {
@@ -1902,7 +1912,12 @@ musicBulletinTabs.forEach((tab) => {
 
 if (localDebugRefreshButton) {
   localDebugRefreshButton.addEventListener("click", () => {
+    if (localDebugPollTimer) {
+      window.clearTimeout(localDebugPollTimer);
+      localDebugPollTimer = null;
+    }
     refreshLocalDebugPanel().catch(() => {});
+    scheduleLocalDebugRefresh();
   });
 }
 
@@ -1951,6 +1966,24 @@ window.addEventListener("beforeunload", () => {
   if (localDebugPollTimer) {
     window.clearTimeout(localDebugPollTimer);
   }
+});
+
+window.addEventListener("focus", () => {
+  if (!isLocalDebugMode) {
+    return;
+  }
+
+  refreshLocalDebugPanel().catch(() => {});
+  scheduleLocalDebugRefresh();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!isLocalDebugMode || document.hidden) {
+    return;
+  }
+
+  refreshLocalDebugPanel().catch(() => {});
+  scheduleLocalDebugRefresh();
 });
 
 window.addEventListener("DOMContentLoaded", () => {
