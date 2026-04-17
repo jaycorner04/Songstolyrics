@@ -10,6 +10,19 @@ log() {
   printf '[deploy-remote] %s\n' "$1"
 }
 
+docker_compose_available() {
+  docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1
+}
+
+run_docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+
+  docker-compose "$@"
+}
+
 fetch_url() {
   local url="$1"
 
@@ -50,7 +63,7 @@ wait_for_health() {
 
 deploy_with_docker_compose() {
   log "detected docker compose deployment"
-  docker compose up -d --build --remove-orphans
+  run_docker_compose up -d --build --remove-orphans
 }
 
 deploy_with_pm2() {
@@ -83,7 +96,7 @@ fi
 
 log "deploying branch ${DEPLOY_BRANCH} from $(pwd)"
 
-if command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]]; then
+if command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]] && docker_compose_available; then
   deploy_with_docker_compose
 elif command -v pm2 >/dev/null 2>&1; then
   deploy_with_pm2
@@ -94,4 +107,3 @@ else
 fi
 
 wait_for_health
-
