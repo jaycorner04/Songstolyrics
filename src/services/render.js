@@ -14,6 +14,7 @@ const { loadPersistedRenderJobs, persistRenderJob } = require("./render-job-stor
 const { containsTeluguScript, romanizeLyricLines } = require("./telugu");
 const { transcribeYouTubeAudio } = require("./transcription");
 const { extractVideoId } = require("./youtube");
+const { resolveCookieFilePath } = require("./ytdlp");
 
 const PUBLIC_FONTS_ROOT = path.join(publicRoot, "fonts");
 const VIDEO_SIZE = {
@@ -6004,6 +6005,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
+    const preferCookieBackedAudioRecovery =
+      adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
 
     if (uploadedBackgroundPaths.length) {
       renderNotes.push(
@@ -6021,7 +6024,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const audioUrlPromise = resolveAudioInput(payload.videoId, {
       outputDirectory: audioInputDirectory,
       allowDownloadFallback: true,
-      preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
+      preferKnownBlockRecovery: preferCookieBackedAudioRecovery
     }).then(
       (audioSource) => ({
         audioSource,

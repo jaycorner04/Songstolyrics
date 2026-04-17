@@ -6,7 +6,7 @@ const fsp = require("fs/promises");
 const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 const { resolveAudioInput } = require("./audio");
-const { buildYtDlpArgs } = require("./ytdlp");
+const { buildYtDlpArgs, resolveCookieFilePath } = require("./ytdlp");
 
 const TRANSCRIPTION_TIMEOUT_MS = 8 * 60 * 1000;
 const MODEL_NAME = process.env.WHISPER_MODEL || "base";
@@ -190,11 +190,13 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
 
   const minimumDownloadTimeoutMs = options.preview ? 90 * 1000 : 6 * 60 * 1000;
   const effectiveDownloadTimeoutMs = Math.max(Number(options.downloadTimeoutMs || 0), minimumDownloadTimeoutMs);
+  const preferKnownAudioBlockRecovery =
+    options.preferKnownAudioBlockRecovery === true || Boolean(resolveCookieFilePath());
 
   try {
     const remoteAudio = await resolveAudioInput(videoId, {
       allowDownloadFallback: false,
-      preferKnownBlockRecovery: options.preferKnownAudioBlockRecovery === true
+      preferKnownBlockRecovery: preferKnownAudioBlockRecovery
     });
 
     if (remoteAudio?.sourceType === "remote" && remoteAudio.input) {
@@ -215,7 +217,7 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
       preferLocal: true,
       allowDownloadFallback: true,
       downloadTimeoutMs: effectiveDownloadTimeoutMs,
-      preferKnownBlockRecovery: options.preferKnownAudioBlockRecovery === true
+      preferKnownBlockRecovery: preferKnownAudioBlockRecovery
     });
 
     if (resolvedAudio?.sourceType === "file" && resolvedAudio.input) {
@@ -225,7 +227,7 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
     // Fall back to the legacy transcription downloader below.
   }
 
-  if (options.preferKnownAudioBlockRecovery === true) {
+  if (preferKnownAudioBlockRecovery) {
     throw new Error(
       "Known YouTube audio block recovery was already attempted for this source, and no stable transcription audio could be prepared."
     );
