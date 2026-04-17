@@ -7,6 +7,14 @@ const ffmpegPath = require("ffmpeg-static");
 const { previewAudioCacheRoot } = require("../config/runtime");
 const { buildYtDlpArgs } = require("./ytdlp");
 
+let ytdl = null;
+
+try {
+  ytdl = require("@distube/ytdl-core");
+} catch {
+  ytdl = null;
+}
+
 const execFileAsync = promisify(execFile);
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
@@ -14,6 +22,7 @@ const STREAM_URL_TTL_MS = 10 * 60 * 1000;
 const STREAM_RESOLVE_TIMEOUT_MS = 30000;
 const DOWNLOADED_AUDIO_TTL_MS = 12 * 60 * 60 * 1000;
 const AUDIO_DOWNLOAD_TIMEOUT_MS = 6 * 60 * 1000;
+const YTDL_CORE_TIMEOUT_MS = 30000;
 const AUDIO_CACHE_ROOT = previewAudioCacheRoot;
 const ALLOW_BROWSER_COOKIES = process.env.ALLOW_BROWSER_COOKIES === "true";
 const streamUrlCache = new Map();
@@ -84,6 +93,23 @@ function createAudioError(message, statusCode = 500) {
   return error;
 }
 
+function isYouTubeBotBlockError(error) {
+  const message = `${error?.message || error || ""}`;
+  return /sign in to confirm you(?:'|’)re not a bot|confirm you(?:'|’)re not a bot|cookies-from-browser|exporting-youtube-cookies/i.test(
+    message
+  );
+}
+
+function createYouTubeBotBlockAudioError(error) {
+  const wrappedError = createAudioError(
+    "YouTube temporarily blocked audio access for this video. Try another link or try again later.",
+    503
+  );
+  wrappedError.code = "YOUTUBE_BOT_BLOCK";
+  wrappedError.cause = error;
+  return wrappedError;
+}
+
 function toVideoUrl(videoId) {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
@@ -152,6 +178,25 @@ async function execFileWithRetry(command, args, options = {}) {
   }
 
   throw lastError || new Error(`${command} failed.`);
+}
+
+async function withTimeout(factory, timeoutMs, timeoutLabel) {
+  let timer = null;
+
+  try {
+    return await Promise.race([
+      factory(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${timeoutLabel} timed out.`));
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function getAudioMimeType(filePath = "") {
@@ -229,6 +274,77 @@ async function findDownloadedAudioFile(videoId, outputDirectory) {
   });
 
   return validEntry.filePath;
+}
+
+async function transcodeRemoteAudioUrlToFile(audioUrl, outputDirectory, videoId, timeoutMs) {
+  const outputPath = path.join(outputDirectory, `${toSafeBaseName(videoId)}.wav`);
+
+  await execFileWithRetry(
+    ffmpegPath,
+    [
+      "-y",
+      "-i",
+      audioUrl,
+      "-vn",
+      "-acodec",
+      "pcm_s16le",
+      "-ar",
+      "44100",
+      "-ac",
+      "2",
+      outputPath
+    ],
+    {
+      maxBuffer: 1024 * 1024 * 4,
+      timeout: Number(timeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+    }
+  );
+
+  return outputPath;
+}
+
+async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
+  if (!ytdl?.getInfo) {
+    return "";
+  }
+
+  const info = await withTimeout(
+    () => ytdl.getInfo(toVideoUrl(videoId)),
+    YTDL_CORE_TIMEOUT_MS,
+    "ytdl-core info lookup"
+  );
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+
+  if (!formats.length) {
+    return "";
+  }
+
+  if (kind === "audio") {
+    const audioFormats = formats
+      .filter((format) => format?.url && format.hasAudio && !format.hasVideo)
+      .sort((left, right) => {
+        const leftBitrate = Number(left.audioBitrate || left.bitrate || 0);
+        const rightBitrate = Number(right.audioBitrate || right.bitrate || 0);
+        return rightBitrate - leftBitrate;
+      });
+
+    if (audioFormats.length) {
+      return `${audioFormats[0].url || ""}`.trim();
+    }
+
+    try {
+      const chosen = ytdl.chooseFormat(formats, {
+        quality: "highestaudio",
+        filter: "audioonly"
+      });
+
+      return `${chosen?.url || ""}`.trim();
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
 }
 
 async function downloadAudioFile(videoId, outputDirectory, options = {}) {
@@ -309,6 +425,35 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
       }
     }
 
+    try {
+      const fallbackStreamUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
+
+      if (fallbackStreamUrl) {
+        const transcodedPath = await transcodeRemoteAudioUrlToFile(
+          fallbackStreamUrl,
+          outputDirectory,
+          videoId,
+          Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+        );
+        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+        if (downloadedFilePath || transcodedPath) {
+          const usableFilePath = downloadedFilePath || transcodedPath;
+          downloadedAudioCache.set(cacheKey, {
+            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+            filePath: usableFilePath
+          });
+          return usableFilePath;
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (isYouTubeBotBlockError(lastError)) {
+      throw createYouTubeBotBlockAudioError(lastError);
+    }
+
     throw lastError || createAudioError("Could not download a playable audio track for that YouTube video.", 502);
   })();
 
@@ -337,6 +482,8 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
 
   const attempts = STREAM_ATTEMPTS[kind] || [{ formatSelector, extraArgs: [] }];
   const requestPromise = (async () => {
+    let lastError = null;
+
     for (const attempt of attempts) {
       try {
         const ytDlpArgs = buildYtDlpArgs({
@@ -381,9 +528,32 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
         });
 
         return streamUrl;
-      } catch {
+      } catch (error) {
+        lastError = error;
         // Try the next format/client combination.
       }
+    }
+
+    try {
+      const ytdlCoreUrl = await resolveStreamUrlWithYtdlCore(videoId, kind);
+
+      if (ytdlCoreUrl) {
+        streamUrlCache.set(cacheKey, {
+          expiresAt: Date.now() + STREAM_URL_TTL_MS,
+          url: ytdlCoreUrl
+        });
+        return ytdlCoreUrl;
+      }
+    } catch (error) {
+      lastError = error;
+
+      if (isYouTubeBotBlockError(error)) {
+        throw createYouTubeBotBlockAudioError(error);
+      }
+    }
+
+    if (isYouTubeBotBlockError(lastError)) {
+      throw createYouTubeBotBlockAudioError(lastError);
     }
 
     throw createAudioError(`Could not create a playable ${kind} stream for that YouTube video.`, 502);
@@ -428,6 +598,10 @@ async function resolveAudioInput(videoId, options = {}) {
   }
 
   if (!allowDownloadFallback) {
+    if (isYouTubeBotBlockError(streamError)) {
+      throw createYouTubeBotBlockAudioError(streamError);
+    }
+
     throw streamError || createAudioError("Could not resolve a usable audio source for that YouTube video.", 502);
   }
 

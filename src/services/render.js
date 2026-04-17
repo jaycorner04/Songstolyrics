@@ -1997,6 +1997,10 @@ function buildUserRenderMessage(job = {}) {
   }
 
   if (job.status === "failed") {
+    if (/YOUTUBE_BOT_BLOCK|not a bot|cookies-from-browser|temporarily blocked audio access/i.test(`${job.error || ""}`)) {
+      return "YouTube blocked audio access for this video. Try another link or try again later.";
+    }
+
     if (/verify|verified|match(?:ed)? .*detected vocals|sync check|sync quality|lyric timing|strongly enough|audio-built lyric fallback|too sparse across the song|trust as the final lyric sheet/i.test(`${job.error || ""}`)) {
       return "The app stopped before rendering because it could not verify that the lyrics match the audio closely enough.";
     }
