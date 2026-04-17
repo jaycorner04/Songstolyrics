@@ -1145,16 +1145,43 @@ function buildWordByWordLyricText(text = "", durationSeconds = 0, maxLength = 24
 function pickLyricAnimationVariant(line = {}, index = 0) {
   const wordCount = tokenizeLyricWords(line.text).length;
   const duration = Number(line.duration || 0);
+  const autoMixVariants = [
+    "bounce",
+    "magic",
+    "comic",
+    "cinematic-left",
+    "line-by-line",
+    "side-by-side",
+    "neon",
+    "glitch",
+    "whisper",
+    "stacked",
+    "karaoke",
+    "minimal",
+    "cinematic-right",
+    "word-by-word",
+    "aa",
+    "fulllength"
+  ];
+  let selectedVariant = autoMixVariants[index % autoMixVariants.length];
 
-  if (duration >= 2.4 && wordCount >= 4) {
-    return "word-by-word";
+  if (duration >= 2.8 && wordCount >= 6) {
+    selectedVariant = index % 3 === 0 ? "word-by-word" : "line-by-line";
+  } else if (wordCount <= 3 || duration <= 1.2) {
+    selectedVariant = index % 2 === 0 ? "bounce" : "magic";
+  } else if (wordCount >= 9) {
+    selectedVariant = index % 2 === 0 ? "stacked" : "cinematic-right";
   }
 
-  if (wordCount <= 4 || duration <= 1.75) {
-    return "bounce";
+  if (selectedVariant === "side-by-side" && wordCount >= 8) {
+    return "line-by-line";
   }
 
-  return index % 2 === 0 ? "cinematic-left" : "cinematic-right";
+  if ((selectedVariant === "aa" || selectedVariant === "fulllength") && wordCount <= 2) {
+    return "magic";
+  }
+
+  return selectedVariant;
 }
 
 function resolveLyricStylePreset(styleKey = "auto") {
