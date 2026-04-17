@@ -116,6 +116,40 @@ npm run predeploy:check
 
 That wrapper runs `doctor`, `smoke`, and `e2e` in order with `NODE_ENV=production` and deploy-safe audio settings, then stops immediately if any step fails.
 
+## Auto deploy to EC2
+
+The repository now includes a GitHub Actions workflow at `.github/workflows/deploy-ec2.yml`.
+When enabled, every push to `main` can redeploy the EC2 server automatically.
+
+One-time setup in GitHub repository secrets:
+
+```text
+EC2_HOST
+EC2_USER
+EC2_SSH_KEY
+EC2_APP_DIR
+EC2_APP_URL       # optional, example: http://127.0.0.1:3000
+EC2_APP_PORT      # optional, default: 3000
+```
+
+- `EC2_HOST`: your server hostname or IP
+- `EC2_USER`: SSH login user such as `ubuntu` or `ec2-user`
+- `EC2_SSH_KEY`: private key content used to SSH into the server
+- `EC2_APP_DIR`: absolute app path on the server, for example `/home/ubuntu/Songstolyrics`
+- `EC2_APP_URL`: optional health URL base used during deploy verification
+- `EC2_APP_PORT`: optional port if `EC2_APP_URL` is not provided
+
+What the workflow does:
+
+1. Connects to EC2 over SSH
+2. Pulls the latest `main`
+3. Runs `scripts/deploy-remote.sh`
+4. Auto-detects the server mode:
+   `docker compose`, `pm2`, `systemd`, or plain `node`
+5. Waits for `/api/health` to return successfully before the job passes
+
+If your EC2 machine is using Docker Compose, this is the expected happy path for the current project layout.
+
 ## Auto push
 
 The repo now includes a local auto-push watcher:
