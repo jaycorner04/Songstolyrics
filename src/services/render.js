@@ -5977,6 +5977,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const videoSize = getRenderSize(payload);
     const renderProfile = buildRenderProfile(payload);
     const allowSilentAudioFallback = process.env.ALLOW_SILENT_AUDIO_FALLBACK === "true";
+    const continueRenderOnBlockedAudio = process.env.RENDER_CONTINUE_ON_AUDIO_BLOCK !== "false";
     const metadataDurationSeconds = Number(payload.durationSeconds || 0);
     let durationSeconds = getRenderDurationSeconds(
       metadataDurationSeconds > 0
@@ -6053,7 +6054,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           message: audioResolution.error.message || ""
         });
 
-        if (!allowSilentAudioFallback) {
+        if (!allowSilentAudioFallback && !continueRenderOnBlockedAudio) {
           const blockedAudioError = createRenderError(
             "YouTube blocked audio access for this video. Add a YouTube cookie file on the server or try another link.",
             503
@@ -6077,6 +6078,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         renderNotes.push(
           "Final timing stays based on the video metadata and the lyric source that was already available."
         );
+        if (!allowSilentAudioFallback && continueRenderOnBlockedAudio) {
+          renderNotes.push(
+            "Render recovery mode kept the export alive even though silent fallback was not explicitly enabled in the environment."
+          );
+        }
       } else {
         throw audioResolution.error;
       }
