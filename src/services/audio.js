@@ -626,6 +626,7 @@ async function resolveVideoUrl(videoId) {
 
 module.exports = {
   getAudioMimeType,
+  isYouTubeBotBlockError,
   resolveAudioInput,
   resolveAudioUrl,
   resolveVideoUrl
