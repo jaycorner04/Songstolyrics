@@ -1264,13 +1264,16 @@ app.post(
       videoId,
       captionCues
     );
-    let audioPreviewBlocked = false;
-
-    resolveAudioUrl(videoId).catch((error) => {
-      if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
-        audioPreviewBlocked = true;
-      }
-    });
+    const audioPreviewProbe = await withTimeout(
+      resolveAudioUrl(videoId)
+        .then(() => ({ blocked: false }))
+        .catch((error) => ({
+          blocked: Boolean(error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error))
+        })),
+      2500,
+      { blocked: false, timedOut: true }
+    );
+    const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
 
     res.json({
       inputUrl: videoUrl,
