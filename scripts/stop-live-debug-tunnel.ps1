@@ -37,10 +37,10 @@ if (-not (Test-Path $pidFile)) {
   exit 0
 }
 
-$pid = Get-Content -Path $pidFile | Select-Object -First 1
+$tunnelPid = Get-Content -Path $pidFile | Select-Object -First 1
 
-if ($pid) {
-  Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+if ($tunnelPid) {
+  Stop-Process -Id $tunnelPid -Force -ErrorAction SilentlyContinue
 }
 
 Remove-Item -Path $pidFile -Force -ErrorAction SilentlyContinue
