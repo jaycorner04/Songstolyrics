@@ -59,6 +59,7 @@ const localDebugCard = document.getElementById("local-debug-card");
 const localDebugList = document.getElementById("local-debug-list");
 const localDebugRefreshButton = document.getElementById("local-debug-refresh-button");
 const localDebugClearButton = document.getElementById("local-debug-clear-button");
+const localDebugStatus = document.getElementById("local-debug-status");
 const videoOutputCard = document.getElementById("video-output-card");
 const renderedVideo = document.getElementById("rendered-video");
 const downloadVideoLink = document.getElementById("download-video-link");
@@ -79,6 +80,7 @@ let renderPollTimer = null;
 let activeRenderJobId = "";
 let localDebugPollTimer = null;
 let localDebugRefreshInFlight = false;
+let localDebugLastRefreshedAt = "";
 let musicBulletinTimer = null;
 let uploadedBackgrounds = [];
 let uploadedBackgroundVideo = null;
@@ -709,6 +711,31 @@ function renderLocalDebugPanel(entries = []) {
   });
 }
 
+function renderLocalDebugStatus({
+  connected = false,
+  entryCount = 0,
+  runtimeRoot = "",
+  lastRefreshedAt = ""
+} = {}) {
+  if (!localDebugStatus || !isLocalDebugMode) {
+    return;
+  }
+
+  const parts = [];
+  parts.push(connected ? "Live debug connected" : "Live debug disconnected");
+  parts.push(`${entryCount} error${entryCount === 1 ? "" : "s"}`);
+
+  if (runtimeRoot) {
+    parts.push(runtimeRoot.includes("/data") ? "EC2 live feed" : "local app feed");
+  }
+
+  if (lastRefreshedAt) {
+    parts.push(`Last refreshed ${lastRefreshedAt}`);
+  }
+
+  localDebugStatus.textContent = parts.join(" • ");
+}
+
 async function refreshLocalDebugPanel() {
   if (!isLocalDebugMode || !localDebugCard || !localDebugList) {
     return;
@@ -721,6 +748,13 @@ async function refreshLocalDebugPanel() {
   localDebugRefreshInFlight = true;
 
   try {
+    const healthResponse = await fetch(`/api/health?ts=${Date.now()}`, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache"
+      }
+    });
+    const healthPayload = healthResponse.ok ? await healthResponse.json() : {};
     const response = await fetch(`/api/local-debug/errors?ts=${Date.now()}`, {
       cache: "no-store",
       headers: {
@@ -732,9 +766,24 @@ async function refreshLocalDebugPanel() {
       return;
     }
 
-    const payload = await response.json();
-    renderLocalDebugPanel(Array.isArray(payload.entries) ? payload.entries : []);
-  } catch {} finally {
+      const payload = await response.json();
+    const entries = Array.isArray(payload.entries) ? payload.entries : [];
+    localDebugLastRefreshedAt = new Date().toLocaleTimeString();
+    renderLocalDebugPanel(entries);
+    renderLocalDebugStatus({
+      connected: true,
+      entryCount: entries.length,
+      runtimeRoot: `${healthPayload?.runtimeRoot || ""}`,
+      lastRefreshedAt: localDebugLastRefreshedAt
+    });
+  } catch {
+    renderLocalDebugStatus({
+      connected: false,
+      entryCount: 0,
+      runtimeRoot: "",
+      lastRefreshedAt: localDebugLastRefreshedAt
+    });
+  } finally {
     localDebugRefreshInFlight = false;
   }
 }
@@ -1914,6 +1963,12 @@ updateLyricStylePreview();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();
 renderLocalDebugPanel([]);
+renderLocalDebugStatus({
+  connected: false,
+  entryCount: 0,
+  runtimeRoot: "",
+  lastRefreshedAt: ""
+});
 
 musicBulletinTabs.forEach((tab) => {
   tab.addEventListener("click", () => {

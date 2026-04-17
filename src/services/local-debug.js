@@ -1,7 +1,13 @@
+const fs = require("fs");
+const path = require("path");
+const { logsRoot } = require("../config/runtime");
+
 const LOCAL_DEBUG_MAX_ENTRIES = 80;
+const LOCAL_DEBUG_PATH = path.join(logsRoot, "local-debug-events.json");
 
 const localDebugEvents = [];
 let nextLocalDebugId = 1;
+let localDebugLoaded = false;
 
 function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
@@ -75,6 +81,8 @@ function serializeDebugValue(value, depth = 0) {
 }
 
 function recordLocalDebugEvent(payload = {}) {
+  ensureLocalDebugLoaded();
+
   const entry = {
     id: nextLocalDebugId++,
     createdAt: new Date().toISOString(),
@@ -93,18 +101,23 @@ function recordLocalDebugEvent(payload = {}) {
     localDebugEvents.length = LOCAL_DEBUG_MAX_ENTRIES;
   }
 
+  persistLocalDebugEvents();
   return entry;
 }
 
 function getLocalDebugEvents() {
+  ensureLocalDebugLoaded();
   return [...localDebugEvents];
 }
 
 function clearLocalDebugEvents() {
+  ensureLocalDebugLoaded();
   localDebugEvents.length = 0;
+  persistLocalDebugEvents();
 }
 
 function deleteLocalDebugEvent(id) {
+  ensureLocalDebugLoaded();
   const targetId = Number(id || 0);
 
   if (!targetId) {
@@ -118,7 +131,75 @@ function deleteLocalDebugEvent(id) {
   }
 
   localDebugEvents.splice(index, 1);
+  persistLocalDebugEvents();
   return true;
+}
+
+function createEmptyLocalDebugPayload() {
+  return {
+    version: 1,
+    updatedAt: "",
+    nextId: 1,
+    entries: []
+  };
+}
+
+function ensureLocalDebugLoaded() {
+  if (localDebugLoaded) {
+    return;
+  }
+
+  localDebugLoaded = true;
+
+  try {
+    const raw = fs.readFileSync(LOCAL_DEBUG_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+    const sanitizedEntries = entries
+      .map((entry) => ({
+        id: Number(entry?.id || 0),
+        createdAt: `${entry?.createdAt || ""}`,
+        source: normalizeWhitespace(entry?.source || "server"),
+        title: normalizeWhitespace(entry?.title || "Debug event"),
+        userMessage: normalizeWhitespace(entry?.userMessage || ""),
+        errorMessage: normalizeWhitespace(entry?.errorMessage || ""),
+        cause: normalizeWhitespace(entry?.cause || ""),
+        stack: `${entry?.stack || ""}`.trim(),
+        details: serializeDebugValue(entry?.details || {})
+      }))
+      .filter((entry) => entry.id > 0);
+
+    localDebugEvents.length = 0;
+    localDebugEvents.push(...sanitizedEntries.slice(0, LOCAL_DEBUG_MAX_ENTRIES));
+    nextLocalDebugId = Math.max(
+      Number(parsed?.nextId || 1),
+      ...localDebugEvents.map((entry) => Number(entry.id || 0) + 1),
+      1
+    );
+  } catch {
+    const emptyPayload = createEmptyLocalDebugPayload();
+    nextLocalDebugId = emptyPayload.nextId;
+  }
+}
+
+function persistLocalDebugEvents() {
+  try {
+    fs.mkdirSync(path.dirname(LOCAL_DEBUG_PATH), { recursive: true });
+    fs.writeFileSync(
+      LOCAL_DEBUG_PATH,
+      JSON.stringify(
+        {
+          version: 1,
+          updatedAt: new Date().toISOString(),
+          nextId: nextLocalDebugId,
+          entries: localDebugEvents.slice(0, LOCAL_DEBUG_MAX_ENTRIES)
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+  } catch {}
 }
 
 function buildRequestDebugContext(req = {}) {

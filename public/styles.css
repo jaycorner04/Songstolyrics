@@ -1587,6 +1587,17 @@ button {
   margin-bottom: 14px;
 }
 
+.local-debug-status {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(127, 232, 255, 0.16);
+  background: rgba(127, 232, 255, 0.06);
+  color: #b9eefd;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .debug-entry,
 .debug-empty-state {
   border-radius: 18px;
