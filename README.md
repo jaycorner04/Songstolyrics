@@ -208,6 +208,9 @@ npm run live-debug:watch
 
 The watchdog checks the local health endpoint every few seconds and reclaims port `3000` for the EC2 tunnel if a local `node src/server.js` process takes it over later.
 
+Local debug errors now persist in `runtime/logs/local-debug-events.json` and remain visible until you press `Clear errors`.
+By default the app keeps the full history instead of trimming to a small recent list.
+
 ## Docker
 
 The project now includes a production Dockerfile. To build and run it:

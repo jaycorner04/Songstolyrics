@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { logsRoot } = require("../config/runtime");
 
-const LOCAL_DEBUG_MAX_ENTRIES = 80;
+const LOCAL_DEBUG_MAX_ENTRIES = Math.max(0, Number(process.env.LOCAL_DEBUG_MAX_ENTRIES || 0));
 const LOCAL_DEBUG_PATH = path.join(logsRoot, "local-debug-events.json");
 
 const localDebugEvents = [];
@@ -96,11 +96,7 @@ function recordLocalDebugEvent(payload = {}) {
   };
 
   localDebugEvents.unshift(entry);
-
-  if (localDebugEvents.length > LOCAL_DEBUG_MAX_ENTRIES) {
-    localDebugEvents.length = LOCAL_DEBUG_MAX_ENTRIES;
-  }
-
+  trimLocalDebugEvents();
   persistLocalDebugEvents();
   return entry;
 }
@@ -144,6 +140,12 @@ function createEmptyLocalDebugPayload() {
   };
 }
 
+function trimLocalDebugEvents() {
+  if (LOCAL_DEBUG_MAX_ENTRIES > 0 && localDebugEvents.length > LOCAL_DEBUG_MAX_ENTRIES) {
+    localDebugEvents.length = LOCAL_DEBUG_MAX_ENTRIES;
+  }
+}
+
 function ensureLocalDebugLoaded() {
   if (localDebugLoaded) {
     return;
@@ -170,7 +172,8 @@ function ensureLocalDebugLoaded() {
       .filter((entry) => entry.id > 0);
 
     localDebugEvents.length = 0;
-    localDebugEvents.push(...sanitizedEntries.slice(0, LOCAL_DEBUG_MAX_ENTRIES));
+    localDebugEvents.push(...sanitizedEntries);
+    trimLocalDebugEvents();
     nextLocalDebugId = Math.max(
       Number(parsed?.nextId || 1),
       ...localDebugEvents.map((entry) => Number(entry.id || 0) + 1),
@@ -192,7 +195,10 @@ function persistLocalDebugEvents() {
           version: 1,
           updatedAt: new Date().toISOString(),
           nextId: nextLocalDebugId,
-          entries: localDebugEvents.slice(0, LOCAL_DEBUG_MAX_ENTRIES)
+          entries:
+            LOCAL_DEBUG_MAX_ENTRIES > 0
+              ? localDebugEvents.slice(0, LOCAL_DEBUG_MAX_ENTRIES)
+              : localDebugEvents
         },
         null,
         2
