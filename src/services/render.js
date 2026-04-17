@@ -1163,20 +1163,16 @@ function pickLyricAnimationVariant(line = {}, index = 0) {
   const autoMixVariants = [
     "bounce",
     "magic",
-    "comic",
     "cinematic-left",
     "line-by-line",
     "side-by-side",
     "neon",
-    "glitch",
     "whisper",
     "stacked",
-    "karaoke",
     "minimal",
     "cinematic-right",
     "word-by-word",
-    "aa",
-    "fulllength"
+    "glitch"
   ];
   let selectedVariant = autoMixVariants[index % autoMixVariants.length];
 
@@ -1575,25 +1571,9 @@ function buildAccentHexFromSample(sample = {}) {
 }
 
 function getContrastStyleForBrightness(brightness = 128, sample = {}) {
-  if (brightness >= 160) {
-    return {
-      textHex: "#111111",
-      outlineHex: "#f6f1ea",
-      accentHex: buildAccentHexFromSample(sample)
-    };
-  }
-
-  if (brightness >= 120) {
-    return {
-      textHex: "#171717",
-      outlineHex: "#f8f8f8",
-      accentHex: buildAccentHexFromSample(sample)
-    };
-  }
-
   return {
-    textHex: "#ffffff",
-    outlineHex: "#151515",
+    textHex: brightness >= 150 ? "#fefefe" : "#ffffff",
+    outlineHex: brightness >= 150 ? "#0f1014" : brightness >= 110 ? "#111111" : "#151515",
     accentHex: buildAccentHexFromSample(sample)
   };
 }
@@ -5991,6 +5971,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     const videoSize = getRenderSize(payload);
     const renderProfile = buildRenderProfile(payload);
+    const allowSilentAudioFallback = process.env.ALLOW_SILENT_AUDIO_FALLBACK === "true";
     const metadataDurationSeconds = Number(payload.durationSeconds || 0);
     let durationSeconds = getRenderDurationSeconds(
       metadataDurationSeconds > 0
@@ -6057,6 +6038,15 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     if (audioResolution.error) {
       if (audioResolution.error?.code === "YOUTUBE_BOT_BLOCK") {
+        if (!allowSilentAudioFallback) {
+          const blockedAudioError = createRenderError(
+            "YouTube blocked audio access for this video. Add a YouTube cookie file on the server or try another link.",
+            503
+          );
+          blockedAudioError.code = "YOUTUBE_BOT_BLOCK";
+          blockedAudioError.cause = audioResolution.error;
+          throw blockedAudioError;
+        }
         updateJob(job, {
           stage: "Preparing fallback audio",
           progress: 0.13
