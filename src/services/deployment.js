@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const { promisify } = require("util");
 const { execFile } = require("child_process");
 
@@ -6,6 +7,7 @@ const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 
 const { runtimeRoot } = require("../config/runtime");
+const { resolveCookieFilePath } = require("./ytdlp");
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 12000;
@@ -74,6 +76,7 @@ async function getRuntimeDiagnostics() {
   const ytDlp = await runCheck("python", ["-m", "yt_dlp", "--version"]);
   const fasterWhisper = await runCheck("python", ["-c", "import faster_whisper"]);
   const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
+  const cookieFile = resolveCookieFilePath();
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -83,6 +86,11 @@ async function getRuntimeDiagnostics() {
     ytDlp: buildCheck(ytDlp.ok, ytDlp.detail, true),
     fasterWhisper: buildCheck(fasterWhisper.ok, fasterWhisper.detail, false),
     openAiWhisper: buildCheck(openAiWhisper.ok, openAiWhisper.detail, false),
+    ytDlpCookies: buildCheck(
+      Boolean(cookieFile),
+      cookieFile || `not configured (add ${path.join(runtimeRoot, "youtube-cookies.txt")} or set YTDLP_COOKIE_FILE)`,
+      false
+    ),
     runtimeRoot: buildCheck(fs.existsSync(runtimeRoot), runtimeRoot, true)
   };
 

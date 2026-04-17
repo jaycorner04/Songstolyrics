@@ -1,3 +1,8 @@
+const fs = require("fs");
+const path = require("path");
+
+const { runtimeRoot } = require("../config/runtime");
+
 function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
 }
@@ -29,6 +34,28 @@ function resolvePlayerClients(kind = "", fallbackClients = "") {
   return parseEnvList(fallbackClients);
 }
 
+function resolveCookieFilePath() {
+  const explicitCookieFile = normalizeWhitespace(process.env.YTDLP_COOKIE_FILE || "");
+
+  const candidatePaths = [
+    explicitCookieFile,
+    path.join(runtimeRoot, "youtube-cookies.txt"),
+    path.join(runtimeRoot, "yt-dlp-cookies.txt")
+  ].filter(Boolean);
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      const stats = fs.statSync(candidatePath);
+
+      if (stats.isFile() && Number(stats.size || 0) > 0) {
+        return candidatePath;
+      }
+    } catch {}
+  }
+
+  return "";
+}
+
 function buildYtDlpArgs(options = {}) {
   const {
     kind = "",
@@ -46,7 +73,7 @@ function buildYtDlpArgs(options = {}) {
   }
 
   if (includeCookieFile) {
-    const cookieFile = normalizeWhitespace(process.env.YTDLP_COOKIE_FILE || "");
+    const cookieFile = resolveCookieFilePath();
 
     if (cookieFile) {
       args.push("--cookies", cookieFile);
@@ -96,5 +123,6 @@ function buildYtDlpArgs(options = {}) {
 }
 
 module.exports = {
-  buildYtDlpArgs
+  buildYtDlpArgs,
+  resolveCookieFilePath
 };

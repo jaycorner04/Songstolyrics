@@ -88,11 +88,28 @@ LYRICS_OVH_BASE_URL=https://api.lyrics.ovh
 - `ALLOW_BROWSER_COOKIES=false` keeps audio resolution deploy-safe. Only turn it on for local machines where browser-cookie extraction is intentionally available.
 - `YTDLP_CONFIG_FILE` lets you point the app at a pinned yt-dlp config file for both local and deployed runs.
 - `YTDLP_COOKIE_FILE`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
+- If `YTDLP_COOKIE_FILE` is blank, the app automatically looks for `runtime/youtube-cookies.txt` and `runtime/yt-dlp-cookies.txt`.
 - `YOUTUBE_API_KEY` is optional, but improves metadata quality.
 
 If `RUNTIME_ROOT` is blank, runtime files are stored in `./runtime`.
 Preview and downloaded audio caches also live under that same runtime root, so local and deployed storage now behave the same way.
 The app ignores personal user/home yt-dlp config by default, so local runs match deployed runs unless you explicitly set `YTDLP_CONFIG_FILE`.
+
+### Optional YouTube cookies
+
+If YouTube starts blocking audio access for some videos, place an exported `cookies.txt` file at:
+
+```text
+runtime/youtube-cookies.txt
+```
+
+or set:
+
+```env
+YTDLP_COOKIE_FILE=/absolute/path/to/youtube-cookies.txt
+```
+
+The server will pick it up automatically on the next request. Treat this file like a secret and never commit it to Git.
 
 ## Deploy checks
 
