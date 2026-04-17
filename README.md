@@ -180,6 +180,26 @@ npm run autopush:start
 It watches the project, waits briefly for file activity to settle, then commits and pushes changes to the current branch automatically.
 Temporary watcher state is stored under `.autopush/`, and `.codex-temp/` is ignored so local Codex scratch files do not get pushed.
 
+## Live debug tunnel
+
+If you want `http://localhost:3000` to mirror the live EC2 app and show production debug errors locally, start the live debug tunnel:
+
+```bash
+npm run live-debug:start
+```
+
+That script:
+
+- forwards `localhost:3000` to the deployed EC2 app
+- replaces this repo's local `node src/server.js` process on port `3000` if it is currently running
+- keeps tunnel state and logs under `.live-debug/`
+
+To stop the tunnel and free `localhost:3000` again:
+
+```bash
+npm run live-debug:stop
+```
+
 ## Docker
 
 The project now includes a production Dockerfile. To build and run it:
