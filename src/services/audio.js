@@ -26,6 +26,7 @@ const YTDL_CORE_TIMEOUT_MS = 30000;
 const AUDIO_CACHE_ROOT = previewAudioCacheRoot;
 const ALLOW_BROWSER_COOKIES = process.env.ALLOW_BROWSER_COOKIES === "true";
 const YTDL_CORE_PLAYER_CLIENTS = ["WEB", "WEB_EMBEDDED", "IOS", "ANDROID", "TV"];
+const YTDL_CORE_COOKIE_DOMAIN_REGEX = /(^|\.)((www|m|music|studio)\.)?youtube\.com$|(^|\.)youtu\.be$|(^|\.)youtube-nocookie\.com$/i;
 const streamUrlCache = new Map();
 const inFlightStreamRequests = new Map();
 const downloadedAudioCache = new Map();
@@ -183,7 +184,9 @@ function getYtdlCookieAgent() {
     return cachedYtdlCookieAgent;
   }
 
-  const cookies = parseNetscapeCookieFile(cookieFilePath);
+  const cookies = parseNetscapeCookieFile(cookieFilePath).filter((cookie) =>
+    YTDL_CORE_COOKIE_DOMAIN_REGEX.test(`${cookie?.domain || ""}`.replace(/^#HttpOnly_/, ""))
+  );
 
   if (!cookies.length) {
     cachedYtdlCookieAgent = null;
@@ -192,10 +195,16 @@ function getYtdlCookieAgent() {
   }
 
   const proxyUrl = resolveProxyUrl("ytdlCore");
-  cachedYtdlCookieAgent =
-    proxyUrl && ytdl?.createProxyAgent
-      ? ytdl.createProxyAgent(proxyUrl, cookies)
-      : ytdl.createAgent(cookies);
+  try {
+    cachedYtdlCookieAgent =
+      proxyUrl && ytdl?.createProxyAgent
+        ? ytdl.createProxyAgent(proxyUrl, cookies)
+        : ytdl.createAgent(cookies);
+  } catch {
+    cachedYtdlCookieAgent = null;
+    cachedYtdlCookieAgentKey = "";
+    return null;
+  }
   cachedYtdlCookieAgentKey = cacheKey;
   return cachedYtdlCookieAgent;
 }
