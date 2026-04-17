@@ -6760,6 +6760,22 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               : directTranscriptCandidateReport.approved
                 ? directTranscriptCandidateReport
                 : wordTimedTranscriptCandidateReport;
+          const emergencyTranscriptCandidateMetrics = getSourceTimingMetrics(
+            transcriptCandidateLines,
+            durationSeconds
+          );
+          const canUseEmergencyTranscriptFallback =
+            !transcriptCandidateReport.approved &&
+            !renderLinesAreTranscriptDerived &&
+            (renderLineSyncSource === "estimated" ||
+              renderLineSyncSource === "caption-aligned" ||
+              renderLineSyncSource === "captions") &&
+            validationTranscriptMetrics.reliableForWindowFit &&
+            emergencyTranscriptCandidateMetrics.meaningfulCount >=
+              Math.max(3, Math.min(8, Math.round(durationSeconds / 48))) &&
+            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.08 &&
+            emergencyTranscriptCandidateMetrics.lastEnd >
+              emergencyTranscriptCandidateMetrics.firstStart + 6;
 
           if (
             transcriptCandidateReport.approved &&
@@ -6776,6 +6792,22 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               introPreservedTranscriptCandidate.applied && directTranscriptCandidateReport.approved
                 ? `Strict sync verification preserved ${introPreservedTranscriptCandidate.preservedIntroCount} trusted intro lyric line${introPreservedTranscriptCandidate.preservedIntroCount === 1 ? "" : "s"} and rebuilt the rest from the audio before rendering.`
                 : "Strict sync verification replaced the original lyric sheet with audio-built lyrics before rendering."
+            );
+          } else if (canUseEmergencyTranscriptFallback) {
+            renderLines = transcriptCandidateLines;
+            renderLineSyncSource = "transcribed";
+            renderLinesAreTranscriptDerived = true;
+            strictSyncReport = {
+              ...transcriptCandidateReport,
+              approved: true,
+              reason: "",
+              approvalMode: "validation-transcript-safe-fallback",
+              transcriptDerived: true,
+              candidateMetrics: emergencyTranscriptCandidateMetrics,
+              transcriptMetrics: validationTranscriptMetrics
+            };
+            renderNotes.push(
+              "Strict sync verification recovered the render by switching from a weak estimated lyric sheet to the safer audio transcript timing."
             );
           }
         }
