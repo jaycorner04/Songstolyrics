@@ -68,7 +68,7 @@ foreach ($listenerPid in $listenerPids) {
     exit 0
   }
 
-  if ($process -and $process.ProcessName -eq "node" -and $commandLine -like "*song to lyrics*" -and $commandLine -like "*src/server.js*") {
+  if ($process -and $process.ProcessName -eq "node" -and $commandLine -like "*src/server.js*") {
     Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800
     continue
