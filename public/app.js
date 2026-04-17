@@ -1801,11 +1801,15 @@ audioPlayer.addEventListener("timeupdate", syncLyricsToPlayback);
 audioPlayer.addEventListener("seeked", syncLyricsToPlayback);
 audioPlayer.addEventListener("loadedmetadata", syncLyricsToPlayback);
 audioPlayer.addEventListener("error", () => {
-  setStatus("The page loaded, but audio playback could not start for this video.", true);
+  setStatus(
+    "Audio preview is blocked for this video on the server right now. The page still loaded, but playback could not start.",
+    true
+  );
   reportLocalDebugError({
     source: "client-audio",
     title: "Audio playback error",
-    userMessage: "The page loaded, but audio playback could not start for this video.",
+    userMessage:
+      "Audio preview is blocked for this video on the server right now. The page still loaded, but playback could not start.",
     errorMessage: audioPlayer.error?.message || `HTMLMediaElement error code ${audioPlayer.error?.code || "unknown"}`,
     cause: audioPlayer.currentSrc || currentResult?.audioUrl || "",
     details: {
