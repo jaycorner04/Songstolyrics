@@ -140,7 +140,7 @@ def export_profile(browser: str, browser_root: Path, profile_name: str, domains:
     try:
         shutil.copy2(cookie_path, temp_copy)
     except Exception:
-        db_target = f"file:{cookie_path.as_posix()}?mode=ro&immutable=1"
+        db_target = f"{cookie_path.resolve().as_uri()}?mode=ro&immutable=1"
         db_target_is_uri = True
 
     rows = []
