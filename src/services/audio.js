@@ -25,6 +25,7 @@ const AUDIO_DOWNLOAD_TIMEOUT_MS = 6 * 60 * 1000;
 const YTDL_CORE_TIMEOUT_MS = 30000;
 const AUDIO_CACHE_ROOT = previewAudioCacheRoot;
 const ALLOW_BROWSER_COOKIES = process.env.ALLOW_BROWSER_COOKIES === "true";
+const YTDL_CORE_PLAYER_CLIENTS = ["WEB", "WEB_EMBEDDED", "IOS", "ANDROID", "TV"];
 const streamUrlCache = new Map();
 const inFlightStreamRequests = new Map();
 const downloadedAudioCache = new Map();
@@ -385,7 +386,7 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
     () =>
       ytdl.getInfo(toVideoUrl(videoId), {
         agent: getYtdlCookieAgent() || undefined,
-        playerClients: ["WEB_EMBEDDED", "IOS", "ANDROID", "TV"]
+        playerClients: YTDL_CORE_PLAYER_CLIENTS
       }),
     YTDL_CORE_TIMEOUT_MS,
     "ytdl-core info lookup"
