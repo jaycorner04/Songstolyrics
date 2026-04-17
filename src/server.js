@@ -57,7 +57,8 @@ const app = express();
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const trustProxy = process.env.TRUST_PROXY === "true";
-const buildMarker = `${process.env.BUILD_MARKER || "dev-local"}`.trim() || "dev-local";
+const buildMarker =
+  `${process.env.BUILD_MARKER || `dev-${Date.now()}`}`.trim() || `dev-${Date.now()}`;
 const publicIndexPath = path.join(publicRoot, "index.html");
 let startupDiagnostics = {
   checkedAt: "",
