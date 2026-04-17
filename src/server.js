@@ -1227,7 +1227,7 @@ app.get(
 app.post(
   "/api/convert",
   asyncHandler(async (req, res) => {
-    const videoUrl = `${req.body?.url || ""}`.trim();
+    const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
 
     if (!videoUrl) {
       throw createError("Enter a YouTube video link to begin.", 400);
