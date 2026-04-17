@@ -52,6 +52,8 @@ const app = express();
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const trustProxy = process.env.TRUST_PROXY === "true";
+const buildMarker = `${process.env.BUILD_MARKER || "dev-local"}`.trim() || "dev-local";
+const publicIndexPath = path.join(publicRoot, "index.html");
 let startupDiagnostics = {
   checkedAt: "",
   ready: false,
@@ -103,13 +105,26 @@ app.use(
 );
 app.use(compression());
 app.use(express.json({ limit: "35mb" }));
-app.use(express.static(publicRoot));
+app.use(express.static(publicRoot, { index: false }));
 
 function asyncHandler(handler) {
   return function wrappedHandler(req, res, next) {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
 }
+
+async function sendIndexHtml(req, res) {
+  const html = await fsp.readFile(publicIndexPath, "utf8");
+  const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
+  res.type("html").send(renderedHtml);
+}
+
+app.get(
+  ["/", "/index.html"],
+  asyncHandler(async (req, res) => {
+    await sendIndexHtml(req, res);
+  })
+);
 
 function buildWarnings(result) {
   const warnings = [];
