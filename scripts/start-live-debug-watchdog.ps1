@@ -28,7 +28,7 @@ $process = Start-Process `
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    $watchdogScript
+    "`"$watchdogScript`""
   ) `
   -WorkingDirectory $repoRoot `
   -WindowStyle Hidden `
