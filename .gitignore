@@ -15,3 +15,5 @@ tmp-*.png
 tmp-convert-response.json
 verify-*.png
 reference_frames/
+.codex-temp/
+.autopush/

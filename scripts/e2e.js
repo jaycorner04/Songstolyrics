@@ -9,7 +9,9 @@ const env = {
   HOST: "127.0.0.1"
 };
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
+const TRANSIENT_NETWORK_ERROR_REGEX = /\b(fetch failed|timed out|timeout|econnreset|enetunreach|ehostunreach|socket hang up|502|503|504|429)\b/i;
 const SPAWN_RETRY_DELAYS_MS = [250, 800];
+const NETWORK_RETRY_DELAYS_MS = [1500, 5000];
 const DEFAULT_LINKS = [
   "https://youtu.be/uelHwf8o7_U",
   "https://youtu.be/H5v3kku4y6Q",
@@ -26,6 +28,32 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function looksTransientNetworkError(error) {
+  return TRANSIENT_NETWORK_ERROR_REGEX.test(`${error?.message || error || ""}`);
+}
+
+async function retryOperation(label, operation, delaysMs, shouldRetry) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!shouldRetry(error) || attempt === delaysMs.length) {
+        throw error;
+      }
+
+      const delayMs = delaysMs[attempt];
+      console.log(`${label} retrying after transient error: ${error.message || error}`);
+      await wait(delayMs);
+    }
+  }
+
+  throw lastError || new Error(`${label} failed.`);
 }
 
 async function spawnWithRetries(command, args, options = {}) {
@@ -175,11 +203,17 @@ async function runConvertChecks(baseUrl, urls) {
     const startedAt = Date.now();
 
     try {
-      const payload = await fetchJson(`${baseUrl}/api/convert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
-      });
+      const payload = await retryOperation(
+        `convert ${url}`,
+        () =>
+          fetchJson(`${baseUrl}/api/convert`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url })
+          }),
+        NETWORK_RETRY_DELAYS_MS,
+        looksTransientNetworkError
+      );
       const summary = {
         url,
         title: payload.title,
@@ -229,32 +263,44 @@ async function runAudioCheck(baseUrl, convertPayload) {
 }
 
 async function runRenderCheck(baseUrl, inputUrl) {
-  const convert = await fetchJson(`${baseUrl}/api/convert`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: inputUrl })
-  });
-  const render = await fetchJson(`${baseUrl}/api/render`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      inputUrl,
-      videoId: convert.videoId,
-      title: convert.title,
-      channelTitle: convert.channelTitle,
-      durationSeconds: convert.durationSeconds,
-      lines: convert.lines,
-      song: convert.song,
-      syncMode: convert.syncMode,
-      poster: convert.poster,
-      thumbnails: convert.thumbnails,
-      customBackgrounds: [],
-      outputFormat: "auto",
-      renderMode: process.env.E2E_RENDER_MODE === "standard" ? "standard" : "fast",
-      lyricStyle: process.env.E2E_LYRIC_STYLE || "comic",
-      lyricFont: process.env.E2E_LYRIC_FONT || "impact"
-    })
-  });
+  const convert = await retryOperation(
+    `render convert ${inputUrl}`,
+    () =>
+      fetchJson(`${baseUrl}/api/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: inputUrl })
+      }),
+    NETWORK_RETRY_DELAYS_MS,
+    looksTransientNetworkError
+  );
+  const render = await retryOperation(
+    `render start ${inputUrl}`,
+    () =>
+      fetchJson(`${baseUrl}/api/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputUrl,
+          videoId: convert.videoId,
+          title: convert.title,
+          channelTitle: convert.channelTitle,
+          durationSeconds: convert.durationSeconds,
+          lines: convert.lines,
+          song: convert.song,
+          syncMode: convert.syncMode,
+          poster: convert.poster,
+          thumbnails: convert.thumbnails,
+          customBackgrounds: [],
+          outputFormat: "auto",
+          renderMode: process.env.E2E_RENDER_MODE === "standard" ? "standard" : "fast",
+          lyricStyle: process.env.E2E_LYRIC_STYLE || "comic",
+          lyricFont: process.env.E2E_LYRIC_FONT || "impact"
+        })
+      }),
+    NETWORK_RETRY_DELAYS_MS,
+    looksTransientNetworkError
+  );
 
   console.log(`render started: ${render.id}`);
   const timeoutMs = Number(process.env.E2E_RENDER_TIMEOUT_MS || 18 * 60 * 1000);

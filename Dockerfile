@@ -6,6 +6,7 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV TRUST_PROXY=true
+ENV ALLOW_BROWSER_COOKIES=false
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 

@@ -22,6 +22,14 @@ const { resolveAudioInput, resolveAudioUrl, resolveVideoUrl } = require("./servi
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
 const { getRuntimeDiagnostics } = require("./services/deployment");
 const { buildLyricsPayload, inferSongFromVideo } = require("./services/lyrics");
+const {
+  buildRequestDebugContext,
+  clearLocalDebugEvents,
+  deleteLocalDebugEvent,
+  getLocalDebugEvents,
+  isLocalDebugRequest,
+  recordLocalDebugEvent
+} = require("./services/local-debug");
 const { containsTeluguScript, romanizeLyricLines } = require("./services/telugu");
 const { transcribeYouTubeAudio } = require("./services/transcription");
 const {
@@ -588,6 +596,35 @@ function buildDescriptionLyricsPayload(metadata = {}, captionCues = [], fallback
   };
 }
 
+function buildCaptionFallbackPayload(captionCues = [], durationSeconds = 0, fallbackSong = null) {
+  const readableCaptionCues = (Array.isArray(captionCues) ? captionCues : [])
+    .map((cue) => ({
+      text: normalizeWhitespace(cue?.text || ""),
+      start: Number(cue?.start || 0),
+      duration: Math.max(0.8, Number(cue?.duration || 0))
+    }))
+    .filter((cue) => cue.text);
+
+  if (!readableCaptionCues.length) {
+    return null;
+  }
+
+  const finalCue = readableCaptionCues.at(-1);
+  const endBoundary =
+    Number(durationSeconds || 0) || (finalCue ? finalCue.start + finalCue.duration : 0);
+
+  return {
+    song: fallbackSong,
+    source: "youtube-captions",
+    syncMode: "captions",
+    lines: buildTimedLines(
+      readableCaptionCues.map((cue) => cue.text),
+      readableCaptionCues.map((cue) => cue.start),
+      endBoundary
+    )
+  };
+}
+
 function getLyricPreviewMetrics(lines = [], durationSeconds = 0) {
   const safeLines = Array.isArray(lines) ? lines : [];
   const meaningfulCount = safeLines.filter((line) => {
@@ -706,6 +743,27 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
       6000,
       lyricResult
     );
+  }
+
+  if (!lyricResult?.lines?.length) {
+    const recoveryCaptionCues =
+      safeCaptionCues.length > 0 ? safeCaptionCues : captionSummary.readableCues;
+    const lyricRecovery = await withTimeout(
+      buildLyricsPayload({
+        rawTitle: descriptionSong?.artist
+          ? `${descriptionSong.artist} - ${descriptionSong.title || metadata.title}`
+          : descriptionSong?.title || metadata.title,
+        channelTitle: metadata.channelTitle,
+        durationSeconds: metadata.durationSeconds,
+        captionCues: recoveryCaptionCues
+      }),
+      12000,
+      lyricResult
+    );
+
+    if (lyricRecovery?.lines?.length) {
+      lyricResult = lyricRecovery;
+    }
   }
 
   const warnings = [];
@@ -870,6 +928,23 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
     );
   } finally {
     await safeRemoveDirectory(scratchDirectory);
+  }
+
+  if (!lyricResult?.lines?.length) {
+    const captionFallback = buildCaptionFallbackPayload(
+      captionSummary.readableCues,
+      metadata.durationSeconds,
+      lyricResult?.song || descriptionSong || fallbackSong
+    );
+
+    if (captionFallback?.lines?.length) {
+      lyricResult = captionFallback;
+      warnings.push(
+        captionSummary.hasWeakCaptions
+          ? "Web lyrics were unavailable, so the website fell back to YouTube captions as a last-resort preview."
+          : "The website fell back to YouTube captions because stronger lyric sources were unavailable."
+      );
+    }
   }
 
   if (!lyricResult?.lines?.length) {
@@ -1048,6 +1123,78 @@ app.get("/api/readiness", (req, res) => {
   res.status(payload.ok ? 200 : 503).json(payload);
 });
 
+app.get("/api/local-debug/errors", (req, res) => {
+  if (!isLocalDebugRequest(req)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.json({
+    enabled: true,
+    entries: getLocalDebugEvents()
+  });
+});
+
+app.post(
+  "/api/local-debug/errors",
+  asyncHandler(async (req, res) => {
+    if (!isLocalDebugRequest(req)) {
+      throw createError("Not found.", 404);
+    }
+
+    const payload = req.body || {};
+    const entry = recordLocalDebugEvent({
+      source: normalizeWhitespace(payload.source || "client"),
+      title: normalizeWhitespace(payload.title || "Client error"),
+      userMessage: normalizeWhitespace(payload.userMessage || ""),
+      errorMessage: normalizeWhitespace(payload.errorMessage || ""),
+      cause: normalizeWhitespace(payload.cause || ""),
+      stack: `${payload.stack || ""}`.trim(),
+      details: {
+        ...buildRequestDebugContext(req),
+        client: payload.details || {}
+      }
+    });
+
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.status(201).json({
+      ok: true,
+      entry
+    });
+  })
+);
+
+app.delete("/api/local-debug/errors", (req, res) => {
+  if (!isLocalDebugRequest(req)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  clearLocalDebugEvents();
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json({ ok: true });
+});
+
+app.delete("/api/local-debug/errors/:id", (req, res) => {
+  if (!isLocalDebugRequest(req)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  const deleted = deleteLocalDebugEvent(req.params.id);
+
+  if (!deleted) {
+    res.status(404).json({ error: "That debug error could not be found." });
+    return;
+  }
+
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.json({ ok: true });
+});
+
 app.get(
   "/api/video-frames/:videoId",
   asyncHandler(async (req, res) => {
@@ -1168,6 +1315,9 @@ app.post(
       renderMode: body?.renderMode === "fast" ? "fast" : "standard",
       lyricStyle: `${body?.lyricStyle || "auto"}`,
       lyricFont: `${body?.lyricFont || "arial"}`,
+      useStyleColor: Boolean(body?.useStyleColor),
+      styleColor: `${body?.styleColor || "#7fe8ff"}`,
+      neonGlow: Number(body?.neonGlow || 70),
       requireVerifiedSync: true
     });
 
@@ -1245,6 +1395,18 @@ app.get(
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
+    recordLocalDebugEvent({
+      source: "api",
+      title: "Upload validation failed",
+      userMessage:
+        error.code === "LIMIT_FILE_SIZE"
+          ? "The background video is too large. Try a smaller file."
+          : "The uploaded background media could not be processed.",
+      errorMessage: error.message || error.code || "Multer error",
+      cause: error.code || "",
+      stack: error.stack || "",
+      details: buildRequestDebugContext(req)
+    });
     res.status(400).json({
       error:
         error.code === "LIMIT_FILE_SIZE"
@@ -1257,6 +1419,18 @@ app.use((error, req, res, next) => {
   const statusCode = Number(error.statusCode || 500);
   const message =
     statusCode >= 500 ? "The server could not process that YouTube video right now." : error.message;
+
+  recordLocalDebugEvent({
+    source: "api",
+    title: `${req.method || "REQUEST"} ${req.originalUrl || req.url || ""}`,
+    userMessage: message,
+    errorMessage: error?.message || "",
+    cause:
+      normalizeWhitespace(`${error?.cause?.message || error?.code || error?.statusCode || ""}`) ||
+      normalizeWhitespace(`${error?.cause || ""}`),
+    stack: error?.stack || "",
+    details: buildRequestDebugContext(req)
+  });
 
   if (res.headersSent) {
     next(error);

@@ -9,6 +9,7 @@ const ffprobePath = require("ffprobe-static").path;
 const { publicRoot, rendersRoot } = require("../config/runtime");
 const { getAdaptiveProfile, recordAdaptiveSignal, recordRenderOutcome } = require("./adaptive-guardrails");
 const { resolveAudioInput, resolveVideoUrl } = require("./audio");
+const { recordLocalDebugEvent } = require("./local-debug");
 const { loadPersistedRenderJobs, persistRenderJob } = require("./render-job-store");
 const { containsTeluguScript, romanizeLyricLines } = require("./telugu");
 const { transcribeYouTubeAudio } = require("./transcription");
@@ -285,6 +286,17 @@ const LYRIC_STYLE_PRESETS = {
     positionMode: "center",
     forcedAnimation: "bounce"
   },
+  aa: {
+    key: "aa",
+    label: "AA",
+    fontScale: 1.12,
+    yFactorPortrait: 0.59,
+    yFactorLandscape: 0.63,
+    wrapPortrait: 9,
+    wrapLandscape: 12,
+    positionMode: "poster-side",
+    forcedAnimation: "aa"
+  },
   "line-by-line": {
     key: "line-by-line",
     label: "Line by line",
@@ -350,6 +362,61 @@ const LYRIC_STYLE_PRESETS = {
     wrapLandscape: 20,
     positionMode: "center",
     forcedAnimation: "cinematic"
+  },
+  magic: {
+    key: "magic",
+    label: "Magic",
+    fontScale: 0.98,
+    yFactorPortrait: 0.5,
+    yFactorLandscape: 0.54,
+    wrapPortrait: 14,
+    wrapLandscape: 20,
+    positionMode: "center",
+    forcedAnimation: "magic"
+  },
+  neon: {
+    key: "neon",
+    label: "Neon glow",
+    fontScale: 1.04,
+    yFactorPortrait: 0.38,
+    yFactorLandscape: 0.44,
+    wrapPortrait: 14,
+    wrapLandscape: 21,
+    positionMode: "center",
+    forcedAnimation: "neon"
+  },
+  glitch: {
+    key: "glitch",
+    label: "Glitch hit",
+    fontScale: 1.03,
+    yFactorPortrait: 0.39,
+    yFactorLandscape: 0.45,
+    wrapPortrait: 14,
+    wrapLandscape: 21,
+    positionMode: "center",
+    forcedAnimation: "glitch"
+  },
+  karaoke: {
+    key: "karaoke",
+    label: "Karaoke box",
+    fontScale: 1,
+    yFactorPortrait: 0.58,
+    yFactorLandscape: 0.66,
+    wrapPortrait: 16,
+    wrapLandscape: 24,
+    positionMode: "center",
+    forcedAnimation: "karaoke"
+  },
+  whisper: {
+    key: "whisper",
+    label: "Whisper",
+    fontScale: 0.9,
+    yFactorPortrait: 0.42,
+    yFactorLandscape: 0.47,
+    wrapPortrait: 17,
+    wrapLandscape: 24,
+    positionMode: "center",
+    forcedAnimation: "whisper"
   },
   stacked: {
     key: "stacked",
@@ -569,14 +636,14 @@ function buildRenderProfile(payload = {}) {
   return {
     mode,
     fastMode,
-    panelCaptureCount: fastMode ? 4 : PANEL_CAPTURE_COUNT,
-    panelCaptureScale: fastMode ? 960 : 1280,
-    panelCaptureQuality: fastMode ? 7 : 5,
-    targetSceneDivisor: fastMode ? 24 : 16,
-    minSceneCount: fastMode ? 4 : MIN_BACKGROUND_SCENE_COUNT,
-    maxSceneCount: fastMode ? 6 : MAX_BACKGROUND_SCENE_COUNT,
-    minSceneSeconds: fastMode ? 12 : MIN_BACKGROUND_SCENE_SECONDS,
-    audioBitrate: fastMode ? "160k" : "192k"
+    panelCaptureCount: fastMode ? 4 : 6,
+    panelCaptureScale: fastMode ? 960 : 1120,
+    panelCaptureQuality: fastMode ? 7 : 6,
+    targetSceneDivisor: fastMode ? 24 : 20,
+    minSceneCount: fastMode ? 4 : 4,
+    maxSceneCount: fastMode ? 6 : 7,
+    minSceneSeconds: fastMode ? 12 : 11,
+    audioBitrate: fastMode ? "160k" : "160k"
   };
 }
 const WEB_ART_STOPWORDS = new Set([
@@ -838,11 +905,97 @@ function hexToAssColor(hex = "#ffffff") {
   return `&H00${blue}${green}${red}`;
 }
 
+function normalizeHexColor(value = "#7fe8ff", fallback = "#7fe8ff") {
+  const raw = `${value || ""}`.trim();
+  const candidate = raw.startsWith("#") ? raw : `#${raw}`;
+  return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate.toLowerCase() : fallback.toLowerCase();
+}
+
+function resolveNeonGlowValue(value = 70) {
+  return clamp(Number(value || 70), 10, 100);
+}
+
 function tokenizeLyricWords(text = "") {
   return normalizeWhitespace(text)
     .split(/\s+/)
     .map((word) => word.trim())
     .filter(Boolean);
+}
+
+const AA_SMALL_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "at",
+  "but",
+  "by",
+  "for",
+  "from",
+  "him",
+  "her",
+  "i",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "our",
+  "she",
+  "that",
+  "the",
+  "their",
+  "them",
+  "they",
+  "to",
+  "us",
+  "was",
+  "we",
+  "with",
+  "you",
+  "your"
+]);
+
+function buildAaWordLines(text = "", isPortrait = false) {
+  const words = tokenizeLyricWords(text).map((word) => word.toUpperCase());
+  const lines = [];
+  let index = 0;
+
+  while (index < words.length) {
+    const current = words[index];
+    const currentLower = current.toLowerCase();
+    let take = 1;
+
+    if (AA_SMALL_WORDS.has(currentLower) && index < words.length - 1) {
+      take = isPortrait ? 2 : 3;
+    } else if ((current.length <= 4 || /^[0-9]+$/.test(current)) && index < words.length - 1) {
+      take = 2;
+    }
+
+    const chunk = words.slice(index, Math.min(words.length, index + take));
+    lines.push(chunk.join(" "));
+    index += take;
+  }
+
+  return lines;
+}
+
+function getAaLineVariant(lineText = "", lineIndex = 0) {
+  const lowerWords = tokenizeLyricWords(lineText.toLowerCase());
+  const onlySmallWords = lowerWords.length && lowerWords.every((word) => AA_SMALL_WORDS.has(word));
+  const compactLine = normalizeWhitespace(lineText).length <= 6;
+
+  if (onlySmallWords) {
+    return "minor";
+  }
+
+  if (lineIndex === 1 || (compactLine && lineIndex % 2 === 0)) {
+    return "major";
+  }
+
+  return lineIndex % 3 === 0 ? "support" : "minor";
 }
 
 function getLyricEmojiForWord(word = "") {
@@ -1404,14 +1557,30 @@ function getContrastStyleForBrightness(brightness = 128, sample = {}) {
 }
 
 async function buildLyricContrastMap(lines = [], backgroundPaths = [], backgroundPlan = []) {
+  if (!backgroundPaths.length) {
+    return lines.map(() => getContrastStyleForBrightness(128, {}));
+  }
+
+  const sceneStyleCache = new Map();
   const sceneStyles = await Promise.all(
     backgroundPaths.map(async (backgroundPath) => {
+      const cacheKey = `${backgroundPath || ""}`;
+
+      if (sceneStyleCache.has(cacheKey)) {
+        return sceneStyleCache.get(cacheKey);
+      }
+
+      let resolvedStyle;
+
       try {
         const sample = await sampleImageAverageColor(backgroundPath);
-        return getContrastStyleForBrightness(sample.brightness, sample);
+        resolvedStyle = getContrastStyleForBrightness(sample.brightness, sample);
       } catch {
-        return getContrastStyleForBrightness(128, {});
+        resolvedStyle = getContrastStyleForBrightness(128, {});
       }
+
+      sceneStyleCache.set(cacheKey, resolvedStyle);
+      return resolvedStyle;
     })
   );
 
@@ -1463,8 +1632,33 @@ function getPlacementCalmScore(stats = {}) {
 }
 
 async function buildLyricPlacementMap(lines = [], backgroundPaths = [], backgroundPlan = []) {
+  if (!backgroundPaths.length) {
+    return lines.map((_, index) => ({
+      side: index % 2 === 0 ? "left" : "right",
+      leftScore: 0,
+      rightScore: 0
+    }));
+  }
+
+  const placementCache = new Map();
   const scenePlacements = await Promise.all(
     backgroundPaths.map(async (backgroundPath, sceneIndex) => {
+      const cacheKey = `${backgroundPath || ""}`;
+
+      if (placementCache.has(cacheKey)) {
+        const cachedPlacement = placementCache.get(cacheKey);
+        if (Math.abs(cachedPlacement.leftScore - cachedPlacement.rightScore) <= LYRIC_PLACEMENT_TIE_THRESHOLD) {
+          return {
+            side: sceneIndex % 2 === 0 ? "left" : "right",
+            leftScore: cachedPlacement.leftScore,
+            rightScore: cachedPlacement.rightScore
+          };
+        }
+        return cachedPlacement;
+      }
+
+      let resolvedPlacement;
+
       try {
         const [leftStats, rightStats] = await Promise.all([
           sampleImageRegionStats(backgroundPath, "crop=iw*0.32:ih:0:0"),
@@ -1481,18 +1675,21 @@ async function buildLyricPlacementMap(lines = [], backgroundPaths = [], backgrou
               ? "left"
               : "right";
 
-        return {
+        resolvedPlacement = {
           side: preferredSide,
           leftScore,
           rightScore
         };
       } catch {
-        return {
+        resolvedPlacement = {
           side: sceneIndex % 2 === 0 ? "left" : "right",
           leftScore: 0,
           rightScore: 0
         };
       }
+
+      placementCache.set(cacheKey, resolvedPlacement);
+      return resolvedPlacement;
     })
   );
 
@@ -1579,6 +1776,41 @@ function estimateLyricBox(wrappedText) {
 }
 
 function createJobPublicPayload(job) {
+  const now = Date.now();
+  const stageTimings = Array.isArray(job.stageTimings)
+    ? job.stageTimings.map((entry = {}) => {
+        const startedAtMs = Number(new Date(entry.startedAt || 0));
+        const endedAtMs = Number(new Date(entry.endedAt || 0));
+        const active = Boolean(entry.startedAt) && !entry.endedAt;
+        const durationMs =
+          Math.max(
+            0,
+            Number(
+              entry.durationMs ||
+                (active
+                  ? now - startedAtMs
+                  : endedAtMs > 0 && startedAtMs > 0
+                    ? endedAtMs - startedAtMs
+                    : 0)
+            )
+          ) || 0;
+
+        return {
+          label: normalizeWhitespace(entry.label || ""),
+          startedAt: entry.startedAt || "",
+          endedAt: entry.endedAt || "",
+          durationMs,
+          active
+        };
+      })
+    : [];
+  const renderStartedAtMs = Number(new Date(job.renderStartedAt || job.createdAt || 0));
+  const completedAtMs = Number(new Date(job.completedAt || 0));
+  const renderDurationMs =
+    renderStartedAtMs > 0
+      ? Math.max(0, (completedAtMs > 0 ? completedAtMs : now) - renderStartedAtMs)
+      : 0;
+
   return {
     id: job.id,
     status: job.status,
@@ -1590,15 +1822,122 @@ function createJobPublicPayload(job) {
     retrying: Boolean(job.retrying),
     userMessage: buildUserRenderMessage(job),
     error: job.error || null,
+    renderStartedAt: job.renderStartedAt || "",
+    completedAt: job.completedAt || "",
+    renderDurationMs,
+    stageTimings: stageTimings.slice(-10),
     videoUrl: job.status === "completed" ? `/api/render/${job.id}/file` : null,
     downloadUrl: job.status === "completed" ? `/api/render/${job.id}/download` : null
   };
 }
 
+function isTerminalJobStatus(status = "") {
+  return /^(completed|failed)$/i.test(`${status || ""}`);
+}
+
+function ensureJobStageTimings(job, nowIso = new Date().toISOString()) {
+  if (!Array.isArray(job.stageTimings)) {
+    job.stageTimings = [];
+  }
+
+  if (!job.stageTimings.length && normalizeWhitespace(job.stage || "")) {
+    job.stageTimings.push({
+      label: normalizeWhitespace(job.stage),
+      startedAt: job.createdAt || nowIso,
+      endedAt: isTerminalJobStatus(job.status) ? job.updatedAt || nowIso : "",
+      durationMs: 0
+    });
+  }
+
+  return job.stageTimings;
+}
+
+function getActiveStageTiming(job) {
+  const stageTimings = ensureJobStageTimings(job);
+
+  for (let index = stageTimings.length - 1; index >= 0; index -= 1) {
+    if (stageTimings[index] && !stageTimings[index].endedAt) {
+      return stageTimings[index];
+    }
+  }
+
+  return null;
+}
+
+function closeActiveStageTiming(job, nowIso = new Date().toISOString()) {
+  const activeEntry = getActiveStageTiming(job);
+
+  if (!activeEntry) {
+    return;
+  }
+
+  activeEntry.endedAt = nowIso;
+  activeEntry.durationMs = Math.max(
+    0,
+    Number(new Date(activeEntry.endedAt || 0)) - Number(new Date(activeEntry.startedAt || 0))
+  );
+}
+
+function openStageTiming(job, label = "", nowIso = new Date().toISOString()) {
+  const safeLabel = normalizeWhitespace(label);
+
+  if (!safeLabel) {
+    return null;
+  }
+
+  const activeEntry = getActiveStageTiming(job);
+
+  if (activeEntry && activeEntry.label === safeLabel) {
+    return activeEntry;
+  }
+
+  const entry = {
+    label: safeLabel,
+    startedAt: nowIso,
+    endedAt: "",
+    durationMs: 0
+  };
+  ensureJobStageTimings(job).push(entry);
+  return entry;
+}
+
 function updateJob(job, patch) {
+  const nowIso = new Date().toISOString();
+  const previousStage = normalizeWhitespace(job.stage || "");
+  const previousStatus = `${job.status || "queued"}`;
+  const nextStage = normalizeWhitespace(patch?.stage ?? job.stage ?? "");
+  const nextStatus = `${patch?.status || job.status || "queued"}`;
+  const stageChanged = nextStage && nextStage !== previousStage;
+
+  ensureJobStageTimings(job, nowIso);
+
+  if (stageChanged || (previousStatus !== nextStatus && isTerminalJobStatus(nextStatus))) {
+    closeActiveStageTiming(job, nowIso);
+  }
+
   Object.assign(job, patch, {
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso
   });
+
+  if (nextStatus === "running" && !job.renderStartedAt) {
+    job.renderStartedAt = nowIso;
+  }
+
+  if (stageChanged && nextStage) {
+    openStageTiming(job, nextStage, nowIso);
+  } else if (!getActiveStageTiming(job) && nextStage && !isTerminalJobStatus(nextStatus)) {
+    openStageTiming(job, nextStage, nowIso);
+  }
+
+  if (isTerminalJobStatus(nextStatus)) {
+    if (nextStage && stageChanged) {
+      closeActiveStageTiming(job, nowIso);
+    }
+    job.completedAt = nowIso;
+  } else {
+    job.completedAt = "";
+  }
+
   persistRenderJob(job).catch(() => {});
 }
 
@@ -1945,12 +2284,15 @@ function shouldDeepenValidationTranscription(transcription = null, durationSecon
   );
   const effectiveDuration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
   const minimumCoverageRatio =
-    effectiveDuration >= 180 ? 0.2 : effectiveDuration >= 90 ? 0.18 : 0.14;
-  const minimumLastEnd = effectiveDuration >= 90 ? effectiveDuration * 0.72 : effectiveDuration * 0.6;
-  const maximumGapSeconds = Math.max(20, effectiveDuration * 0.18);
+    effectiveDuration >= 180 ? 0.12 : effectiveDuration >= 90 ? 0.1 : 0.08;
+  const minimumLastEnd = effectiveDuration >= 90 ? effectiveDuration * 0.52 : effectiveDuration * 0.45;
+  const maximumGapSeconds = Math.max(26, effectiveDuration * 0.24);
 
   return (
-    !transcriptMetrics.reliableForFullAlignment ||
+    (
+      !transcriptMetrics.reliableForWindowFit &&
+      transcriptMetrics.coverageRatio < minimumCoverageRatio
+    ) ||
     transcriptMetrics.coverageRatio < minimumCoverageRatio ||
     transcriptMetrics.lastEnd < Math.max(transcriptMetrics.firstStart + 18, minimumLastEnd) ||
     transcriptMetrics.maxGapSeconds > maximumGapSeconds
@@ -2205,7 +2547,7 @@ function calibrateLyricTimingAgainstTranscript(
     (anchor) => Number(anchor.score || 0) >= minimumAnchorScore
   );
 
-  if (anchors.length < 4) {
+  if (anchors.length < 3) {
     return {
       lines: sanitizedCandidate,
       changed: false,
@@ -2226,7 +2568,7 @@ function calibrateLyricTimingAgainstTranscript(
       ) <= 0.75
   );
 
-  if (inlierAnchors.length < 3) {
+  if (inlierAnchors.length < 2) {
     return {
       lines: sanitizedCandidate,
       changed: false,
@@ -2244,7 +2586,7 @@ function calibrateLyricTimingAgainstTranscript(
   const maxInlierDrift = inlierDrifts.reduce((largest, value) => Math.max(largest, value), inlierDrifts[0]);
   const inlierSpread = Math.abs(maxInlierDrift - minInlierDrift);
 
-  if (Math.abs(finalMedianShift) < 0.18 || Math.abs(finalMedianShift) > 2.4 || inlierSpread > 1.05) {
+  if (Math.abs(finalMedianShift) < 0.12 || Math.abs(finalMedianShift) > 2.6 || inlierSpread > 0.85) {
     return {
       lines: sanitizedCandidate,
       changed: false,
@@ -2673,7 +3015,7 @@ function fitLyricLinesToTranscriptWindow(lines = [], transcriptLines = [], durat
   const appliedShift = roundTimeValue(Math.max(0, transcriptStart - sourceStart));
   const appliedScale = roundTimeValue(transcriptSpan / sourceSpan);
 
-  if (appliedShift < 0.8 && Math.abs(appliedScale - 1) < 0.08) {
+  if (appliedShift < 0.22 && Math.abs(appliedScale - 1) < 0.04) {
     return {
       lines: sanitizedSource,
       appliedShift: 0,
@@ -3101,7 +3443,7 @@ function fitLyricLinesToAudioWindow(lines = [], durationSeconds = 0, leadInSecon
   const appliedShift = roundTimeValue(targetStart - sourceStart);
   const appliedScale = roundTimeValue(targetSpan / sourceSpan);
 
-  if (Math.abs(appliedShift) < 0.8 && Math.abs(appliedScale - 1) < 0.06) {
+  if (Math.abs(appliedShift) < 0.22 && Math.abs(appliedScale - 1) < 0.03) {
     return {
       lines: sanitizedSource,
       appliedShift: 0,
@@ -3340,20 +3682,26 @@ function applyLyricOffset(lines = [], offsetSeconds = 0, durationSeconds = 0) {
   return sanitizeLyricLines(shiftedLines, durationSeconds);
 }
 
-function getLyricOffsetSeconds(syncMode = "none") {
+function getLyricOffsetSeconds(syncMode = "none", options = {}) {
+  const teluguRomanized = Boolean(options?.teluguRomanized);
+
   if (syncMode === "synced-lyrics") {
-    return 0.1;
+    return 0.14;
   }
 
   if (syncMode === "caption-aligned" || syncMode === "captions") {
-    return 0.08;
+    return 0.12;
   }
 
   if (syncMode === "transcribed") {
-    return 0;
+    return teluguRomanized ? -0.72 : 0;
   }
 
   return LYRIC_AUDIO_OFFSET_SECONDS;
+}
+
+function resolveLyricFontZoomValue(value = 100) {
+  return clamp(Number(value || 100), 70, 145) / 100;
 }
 
 function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_PRESETS.auto) {
@@ -3363,7 +3711,7 @@ function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_P
     return "";
   }
 
-  if (["comic", "bounce", "spotlight"].includes(lyricStylePreset?.key)) {
+  if (["comic", "aa", "bounce", "spotlight", "neon", "glitch", "karaoke"].includes(lyricStylePreset?.key)) {
     return normalizedText.toUpperCase();
   }
 
@@ -3418,20 +3766,31 @@ function createAssSubtitleContent(
   const placementMap = Array.isArray(options.placementMap) ? options.placementMap : [];
   const lyricStylePreset = resolveLyricStylePreset(payload?.lyricStyle || "auto");
   const lyricFontPreset = resolveLyricFontPreset(payload?.lyricFont || "arial");
-  const lyricFontName = lyricFontPreset.fontName;
+  const renderFontPreset = lyricFontPreset;
+  const lyricFontName = renderFontPreset.fontName;
+  const useStyleColor = Boolean(payload?.useStyleColor);
+  const customStyleColorHex = useStyleColor
+    ? normalizeHexColor(payload?.styleColor || "#7fe8ff")
+    : "";
+  const defaultPrimaryTextHex = customStyleColorHex || "#ffffff";
+  const neonColorHex = customStyleColorHex || "#7fe8ff";
+  const neonGlowValue = resolveNeonGlowValue(payload?.neonGlow || 70);
+  const neonGlowStrength = neonGlowValue / 100;
+  const lyricFontZoom = resolveLyricFontZoomValue(payload?.lyricFontZoom || 100);
   const baseFontSize = clamp(
     Math.round(
-      Math.min(videoSize.width, videoSize.height) *
+        Math.min(videoSize.width, videoSize.height) *
         (isPortrait ? 0.074 : 0.082) *
         lyricStylePreset.fontScale *
-        lyricFontPreset.sizeScale
+        renderFontPreset.sizeScale *
+        lyricFontZoom
     ),
     isPortrait ? 40 : 48,
     isPortrait ? 58 : 84
   );
-  const fontScaleX = Math.round(lyricFontPreset.scaleX || 100);
-  const fontScaleY = Math.round(lyricFontPreset.scaleY || 100);
-  const fontBaseSpacing = Number(lyricFontPreset.spacing || 0);
+  const fontScaleX = Math.round(renderFontPreset.scaleX || 100);
+  const fontScaleY = Math.round(renderFontPreset.scaleY || 100);
+  const fontBaseSpacing = Number(renderFontPreset.spacing || 0);
   const wrapLength = isPortrait ? lyricStylePreset.wrapPortrait : lyricStylePreset.wrapLandscape;
   const safeMargin = isPortrait ? 28 : 48;
   const centerAnchor = {
@@ -3452,7 +3811,8 @@ function createAssSubtitleContent(
     const end = formatAssTime(endSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
     const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
-    const accentHex = contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
+    const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
+    const primaryTextHex = customStyleColorHex || contrastStyle.textHex;
     const displayText = transformLyricTextForPreset(line.text, lyricStylePreset);
     const effectiveWrapLength =
       selectedVariant === "fulllength"
@@ -3478,6 +3838,15 @@ function createAssSubtitleContent(
       case "comic":
         targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.43 : 0.48));
         break;
+      case "aa":
+        {
+          const preferredSide = placementMap[index]?.side || "left";
+          const isLeftSide = preferredSide !== "right";
+          targetCenterX = Math.round(videoSize.width * (isLeftSide ? (isPortrait ? 0.15 : 0.18) : (isPortrait ? 0.85 : 0.82)));
+          targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.62 : 0.58));
+          alignmentTag = isLeftSide ? "\\an7" : "\\an9";
+        }
+        break;
       case "line-by-line":
         targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.45 : 0.49));
         break;
@@ -3501,6 +3870,21 @@ function createAssSubtitleContent(
         break;
       case "spotlight":
         targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.31 : 0.36));
+        break;
+      case "magic":
+        targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.52 : 0.56));
+        break;
+      case "neon":
+        targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.4 : 0.46));
+        break;
+      case "glitch":
+        targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.42 : 0.48));
+        break;
+      case "karaoke":
+        targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.66 : 0.73));
+        break;
+      case "whisper":
+        targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.36 : 0.42));
         break;
       case "stacked":
         targetCenterX = Math.round(videoSize.width * (isPortrait ? 0.14 : 0.18));
@@ -3552,7 +3936,7 @@ function createAssSubtitleContent(
       }))
       .filter((item) => item.emoji && emojiAssetMap[item.emoji]);
 
-    if (lineEmojiAnchors.length) {
+    if (lineEmojiAnchors.length && selectedVariant !== "aa") {
       const emojiSize = clamp(Math.round(baseFontSize * (isPortrait ? 0.72 : 0.66)), 26, 46);
       const estimatedCharWidth = baseFontSize * 0.56;
       const blockTopY = centerY - ((wrappedWordLines.length - 1) * baseFontSize * 0.92) / 2;
@@ -3610,7 +3994,7 @@ function createAssSubtitleContent(
         wrapLength,
         {
           emojiAssetMap,
-          baseTextHex: contrastStyle.textHex
+          baseTextHex: primaryTextHex
         }
       );
       const startX = alignmentTag === "\\an4"
@@ -3620,7 +4004,7 @@ function createAssSubtitleContent(
       const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord2.8\\shad0\\blur0.45\\fscx100\\fscy100\\fsp1.2\\b1\\c${hexToAssColor(
-        contrastStyle.textHex
+        primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
       return [
@@ -3631,29 +4015,90 @@ function createAssSubtitleContent(
     if (selectedVariant === "comic") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: "#111111"
+        baseTextHex: customStyleColorHex || "#111111"
       });
       const comicRotation = index % 2 === 0 ? -1.4 : 1.2;
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(bounceTravelY * 1.05)},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx84\\fscy84\\bord1.2\\shad0\\blur0.05\\frz${comicRotation}\\fsp0.8\\t(0,130,\\fscx112\\fscy112)\\t(130,260,\\fscx100\\fscy100\\frz0)\\c${hexToAssColor(
-        "#111111"
-      )}\\3c${hexToAssColor("#111111")}}`;
+        customStyleColorHex || "#111111"
+      )}\\3c${hexToAssColor(customStyleColorHex || "#111111")}}`;
 
       return [
         `Dialogue: 0,${start},${end},ComicText,,0,0,0,,${textTag}${styledText}`
       ];
     }
 
+    if (selectedVariant === "aa") {
+      const aaLines = buildAaWordLines(displayText, isPortrait).slice(0, isPortrait ? 5 : 4);
+      const preferredSide = placementMap[index]?.side || "left";
+      const isLeftSide = preferredSide !== "right";
+      const anchorX = Math.round(
+        clamp(
+          videoSize.width * (isLeftSide ? (isPortrait ? 0.16 : 0.18) : (isPortrait ? 0.84 : 0.82)),
+          safeMargin + 24,
+          videoSize.width - safeMargin - 24
+        )
+      );
+      const anchorY = Math.round(
+        clamp(
+          videoSize.height * (isPortrait ? 0.61 : 0.57),
+          safeMargin + baseFontSize,
+          videoSize.height - safeMargin - baseFontSize
+        )
+      );
+      const aaMajorHex = customStyleColorHex || "#ef8c43";
+      const aaSupportHex = customStyleColorHex || "#d97d46";
+      const aaMinorHex = "#253056";
+      const aaAlignmentTag = isLeftSide ? "\\an7" : "\\an9";
+      const aaDirection = isLeftSide ? -1 : 1;
+      const aaLayouts = (aaLines.length ? aaLines : [displayText]).map((aaLine, aaIndex) => {
+        const variant = getAaLineVariant(aaLine, aaIndex);
+        const fontScale = variant === "major" ? 1.28 : variant === "support" ? 0.94 : 0.76;
+        const colorHex = variant === "major" ? aaMajorHex : variant === "support" ? aaSupportHex : aaMinorHex;
+        const verticalStep = Math.round(baseFontSize * (variant === "major" ? 0.82 : 0.72));
+
+        return {
+          text: aaLine,
+          variant,
+          fontScale,
+          colorHex,
+          verticalStep
+        };
+      });
+      const totalHeight = aaLayouts.reduce((sum, item) => sum + item.verticalStep, 0);
+      const baseLineY = Math.round(anchorY - totalHeight / 2);
+      let cursorY = baseLineY;
+
+      return aaLayouts.map((item, aaIndex) => {
+        const lineY = cursorY;
+        const fontSize = Math.round(baseFontSize * item.fontScale);
+        const lineSpacing = item.variant === "major" ? -0.36 : -0.12;
+        const lineOutline = item.variant === "minor" ? aaMinorHex : "#161b33";
+        const startX = anchorX + aaDirection * Math.round(videoSize.width * 0.025);
+        cursorY += item.verticalStep;
+
+        const textTag = `{${aaAlignmentTag}\\move(${startX},${lineY + 10},${anchorX},${lineY},0,${Math.round(
+          LYRIC_REVEAL_MS * 0.9
+        )})\\fad(${Math.round(fadeInMs * 0.78)},${Math.round(fadeOutMs * 0.78)})\\fs${fontSize}\\fscx88\\fscy108\\bord0.9\\shad0\\blur0.05\\fsp${lineSpacing.toFixed(
+          2
+        )}\\b1\\c${hexToAssColor(
+          item.colorHex
+        )}\\3c${hexToAssColor(lineOutline)}}${item.text}`;
+
+        return `Dialogue: ${aaIndex},${start},${end},AAText,,0,0,0,,${textTag}`;
+      });
+    }
+
     if (selectedVariant === "bounce") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: contrastStyle.textHex
+        baseTextHex: primaryTextHex
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + bounceTravelY},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx74\\fscy74\\bord3.4\\shad0\\blur0.25\\frz0\\t(0,120,\\fscx122\\fscy122)\\t(120,260,\\fscx100\\fscy100)\\b1\\c${hexToAssColor(
-        contrastStyle.textHex
+        primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
       return [
@@ -3672,13 +4117,13 @@ function createAssSubtitleContent(
         );
         const eventText = buildStyledLyricText(textLine, accentHex, Math.max(64, wrapLength * 2), {
           emojiAssetMap,
-          baseTextHex: contrastStyle.textHex,
+          baseTextHex: primaryTextHex,
           disableHighlight: textLineIndex !== lineCount - 1
         });
         const textTag = `{\\an5\\move(${centerX},${eventY + 26},${centerX},${eventY},0,${Math.round(
           LYRIC_REVEAL_MS * 0.9
         )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.8\\shad0\\blur0.2\\b1\\c${hexToAssColor(
-          contrastStyle.textHex
+          primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
         return `Dialogue: 0,${formatAssTime(eventStartSeconds)},${formatAssTime(eventEndSeconds)},LineRevealText,,0,0,0,,${textTag}${eventText}`;
@@ -3693,13 +4138,13 @@ function createAssSubtitleContent(
         );
         const lineText = buildStyledLyricText(textLine, accentHex, Math.max(64, wrapLength * 2), {
           emojiAssetMap,
-          baseTextHex: contrastStyle.textHex,
+          baseTextHex: primaryTextHex,
           disableHighlight: false
         });
         const textTag = `{\\an4\\move(${laneX - 42},${laneY + 16},${laneX},${laneY},0,${Math.round(
           LYRIC_REVEAL_MS
         )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.1\\shad0\\blur0.32\\fscx100\\fscy100\\fsp0.8\\b1\\c${hexToAssColor(
-          contrastStyle.textHex
+          primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
         return `Dialogue: 0,${start},${end},StackText,,0,0,0,,${textTag}${lineText}`;
@@ -3709,21 +4154,124 @@ function createAssSubtitleContent(
     if (selectedVariant === "spotlight") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: "#ffffff"
+        baseTextHex: customStyleColorHex || "#ffffff"
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord1.2\\shad0\\blur0.2\\fsp1.1\\b1\\c${hexToAssColor(
-        "#ffffff"
-      )}\\3c${hexToAssColor("#ffffff")}}`;
+        customStyleColorHex || "#ffffff"
+      )}\\3c${hexToAssColor(customStyleColorHex || "#ffffff")}}`;
 
       return [
         `Dialogue: 0,${start},${end},SpotlightText,,0,0,0,,${textTag}${styledText}`
       ];
     }
 
+    if (selectedVariant === "magic") {
+      const magicAccentHex = customStyleColorHex || "#f4d34f";
+      const styledText = buildStyledLyricText(displayText, magicAccentHex, wrapLength, {
+        emojiAssetMap,
+        baseTextHex: "#ffffff",
+        disableHighlight: false
+      });
+      const magicTravelY = Math.round(isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45);
+      const textTag = `{\\an5\\move(${centerX},${centerY + magicTravelY},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.05
+      )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 0.78)})\\fscx96\\fscy96\\bord1.6\\shad0\\blur0.7\\fsp0.3\\i1\\c${hexToAssColor(
+        "#ffffff"
+      )}\\3c${hexToAssColor("#171717")}\\t(0,150,\\fscx104\\fscy104)\\t(150,260,\\fscx100\\fscy100)}`;
+
+      return [
+        `Dialogue: 0,${start},${end},MagicText,,0,0,0,,${textTag}${styledText}`
+      ];
+    }
+
+    if (selectedVariant === "neon") {
+      const neonHex = neonColorHex || accentHex || "#7fe8ff";
+      const styledText = buildStyledLyricText(displayText, neonHex, wrapLength, {
+        emojiAssetMap,
+        baseTextHex: neonHex,
+        disableHighlight: true
+      });
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 0.95)},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.05
+      )})\\fad(${fadeInMs},${fadeOutMs})\\fscx102\\fscy102\\bord1.1\\shad0\\blur${(0.45 + neonGlowStrength * 2.4).toFixed(2)}\\fsp${(
+        0.8 + neonGlowStrength * 1.2
+      ).toFixed(2)}\\b1\\c${hexToAssColor(
+        neonHex
+      )}\\3c${hexToAssColor(neonHex)}}`;
+
+      return [
+        `Dialogue: 0,${start},${end},NeonText,,0,0,0,,${textTag}${styledText}`
+      ];
+    }
+
+    if (selectedVariant === "glitch") {
+      const glitchPrimaryHex = customStyleColorHex || contrastStyle.textHex || "#ffffff";
+      const glitchPinkHex = "#ff5ea8";
+      const glitchCyanHex = "#38d7ff";
+      const styledText = buildStyledLyricText(displayText, glitchPrimaryHex, wrapLength, {
+        emojiAssetMap,
+        baseTextHex: glitchPrimaryHex,
+        disableHighlight: true
+      });
+      const baseTag = `{\\an5\\move(${centerX + 8},${centerY + 12},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS
+      )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.6\\shad0\\blur0.25\\fsp0.9\\b1\\c${hexToAssColor(
+        glitchPrimaryHex
+      )}\\3c${hexToAssColor("#0f1015")}}`;
+      const pinkTag = `{\\an5\\pos(${centerX - 3},${centerY + 1})\\fad(${fadeInMs},${fadeOutMs})\\1a&H3F&\\bord0\\shad0\\blur0.1\\fsp0.9\\b1\\c${hexToAssColor(
+        glitchPinkHex
+      )}}`;
+      const cyanTag = `{\\an5\\pos(${centerX + 3},${centerY - 1})\\fad(${fadeInMs},${fadeOutMs})\\1a&H46&\\bord0\\shad0\\blur0.1\\fsp0.9\\b1\\c${hexToAssColor(
+        glitchCyanHex
+      )}}`;
+
+      return [
+        `Dialogue: 0,${start},${end},GlitchGhostText,,0,0,0,,${pinkTag}${styledText}`,
+        `Dialogue: 1,${start},${end},GlitchGhostText,,0,0,0,,${cyanTag}${styledText}`,
+        `Dialogue: 2,${start},${end},GlitchBaseText,,0,0,0,,${baseTag}${styledText}`
+      ];
+    }
+
+    if (selectedVariant === "karaoke") {
+      const karaokeHex = customStyleColorHex || accentHex || "#ffe17c";
+      const styledText = buildStyledLyricText(displayText, karaokeHex, wrapLength, {
+        emojiAssetMap,
+        baseTextHex: "#111111",
+        disableHighlight: true
+      });
+      const textTag = `{\\an5\\move(${centerX},${centerY + 18},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 0.9
+      )})\\fad(${Math.round(fadeInMs * 0.82)},${Math.round(fadeOutMs * 0.86)})\\fscx100\\fscy100\\bord0\\shad0\\blur0\\fsp0.6\\b1\\c${hexToAssColor(
+        "#111111"
+      )}\\3c${hexToAssColor("#111111")}}`;
+
+      return [
+        `Dialogue: 0,${start},${end},KaraokeText,,0,0,0,,${textTag}${styledText}`
+      ];
+    }
+
+    if (selectedVariant === "whisper") {
+      const whisperHex = customStyleColorHex || contrastStyle.textHex || "#ffffff";
+      const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
+        emojiAssetMap,
+        baseTextHex: whisperHex,
+        disableHighlight: true
+      });
+      const textTag = `{\\an5\\move(${centerX},${centerY + 14},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.05
+      )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 1.05)})\\1a&H18&\\fscx100\\fscy100\\bord1.2\\shad0\\blur0.7\\fsp2.1\\c${hexToAssColor(
+        whisperHex
+      )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
+
+      return [
+        `Dialogue: 0,${start},${end},WhisperText,,0,0,0,,${textTag}${styledText}`
+      ];
+    }
+
     if (selectedVariant === "fulllength") {
-      const posterTextHex = contrastStyle.accentHex || accentHex;
+      const posterTextHex = customStyleColorHex || contrastStyle.accentHex || accentHex;
       const posterOutlineHex = contrastStyle.outlineHex || "#1a1a1a";
       const slideDirection = index % 2 === 0 ? -1 : 1;
       const arrivalX = centerX;
@@ -3747,13 +4295,13 @@ function createAssSubtitleContent(
     if (selectedVariant === "minimal") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: contrastStyle.textHex,
+        baseTextHex: primaryTextHex,
         disableHighlight: true
       });
       const textTag = `{\\an5\\pos(${centerX},${centerY})\\fad(${Math.round(fadeInMs * 0.85)},${Math.round(
         fadeOutMs * 0.9
       )})\\fscx100\\fscy100\\bord2\\shad0\\blur0.15\\b1\\c${hexToAssColor(
-        contrastStyle.textHex
+        primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
       return [
@@ -3764,14 +4312,14 @@ function createAssSubtitleContent(
     if (selectedVariant === "side-by-side") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: contrastStyle.textHex
+        baseTextHex: primaryTextHex
       });
       const slideDirection = index % 2 === 0 ? -1 : 1;
       const slideStartX = centerX + slideDirection * Math.round(cinematicTravelX * 0.95);
       const textTag = `{${alignmentTag}\\move(${slideStartX},${centerY},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.2\\shad0\\blur0.38\\fsp0.55\\b1\\c${hexToAssColor(
-        contrastStyle.textHex
+        primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
       return [
@@ -3789,14 +4337,14 @@ function createAssSubtitleContent(
     const startY = centerY + cinematicTravelY;
     const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
       emojiAssetMap,
-      baseTextHex: contrastStyle.textHex
+      baseTextHex: primaryTextHex
     });
     const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
       LYRIC_REVEAL_MS * 1.4
     )})\\fad(${fadeInMs},${fadeOutMs})\\fscx106\\fscy106\\bord3\\shad0\\blur1.05\\fsp1.3\\frz${
       cinematicDirection * -1.2
     }\\t(0,${Math.round(LYRIC_REVEAL_MS * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
-      contrastStyle.textHex
+      primaryTextHex
     )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
     return [
@@ -3815,16 +4363,23 @@ function createAssSubtitleContent(
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: CinematicText,${lyricFontName},${baseFontSize},&H00FFFFFF,&H00FFFFFF,&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.42).toFixed(2)},0,1,3.0,0,5,0,0,0,1`,
-    `Style: BounceText,${lyricFontName},${Math.round(baseFontSize * 1.02)},&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.12).toFixed(2)},0,1,3.2,0,5,0,0,0,1`,
+    `Style: CinematicText,${lyricFontName},${baseFontSize},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.42).toFixed(2)},0,1,3.0,0,5,0,0,0,1`,
+    `Style: BounceText,${lyricFontName},${Math.round(baseFontSize * 1.02)},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00101010,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.12).toFixed(2)},0,1,3.2,0,5,0,0,0,1`,
     `Style: WordBuildText,${lyricFontName},${Math.round(baseFontSize * 0.98)},&H00FFFFFF,&H008A8A8A,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.58).toFixed(2)},0,1,3.0,0,5,0,0,0,1`,
-    `Style: ComicText,${lyricFontName},${Math.round(baseFontSize * 1.02)},&H00111111,&H00111111,&H00111111,&H00F4F4F4,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.48).toFixed(2)},0,3,10,0,5,36,36,40,1`,
-    `Style: SpotlightText,${lyricFontName},${Math.round(baseFontSize * 1.05)},&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H88202020,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 1.02).toFixed(2)},0,3,14,0,5,46,46,38,1`,
-    `Style: MinimalText,${lyricFontName},${Math.round(baseFontSize * 0.88)},&H00FFFFFF,&H00FFFFFF,&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.04).toFixed(2)},0,1,2.2,0,5,0,0,0,1`,
-    `Style: SideText,${lyricFontName},${Math.round(baseFontSize * 0.96)},&H00FFFFFF,&H00FFFFFF,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.36).toFixed(2)},0,1,3.0,0,4,0,0,0,1`,
-    `Style: StackText,${lyricFontName},${Math.round(baseFontSize * 0.95)},&H00FFFFFF,&H00FFFFFF,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.5).toFixed(2)},0,1,3.0,0,4,0,0,0,1`,
-    `Style: LineRevealText,${lyricFontName},${Math.round(baseFontSize * 0.97)},&H00FFFFFF,&H00FFFFFF,&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.28).toFixed(2)},0,1,2.8,0,5,0,0,0,1`,
-    `Style: FullLengthText,${lyricFontName},${Math.round(baseFontSize * 1.16)},&H00648CD9,&H00648CD9,&H00181E3B,&H00000000,-1,0,0,0,88,108,-0.18,0,1,1.25,0.35,4,42,42,34,1`,
+    `Style: ComicText,${lyricFontName},${Math.round(baseFontSize * 1.02)},${hexToAssColor(customStyleColorHex || "#111111")},${hexToAssColor(customStyleColorHex || "#111111")},${hexToAssColor(customStyleColorHex || "#111111")},&H00F4F4F4,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.48).toFixed(2)},0,3,10,0,5,36,36,40,1`,
+    `Style: AAText,${lyricFontName},${Math.round(baseFontSize * 1.04)},${hexToAssColor(customStyleColorHex || "#ef8c43")},${hexToAssColor(customStyleColorHex || "#ef8c43")},&H00161B33,&H00000000,-1,0,0,0,88,108,-0.24,0,1,1.0,0,7,34,34,34,1`,
+    `Style: SpotlightText,${lyricFontName},${Math.round(baseFontSize * 1.05)},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},&H88202020,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 1.02).toFixed(2)},0,3,14,0,5,46,46,38,1`,
+    `Style: MagicText,${lyricFontName},${Math.round(baseFontSize * 0.98)},&H00FFFFFF,&H00FFFFFF,&H00151515,&H00000000,-1,-1,0,0,${Math.round(fontScaleX * 0.98)},${Math.round(fontScaleY * 1.04)},${(fontBaseSpacing + 0.18).toFixed(2)},0,1,2.2,0,5,0,0,0,1`,
+    `Style: NeonText,${lyricFontName},${Math.round(baseFontSize * 1.04)},${hexToAssColor(neonColorHex)},${hexToAssColor(neonColorHex)},${hexToAssColor(neonColorHex)},&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.3 + neonGlowStrength * 1.2).toFixed(2)},0,1,${(0.7 + neonGlowStrength * 1.7).toFixed(2)},0,5,0,0,0,1`,
+    `Style: GlitchBaseText,${lyricFontName},${Math.round(baseFontSize * 1.02)},&H00FFFFFF,&H00FFFFFF,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.6).toFixed(2)},0,1,2.4,0,5,0,0,0,1`,
+    `Style: GlitchGhostText,${lyricFontName},${Math.round(baseFontSize * 1.02)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.6).toFixed(2)},0,1,0,0,5,0,0,0,1`,
+    `Style: KaraokeText,${lyricFontName},${Math.round(baseFontSize * 0.94)},&H00111111,&H00111111,&H00111111,${hexToAssColor(customStyleColorHex || "#ffe17c")},-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.18).toFixed(2)},0,3,8,0,5,34,34,34,1`,
+    `Style: WhisperText,${lyricFontName},${Math.round(baseFontSize * 0.84)},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 1.7).toFixed(2)},0,1,1.4,0,5,0,0,0,1`,
+    `Style: MinimalText,${lyricFontName},${Math.round(baseFontSize * 0.88)},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.04).toFixed(2)},0,1,2.2,0,5,0,0,0,1`,
+    `Style: SideText,${lyricFontName},${Math.round(baseFontSize * 0.96)},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.36).toFixed(2)},0,1,3.0,0,4,0,0,0,1`,
+    `Style: StackText,${lyricFontName},${Math.round(baseFontSize * 0.95)},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.5).toFixed(2)},0,1,3.0,0,4,0,0,0,1`,
+    `Style: LineRevealText,${lyricFontName},${Math.round(baseFontSize * 0.97)},${hexToAssColor(defaultPrimaryTextHex)},${hexToAssColor(defaultPrimaryTextHex)},&H00121212,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.28).toFixed(2)},0,1,2.8,0,5,0,0,0,1`,
+    `Style: FullLengthText,${lyricFontName},${Math.round(baseFontSize * 1.16)},${hexToAssColor(customStyleColorHex || "#d98c64")},${hexToAssColor(customStyleColorHex || "#d98c64")},&H00181E3B,&H00000000,-1,0,0,0,88,108,-0.18,0,1,1.25,0.35,4,42,42,34,1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -4628,17 +5183,17 @@ async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirector
     progress: 0.34
   });
 
-  const outputPaths = new Array(backgroundPlan.length);
+  const uniqueUploadedPaths = [...new Set(uploadedPaths.filter(Boolean))];
+  const processedBySource = new Map();
   let completedCount = 0;
 
   await runWithConcurrency(
-    backgroundPlan.map((scene, index) => ({ scene, index })),
-    BACKGROUND_SCENE_CONCURRENCY,
-    async ({ index }) => {
-      const sourcePath = uploadedPaths[index % uploadedPaths.length];
+    uniqueUploadedPaths.map((sourcePath, index) => ({ sourcePath, index })),
+    Math.min(BACKGROUND_SCENE_CONCURRENCY, Math.max(1, uniqueUploadedPaths.length)),
+    async ({ sourcePath, index }) => {
       const outputPath = path.join(
         renderDirectory,
-        `background-${String(index + 1).padStart(2, "0")}.png`
+        `uploaded-processed-${String(index + 1).padStart(2, "0")}.png`
       );
 
       await runCommand(
@@ -4653,8 +5208,7 @@ async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirector
           [
             `scale=${videoSize.width}:${videoSize.height}:force_original_aspect_ratio=increase`,
             `crop=${videoSize.width}:${videoSize.height}`,
-            "eq=contrast=1.04:saturation=0.92:brightness=-0.02",
-            "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.18:t=fill",
+            "setsar=1",
             "format=rgba"
           ].join(","),
           outputPath
@@ -4665,16 +5219,19 @@ async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirector
         }
       );
 
-      outputPaths[index] = outputPath;
+      processedBySource.set(sourcePath, outputPath);
       completedCount += 1;
       updateJob(job, {
         stage: "Preparing uploaded image backgrounds",
-        progress: 0.34 + (completedCount / backgroundPlan.length) * 0.08
+        progress: 0.34 + (completedCount / Math.max(1, uniqueUploadedPaths.length)) * 0.08
       });
     }
   );
 
-  return outputPaths;
+  return backgroundPlan.map((_, index) => {
+    const sourcePath = uploadedPaths[index % uploadedPaths.length];
+    return processedBySource.get(sourcePath) || processedBySource.values().next().value;
+  });
 }
 
 async function createUploadedVideoBackgroundPlates(
@@ -5516,8 +6073,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       durationSeconds,
       payload.syncMode
     );
+    const transcribedLyricOffsetSeconds = getLyricOffsetSeconds("transcribed", {
+      teluguRomanized: shouldUseRomanizedTeluguLyrics
+    });
     const lyricOffsetSeconds = getLyricOffsetSeconds(
-      shouldUseRomanizedTeluguLyrics ? "transcribed" : payload.syncMode
+      shouldUseRomanizedTeluguLyrics ? "transcribed" : payload.syncMode,
+      {
+        teluguRomanized: shouldUseRomanizedTeluguLyrics
+      }
     );
     let renderLineSyncSource = shouldUseRomanizedTeluguLyrics ? "transcribed" : payload.syncMode;
     let renderLinesAreTranscriptDerived = false;
@@ -5563,9 +6126,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           }
         } catch (error) {
           renderLines = limitLyricLines(
-            applyLyricOffset(renderLines, getLyricOffsetSeconds(payload.syncMode), durationSeconds),
-            durationSeconds
-          );
+              applyLyricOffset(renderLines, getLyricOffsetSeconds(payload.syncMode), durationSeconds),
+              durationSeconds
+            );
           renderLineSyncSource = payload.syncMode;
           renderLinesAreTranscriptDerived = false;
           renderNotes.push(`Telugu lyric romanization was unavailable: ${error.message}`);
@@ -5741,7 +6304,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           ) {
             renderLines = applyLyricOffset(
               finalTranscribedRenderLines,
-              getLyricOffsetSeconds("transcribed"),
+              transcribedLyricOffsetSeconds,
               durationSeconds
             );
             renderLineSyncSource = "transcribed";
@@ -5902,7 +6465,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         renderLines = limitLyricLines(
           applyLyricOffset(
             finalFallbackTranscription,
-            shouldUseRomanizedTeluguLyrics ? getLyricOffsetSeconds("transcribed") : lyricOffsetSeconds,
+            shouldUseRomanizedTeluguLyrics ? transcribedLyricOffsetSeconds : lyricOffsetSeconds,
             durationSeconds
           ),
           durationSeconds
@@ -5951,8 +6514,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         validationOptions.beamSize = 1;
         validationOptions.vadFilter = false;
         validationOptions.conditionOnPreviousText = false;
-        validationOptions.timeoutMs = 150 * 1000;
-        validationOptions.downloadTimeoutMs = 150 * 1000;
+        validationOptions.timeoutMs = 75 * 1000;
+        validationOptions.downloadTimeoutMs = 75 * 1000;
       }
 
       try {
@@ -6008,10 +6571,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               beamSize: 1,
               vadFilter: false,
               conditionOnPreviousText: false,
-              timeoutMs: Math.max(Number(validationOptions.timeoutMs || 0), 4 * 60 * 1000),
+              timeoutMs: Math.max(Number(validationOptions.timeoutMs || 0), 90 * 1000),
               downloadTimeoutMs: Math.max(
                 Number(validationOptions.downloadTimeoutMs || 0),
-                4 * 60 * 1000
+                90 * 1000
               )
             }
           );
@@ -6059,6 +6622,28 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           renderNotes.push(
             `Final lyric timing was calibrated against ${transcriptCalibration.inlierAnchorCount} stable lyric/audio anchors, shifting the whole lyric sheet by ${roundTimeValue(transcriptCalibration.appliedShift)}s.`
           );
+        } else if (
+          (renderLineSyncSource === "synced-lyrics" ||
+            renderLineSyncSource === "caption-aligned" ||
+            renderLineSyncSource === "captions" ||
+            renderLineSyncSource === "estimated") &&
+          normalizedValidationTranscript.length
+        ) {
+          const sparseTranscriptCalibration = calibrateLyricTimingAgainstTranscript(
+            renderLines,
+            normalizedValidationTranscript,
+            durationSeconds,
+            {
+              minimumAnchorScore: 0.34
+            }
+          );
+
+          if (sparseTranscriptCalibration.changed) {
+            renderLines = limitLyricLines(sparseTranscriptCalibration.lines, durationSeconds);
+            renderNotes.push(
+              `Final lyric timing used a sparse-transcript correction pass and shifted the lyric sheet by ${roundTimeValue(sparseTranscriptCalibration.appliedShift)}s from ${sparseTranscriptCalibration.inlierAnchorCount} stable anchors.`
+            );
+          }
         }
 
         let strictSyncReport = buildStrictSyncValidationReport({
@@ -6080,7 +6665,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const directTranscriptCandidateLines = limitLyricLines(
             applyLyricOffset(
               normalizedValidationTranscript,
-              getLyricOffsetSeconds("transcribed"),
+              transcribedLyricOffsetSeconds,
               durationSeconds
             ),
             durationSeconds
@@ -6142,7 +6727,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               transcriptWordAlignedCandidate.applied
                 ? transcriptWordAlignedCandidate.lines
                 : normalizedValidationTranscript,
-              getLyricOffsetSeconds("transcribed"),
+              transcribedLyricOffsetSeconds,
               durationSeconds
             ),
             durationSeconds
@@ -6254,7 +6839,18 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push("Lyrics animate in bold kinetic title cards with fast entry and exit motion.");
     }
 
-    const backgroundPlan = buildBackgroundTimeline(renderLines, durationSeconds, renderProfile).map((scene) => ({
+    const uploadedImageTimelineProfile = uploadedBackgroundPaths.length && !uploadedBackgroundVideo
+      ? {
+          ...renderProfile,
+          minSceneCount: Math.max(1, Math.min(renderProfile.minSceneCount, uploadedBackgroundPaths.length)),
+          maxSceneCount: Math.max(
+            2,
+            Math.min(renderProfile.maxSceneCount, Math.max(uploadedBackgroundPaths.length, uploadedBackgroundPaths.length * 2))
+          ),
+          minSceneSeconds: Math.max(renderProfile.minSceneSeconds, 14)
+        }
+      : renderProfile;
+    const backgroundPlan = buildBackgroundTimeline(renderLines, durationSeconds, uploadedImageTimelineProfile).map((scene) => ({
       ...scene,
       heroIndex: 0
     }));
@@ -6347,6 +6943,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             : `${backgroundPaths.length} comic background scenes were built from sampled video frames.`
     );
 
+    const selectedLyricStylePreset = resolveLyricStylePreset(payload?.lyricStyle || "auto");
+    const requiresPlacementAnalysis =
+      selectedLyricStylePreset.key === "fulllength" || selectedLyricStylePreset.key === "aa";
+    const contrastMap = await buildLyricContrastMap(renderLines, backgroundPaths, backgroundPlan);
+    const placementMap = requiresPlacementAnalysis
+      ? await buildLyricPlacementMap(renderLines, backgroundPaths, backgroundPlan)
+      : [];
+
     const subtitleBuild = createAssSubtitleContent(
       renderLines,
       {
@@ -6357,8 +6961,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       videoSize,
       {
         emojiAssetMap,
-        contrastMap: await buildLyricContrastMap(renderLines, backgroundPaths, backgroundPlan),
-        placementMap: await buildLyricPlacementMap(renderLines, backgroundPaths, backgroundPlan)
+        contrastMap,
+        placementMap
       }
     );
     const emojiAssetEntries = [...new Set(subtitleBuild.emojiOverlays.map((overlay) => overlay.emoji))]
@@ -6372,7 +6976,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         };
       });
     const selectedFontPreset = resolveLyricFontPreset(payload?.lyricFont || "arial");
-    const fontsDirRelative = await prepareLyricFontAssets(renderDirectory, selectedFontPreset);
+    const fontsDirRelative = await prepareLyricFontAssets(renderDirectory, [selectedFontPreset]);
 
     if (emojiAssetEntries.length) {
       renderNotes.push("Color emoji are composited as image overlays in the final video.");
@@ -6447,45 +7051,72 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       if (outputVideoPath) {
         renderNotes.push("Primary render recovery completed successfully after replacing the audio source.");
       } else {
-      renderNotes.push(
-        `Primary render path failed (${summarizeErrorMessage(error)}), so the app is retrying with a safer backup render.`
-      );
+        renderNotes.push(
+          `Primary render path failed (${summarizeErrorMessage(error)}), so the app is retrying with a safer backup render while keeping the prepared background scenes.`
+        );
 
-      const safeBackgroundPaths = await createEmergencyBackgroundPlates(
-        job,
-        renderDirectory,
-        backgroundPlan,
-        videoSize,
-        "Preparing backup render backgrounds",
-        0.4
-      );
-      const safeManifestPath = path.join(renderDirectory, "backgrounds-safe.concat");
-      await fsp.writeFile(
-        safeManifestPath,
-        createConcatManifest(safeBackgroundPaths, backgroundPlan),
-        "utf8"
-      );
+        try {
+          outputVideoPath = await renderVideo(
+            job,
+            manifestPath,
+            audioUrl,
+            renderDirectory,
+            durationSeconds,
+            videoSize,
+            {
+              stageLabel: "Rendering backup lyric video",
+              progressStart: 0.48,
+              progressSpan: 0.48,
+              filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+              forceSoftwareEncoder: true,
+              emojiOverlays: subtitleBuild.emojiOverlays,
+              emojiAssetEntries,
+              fontsDirRelative,
+              renderProfile
+            }
+          );
+          renderNotes.push("Backup render recovery completed successfully while preserving the prepared background scenes.");
+        } catch (backupRenderError) {
+          renderNotes.push(
+            `Backup render with the original background scenes also failed (${summarizeErrorMessage(backupRenderError)}), so the app is generating emergency fallback backgrounds.`
+          );
 
-      outputVideoPath = await renderVideo(
-        job,
-        safeManifestPath,
-        audioUrl,
-        renderDirectory,
-        durationSeconds,
-        videoSize,
-        {
-          stageLabel: "Rendering backup lyric video",
-          progressStart: 0.48,
-          progressSpan: 0.48,
-          filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
-          forceSoftwareEncoder: true,
-          emojiOverlays: subtitleBuild.emojiOverlays,
-          emojiAssetEntries,
-          fontsDirRelative,
-          renderProfile
+          const safeBackgroundPaths = await createEmergencyBackgroundPlates(
+            job,
+            renderDirectory,
+            backgroundPlan,
+            videoSize,
+            "Preparing backup render backgrounds",
+            0.4
+          );
+          const safeManifestPath = path.join(renderDirectory, "backgrounds-safe.concat");
+          await fsp.writeFile(
+            safeManifestPath,
+            createConcatManifest(safeBackgroundPaths, backgroundPlan),
+            "utf8"
+          );
+
+          outputVideoPath = await renderVideo(
+            job,
+            safeManifestPath,
+            audioUrl,
+            renderDirectory,
+            durationSeconds,
+            videoSize,
+            {
+              stageLabel: "Rendering emergency fallback lyric video",
+              progressStart: 0.52,
+              progressSpan: 0.44,
+              filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+              forceSoftwareEncoder: true,
+              emojiOverlays: subtitleBuild.emojiOverlays,
+              emojiAssetEntries,
+              fontsDirRelative,
+              renderProfile
+            }
+          );
+          renderNotes.push("Emergency fallback render completed successfully.");
         }
-      );
-      renderNotes.push("Backup render recovery completed successfully.");
       }
     }
 
@@ -6537,6 +7168,26 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       maxAttempts: MAX_RENDER_ATTEMPTS
     });
 
+    recordLocalDebugEvent({
+      source: "render",
+      title: "Render job failed",
+      userMessage: buildUserRenderMessage(job),
+      errorMessage: error?.message || shortError,
+      cause: shortError,
+      stack: error?.stack || "",
+      details: {
+        jobId: job.id,
+        videoId: payload.videoId,
+        stage: job.stage,
+        attempt: attemptNumber,
+        lyricStyle: payload.lyricStyle,
+        lyricFont: payload.lyricFont,
+        renderMode: payload.renderMode,
+        syncMode: payload.syncMode,
+        notes: job.notes
+      }
+    });
+
     await recordRenderOutcomeSafely({
       channelTitle: payload.channelTitle,
       title: payload.title || payload.song?.title || "",
@@ -6550,12 +7201,15 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 async function startRenderJob(payload) {
   const videoId = extractVideoId(payload.videoId || payload.inputUrl);
   const titleSlug = slugify(payload.song?.title || payload.title || videoId) || videoId;
+  const createdAt = new Date().toISOString();
 
   await ensureDirectory(rendersRoot);
 
   const job = {
     id: `${videoId}-${Date.now()}-${titleSlug}`,
     videoId,
+    lyricStyle: payload.lyricStyle || "auto",
+    lyricFont: payload.lyricFont || "arial",
     status: "queued",
     stage: "Queued",
     progress: 0,
@@ -6565,8 +7219,18 @@ async function startRenderJob(payload) {
     maxAttempts: MAX_RENDER_ATTEMPTS,
     retrying: false,
     outputVideoPath: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    renderStartedAt: "",
+    completedAt: "",
+    stageTimings: [
+      {
+        label: "Queued",
+        startedAt: createdAt,
+        endedAt: "",
+        durationMs: 0
+      }
+    ],
+    createdAt,
+    updatedAt: createdAt
   };
 
   renderJobs.set(job.id, job);

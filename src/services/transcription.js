@@ -6,6 +6,7 @@ const fsp = require("fs/promises");
 const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 const { resolveAudioInput } = require("./audio");
+const { buildYtDlpArgs } = require("./ytdlp");
 
 const TRANSCRIPTION_TIMEOUT_MS = 8 * 60 * 1000;
 const MODEL_NAME = process.env.WHISPER_MODEL || "base";
@@ -223,11 +224,16 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
   }
 
   const outputTemplate = path.join(outputDirectory, "audio.%(ext)s");
+  const ytDlpArgs = buildYtDlpArgs({
+    kind: "audio",
+    fallbackClients: "android,web,ios"
+  });
   await runCommand(
     "python",
     [
       "-m",
       "yt_dlp",
+      ...ytDlpArgs,
       "--no-playlist",
       "--no-warnings",
       "--extract-audio",
@@ -239,8 +245,6 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
       path.dirname(ffmpegPath),
       "--postprocessor-args",
       "ffmpeg:-ac 1 -ar 16000",
-      "--extractor-args",
-      "youtube:player_client=android,web,ios",
       "-f",
       "bestaudio[ext=m4a]/bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
       "--extractor-retries",

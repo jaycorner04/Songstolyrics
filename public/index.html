@@ -43,144 +43,308 @@
               <span>Created</span>
             </article>
           </div>
+
+          <section class="music-lore-card" aria-label="Music news panel">
+            <div class="music-bulletin-topline">
+              <p class="eyebrow">Music briefing</p>
+              <span id="music-bulletin-stamp" class="music-bulletin-stamp">History pulse</span>
+            </div>
+
+            <div class="music-lore-copy">
+              <h2 id="music-bulletin-headline">Every hook leaves a trail through music history.</h2>
+              <p id="music-bulletin-text" class="music-lore-text">
+                From notation to streaming, songs keep changing shape. This panel rotates through
+                music history, headline records, and giant YouTube milestones.
+              </p>
+            </div>
+
+            <div class="music-bulletin-tabs" role="tablist" aria-label="Music bulletin topics">
+              <button
+                type="button"
+                class="music-bulletin-tab is-active"
+                data-bulletin-index="0"
+                role="tab"
+                aria-selected="true"
+              >
+                History
+              </button>
+              <button
+                type="button"
+                class="music-bulletin-tab"
+                data-bulletin-index="1"
+                role="tab"
+                aria-selected="false"
+              >
+                Records
+              </button>
+              <button
+                type="button"
+                class="music-bulletin-tab"
+                data-bulletin-index="2"
+                role="tab"
+                aria-selected="false"
+              >
+                YouTube
+              </button>
+              <button
+                type="button"
+                class="music-bulletin-tab"
+                data-bulletin-index="3"
+                role="tab"
+                aria-selected="false"
+              >
+                Trending
+              </button>
+              <button
+                type="button"
+                class="music-bulletin-tab"
+                data-bulletin-index="4"
+                role="tab"
+                aria-selected="false"
+              >
+                Top links
+              </button>
+            </div>
+
+            <div class="music-symbol-band" aria-hidden="true">
+              <span>&#9834;</span>
+              <span>&#9835;</span>
+              <span>&#9836;</span>
+              <span>&#9833;</span>
+              <span>&#9834;</span>
+            </div>
+
+            <div id="music-bulletin-grid" class="music-era-grid" aria-live="polite"></div>
+          </section>
         </div>
 
-        <form id="converter-form" class="converter-card">
-          <label class="input-label" for="video-url">YouTube video link</label>
-          <div class="input-row">
-            <input
-              id="video-url"
-              name="url"
-              type="url"
-              placeholder="https://www.youtube.com/watch?v=..."
-              autocomplete="off"
-              required
-            />
-            <button id="submit-button" type="submit">Create</button>
-          </div>
-          <p class="helper-text">
-            Music videos and lyric videos work best. The app tries web lyrics first, then falls
-            back to transcript or captions when the video exposes them.
-          </p>
-
-          <div class="background-controls">
-            <div class="upload-field">
-              <label class="input-label" for="background-images">Background images</label>
+        <div class="hero-side">
+          <form id="converter-form" class="converter-card">
+            <label class="input-label" for="video-url">YouTube video link</label>
+            <div class="input-row">
               <input
-                id="background-images"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                multiple
+                id="video-url"
+                name="url"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                autocomplete="off"
+                required
               />
-              <p class="helper-text">
-                Add up to 5 images. Portrait images render as mobile video in Auto mode.
-              </p>
-              <div class="upload-preview-actions">
-                <button id="change-uploaded-images-button" type="button" class="mini-action-button">
-                  Change images
-                </button>
-                <button id="delete-uploaded-images-button" type="button" class="mini-action-button is-muted">
-                  Delete images
-                </button>
+              <button id="submit-button" type="submit">Create</button>
+            </div>
+            <p class="helper-text">
+              Music videos and lyric videos work best. The app tries web lyrics first, then falls
+              back to transcript or captions when the video exposes them.
+            </p>
+
+            <div class="background-controls">
+              <div class="upload-field">
+                <label class="input-label" for="background-images">Background images</label>
+                <input
+                  id="background-images"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                />
+                <p class="helper-text">
+                  Add up to 5 images. Portrait images render as mobile video in Auto mode.
+                </p>
+                <div class="upload-preview-actions">
+                  <button id="change-uploaded-images-button" type="button" class="mini-action-button">
+                    Change images
+                  </button>
+                  <button id="delete-uploaded-images-button" type="button" class="mini-action-button is-muted">
+                    Delete images
+                  </button>
+                </div>
+                <div id="upload-preview-strip" class="upload-preview-strip" aria-live="polite"></div>
               </div>
-              <div id="upload-preview-strip" class="upload-preview-strip" aria-live="polite"></div>
+
+              <div class="upload-field">
+                <label class="input-label" for="background-video">Background video</label>
+                <input
+                  id="background-video"
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                />
+                <p class="helper-text">
+                  Optional. Add one video and the renderer will sample moving scenes from it.
+                </p>
+                <div id="background-video-meta" class="video-upload-meta" aria-live="polite">
+                  No background video selected.
+                </div>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="output-format">Output size</label>
+                <select id="output-format">
+                  <option value="auto">Auto</option>
+                  <option value="desktop">Desktop 16:9</option>
+                  <option value="mobile">Mobile 9:16</option>
+                </select>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="render-mode">Render speed</label>
+                <select id="render-mode">
+                  <option value="standard">Standard quality</option>
+                  <option value="fast">Fast render</option>
+                </select>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="lyric-style">Lyrics style</label>
+                <select id="lyric-style">
+                  <option value="auto">Auto mix</option>
+                  <option value="comic">Comic style</option>
+                  <option value="aa">AA</option>
+                  <option value="line-by-line">Line by line</option>
+                  <option value="cinematic">Cinematic</option>
+                  <option value="bounce">Bounce</option>
+                  <option value="side-by-side">Side by side</option>
+                  <option value="typewriter">Typewriter</option>
+                  <option value="spotlight">Spotlight</option>
+                  <option value="magic">Magic</option>
+                  <option value="neon">Neon glow</option>
+                  <option value="glitch">Glitch hit</option>
+                  <option value="karaoke">Karaoke box</option>
+                  <option value="whisper">Whisper</option>
+                  <option value="stacked">Stacked</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="fulllength">Fulllength style</option>
+                </select>
+              </div>
+
+              <div id="neon-style-controls" class="style-tuning-card">
+                <div class="style-tuning-head">
+                  <label class="input-label" for="neon-color">Style color</label>
+                  <span class="helper-inline">Keeps the default look unless you enable a custom color.</span>
+                </div>
+                <label class="style-toggle">
+                  <input id="use-style-color" type="checkbox" />
+                  <span>Use custom color</span>
+                </label>
+                <div class="style-tuning-grid">
+                  <div class="style-tuning-item">
+                    <input id="neon-color" type="color" value="#7fe8ff" />
+                  </div>
+                  <div id="neon-glow-shell" class="style-tuning-item" hidden>
+                    <label class="input-label" for="neon-glow">Glow strength</label>
+                    <input id="neon-glow" type="range" min="10" max="100" step="5" value="70" />
+                    <p id="neon-glow-value" class="helper-text">70%</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="lyric-font">Lyrics font</label>
+                <select id="lyric-font">
+                  <optgroup label="Clean">
+                    <option value="arial" data-font-family="Arial, sans-serif">Arial</option>
+                    <option value="trebuchet" data-font-family="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                    <option value="verdana" data-font-family="Verdana, sans-serif">Verdana</option>
+                    <option value="tahoma" data-font-family="Tahoma, sans-serif">Tahoma</option>
+                    <option value="century-gothic" data-font-family="'Century Gothic', 'Segoe UI', sans-serif">Century Gothic</option>
+                    <option value="sora" data-font-family="'Sora', sans-serif">Sora</option>
+                    <option value="montserrat" data-font-family="'Montserrat', sans-serif">Montserrat</option>
+                    <option value="titillium-web" data-font-family="'Titillium Web', sans-serif">Titillium Web</option>
+                    <option value="kanit" data-font-family="'Kanit', sans-serif">Kanit</option>
+                  </optgroup>
+                  <optgroup label="Bold">
+                    <option value="arial-black" data-font-family="'Arial Black', Arial, sans-serif">Arial Black</option>
+                    <option value="impact" data-font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option>
+                    <option value="archivo-black" data-font-family="'Archivo Black', sans-serif">Archivo Black</option>
+                    <option value="fjalla-one" data-font-family="'Fjalla One', sans-serif">Fjalla One</option>
+                    <option value="righteous" data-font-family="'Righteous', sans-serif">Righteous</option>
+                  </optgroup>
+                  <optgroup label="Poster">
+                    <option value="anton" data-font-family="'Anton', sans-serif">Anton</option>
+                    <option value="bebas-neue" data-font-family="'Bebas Neue', sans-serif">Bebas Neue</option>
+                    <option value="oswald" data-font-family="'Oswald', sans-serif">Oswald</option>
+                    <option value="rubik-mono-one" data-font-family="'Rubik Mono One', sans-serif">Rubik Mono One</option>
+                  </optgroup>
+                  <optgroup label="Serif">
+                    <option value="georgia" data-font-family="Georgia, serif">Georgia</option>
+                    <option value="palatino" data-font-family="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino Linotype</option>
+                  </optgroup>
+                  <optgroup label="Stylized">
+                    <option value="comic-sans" data-font-family="'Comic Sans MS', 'Comic Sans', cursive">Comic Sans MS</option>
+                    <option value="bangers" data-font-family="'Bangers', cursive">Bangers</option>
+                    <option value="monoton" data-font-family="'Monoton', cursive">Monoton</option>
+                  </optgroup>
+                </select>
+                <p id="lyric-font-count" class="helper-text">Fonts available: loading...</p>
+              </div>
+
+              <div class="style-tuning-card lyric-size-card">
+                <div class="style-tuning-head">
+                  <label class="input-label" for="lyric-font-zoom">Lyrics size</label>
+                  <span id="lyric-font-zoom-value" class="helper-inline">100%</span>
+                </div>
+                <div class="lyric-size-controls">
+                  <button id="lyric-font-zoom-out" type="button" class="mini-action-button is-muted" aria-label="Decrease lyrics size">
+                    A-
+                  </button>
+                  <input id="lyric-font-zoom" type="range" min="70" max="145" step="5" value="100" />
+                  <button id="lyric-font-zoom-in" type="button" class="mini-action-button" aria-label="Increase lyrics size">
+                    A+
+                  </button>
+                </div>
+                <p class="helper-text">
+                  Adjust the lyric text size for both the preview and the final rendered video.
+                </p>
+              </div>
+            </div>
+          </form>
+
+          <section class="style-preview-card" aria-label="Lyrics preview panel">
+            <div class="style-preview-topline">
+              <p class="eyebrow">Live preview</p>
+              <span id="lyric-preview-style-badge" class="style-preview-badge">Auto mix</span>
             </div>
 
-            <div class="upload-field">
-              <label class="input-label" for="background-video">Background video</label>
-              <input
-                id="background-video"
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime"
-              />
-              <p class="helper-text">
-                Optional. Add one video and the renderer will sample moving scenes from it.
-              </p>
-              <div id="background-video-meta" class="video-upload-meta" aria-live="polite">
-                No background video selected.
+            <div class="style-preview-copy">
+              <h2>See the lyric look before you render.</h2>
+              <p>Static sample lyrics update instantly when users change the style or font.</p>
+            </div>
+
+            <div id="lyric-style-preview" class="lyric-style-preview is-auto">
+              <div class="lyric-style-preview-glow" aria-hidden="true"></div>
+              <div class="lyric-style-preview-frame">
+                <span class="preview-chip">Preview output</span>
+                <div class="preview-lines">
+                  <p id="preview-line-1" class="preview-line preview-line-1">City lights in stereo</p>
+                  <p id="preview-line-2" class="preview-line preview-line-2 is-active">You keep running through my mind</p>
+                  <p id="preview-line-3" class="preview-line preview-line-3">Tonight the echo feels alive</p>
+                </div>
               </div>
             </div>
 
-            <div class="format-field">
-              <label class="input-label" for="output-format">Output size</label>
-              <select id="output-format">
-                <option value="auto">Auto</option>
-                <option value="desktop">Desktop 16:9</option>
-                <option value="mobile">Mobile 9:16</option>
-              </select>
-            </div>
-
-            <div class="format-field">
-              <label class="input-label" for="render-mode">Render speed</label>
-              <select id="render-mode">
-                <option value="standard">Standard quality</option>
-                <option value="fast">Fast render</option>
-              </select>
-            </div>
-
-            <div class="format-field">
-              <label class="input-label" for="lyric-style">Lyrics style</label>
-              <select id="lyric-style">
-                <option value="auto">Auto mix</option>
-                <option value="comic">Comic style</option>
-                <option value="line-by-line">Line by line</option>
-                <option value="cinematic">Cinematic</option>
-                <option value="bounce">Bounce</option>
-                <option value="side-by-side">Side by side</option>
-                <option value="typewriter">Typewriter</option>
-                <option value="spotlight">Spotlight</option>
-                <option value="stacked">Stacked</option>
-                <option value="minimal">Minimal</option>
-                <option value="fulllength">Fulllength style</option>
-              </select>
-            </div>
-
-            <div class="format-field">
-              <label class="input-label" for="lyric-font">Lyrics font</label>
-              <select id="lyric-font">
-                <optgroup label="Clean">
-                  <option value="arial" data-font-family="Arial, sans-serif">Arial</option>
-                  <option value="trebuchet" data-font-family="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-                  <option value="verdana" data-font-family="Verdana, sans-serif">Verdana</option>
-                  <option value="tahoma" data-font-family="Tahoma, sans-serif">Tahoma</option>
-                  <option value="century-gothic" data-font-family="'Century Gothic', 'Segoe UI', sans-serif">Century Gothic</option>
-                  <option value="sora" data-font-family="'Sora', sans-serif">Sora</option>
-                  <option value="montserrat" data-font-family="'Montserrat', sans-serif">Montserrat</option>
-                  <option value="titillium-web" data-font-family="'Titillium Web', sans-serif">Titillium Web</option>
-                  <option value="kanit" data-font-family="'Kanit', sans-serif">Kanit</option>
-                </optgroup>
-                <optgroup label="Bold">
-                  <option value="arial-black" data-font-family="'Arial Black', Arial, sans-serif">Arial Black</option>
-                  <option value="impact" data-font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option>
-                  <option value="archivo-black" data-font-family="'Archivo Black', sans-serif">Archivo Black</option>
-                  <option value="fjalla-one" data-font-family="'Fjalla One', sans-serif">Fjalla One</option>
-                  <option value="righteous" data-font-family="'Righteous', sans-serif">Righteous</option>
-                </optgroup>
-                <optgroup label="Poster">
-                  <option value="anton" data-font-family="'Anton', sans-serif">Anton</option>
-                  <option value="bebas-neue" data-font-family="'Bebas Neue', sans-serif">Bebas Neue</option>
-                  <option value="oswald" data-font-family="'Oswald', sans-serif">Oswald</option>
-                  <option value="rubik-mono-one" data-font-family="'Rubik Mono One', sans-serif">Rubik Mono One</option>
-                </optgroup>
-                <optgroup label="Serif">
-                  <option value="georgia" data-font-family="Georgia, serif">Georgia</option>
-                  <option value="palatino" data-font-family="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino Linotype</option>
-                </optgroup>
-                <optgroup label="Stylized">
-                  <option value="comic-sans" data-font-family="'Comic Sans MS', 'Comic Sans', cursive">Comic Sans MS</option>
-                  <option value="bangers" data-font-family="'Bangers', cursive">Bangers</option>
-                  <option value="monoton" data-font-family="'Monoton', cursive">Monoton</option>
-                </optgroup>
-              </select>
-              <div id="lyric-font-preview" class="font-preview-card" aria-live="polite">
-                <p id="lyric-font-preview-name" class="font-preview-name">Arial</p>
-                <p id="lyric-font-preview-sample" class="font-preview-sample">Aa Bb Cc 123 Love burns bright tonight</p>
+            <div class="style-preview-meta">
+              <div class="style-preview-pill">
+                <span>Font</span>
+                <strong id="lyric-preview-font-label">Arial</strong>
               </div>
-              <p id="lyric-font-count" class="helper-text">Fonts available: loading...</p>
+              <div class="style-preview-pill">
+                <span>Motion</span>
+                <strong id="lyric-preview-motion-label">Balanced</strong>
+              </div>
             </div>
-          </div>
 
-        </form>
+            <div class="preview-insight-strip" aria-label="Preview insights">
+              <article class="preview-insight-card">
+                <span>Live</span>
+                <strong>Style updates instantly</strong>
+                <p>Change font, motion, or color and preview the look before you render.</p>
+              </article>
+              <article class="preview-insight-card">
+                <span>Output</span>
+                <strong>Readable by default</strong>
+                <p>The final export keeps lyrics bold and centered even when styles get more dramatic.</p>
+              </article>
+            </div>
+          </section>
+        </div>
       </header>
 
       <section id="status-card" class="status-card" aria-live="polite">
@@ -222,6 +386,13 @@
               </div>
               <div class="progress-track" aria-hidden="true">
                 <div id="render-progress-bar" class="progress-bar"></div>
+              </div>
+              <div id="render-stage-card" class="render-stage-card" hidden>
+                <div class="render-stage-head">
+                  <span class="render-stage-title">Stage timings</span>
+                  <span id="render-stage-total-time" class="render-stage-total-time">0s</span>
+                </div>
+                <div id="render-stage-list" class="render-stage-list"></div>
               </div>
             </div>
 
@@ -328,6 +499,26 @@
           </div>
         </section>
       </main>
+
+      <section id="local-debug-shell" class="local-debug-shell" hidden>
+        <div id="local-debug-card" class="local-debug-card" hidden>
+          <div class="card-head">
+            <h3>Local debug errors</h3>
+            <p>Visible only on localhost. Error IDs help you trace and fix issues.</p>
+          </div>
+
+          <div class="local-debug-actions">
+            <button id="local-debug-refresh-button" type="button" class="mini-action-button">
+              Refresh
+            </button>
+            <button id="local-debug-clear-button" type="button" class="mini-action-button is-muted">
+              Clear errors
+            </button>
+          </div>
+
+          <div id="local-debug-list" class="local-debug-list"></div>
+        </div>
+      </section>
     </div>
 
     <script src="/app.js"></script>

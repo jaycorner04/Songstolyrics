@@ -9,7 +9,11 @@
     "doctor": "node scripts/doctor.js",
     "smoke": "node scripts/smoke.js",
     "e2e": "node scripts/e2e.js",
-    "clean:runtime": "node scripts/clean-runtime.js"
+    "predeploy:check": "node scripts/predeploy.js",
+    "clean:runtime": "node scripts/clean-runtime.js",
+    "autopush": "node scripts/auto-push.js",
+    "autopush:start": "powershell -ExecutionPolicy Bypass -File scripts/start-autopush.ps1",
+    "autopush:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-autopush.ps1"
   },
   "engines": {
     "node": ">=18.17"

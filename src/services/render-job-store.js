@@ -28,6 +28,16 @@ function serializeJob(job = {}) {
     maxAttempts: Number(job.maxAttempts || 1),
     retrying: Boolean(job.retrying),
     outputVideoPath: job.outputVideoPath || "",
+    renderStartedAt: job.renderStartedAt || "",
+    completedAt: job.completedAt || "",
+    stageTimings: Array.isArray(job.stageTimings)
+      ? job.stageTimings.map((entry = {}) => ({
+          label: normalizeWhitespace(entry.label || ""),
+          startedAt: entry.startedAt || "",
+          endedAt: entry.endedAt || "",
+          durationMs: Math.max(0, Number(entry.durationMs || 0))
+        }))
+      : [],
     createdAt: job.createdAt || new Date().toISOString(),
     updatedAt: job.updatedAt || new Date().toISOString()
   };

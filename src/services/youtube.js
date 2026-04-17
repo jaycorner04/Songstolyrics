@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const { buildYtDlpArgs } = require("./ytdlp");
 
 let YoutubeTranscript = null;
 
@@ -828,11 +829,16 @@ function parseVttCaptionPayload(payload = "") {
 }
 
 async function getYtDlpCaptionInfo(videoId) {
+  const ytDlpArgs = buildYtDlpArgs({
+    kind: "caption",
+    fallbackClients: "web,mweb,android"
+  });
   const { stdout } = await runCommand(
     "python",
     [
       "-m",
       "yt_dlp",
+      ...ytDlpArgs,
       "--dump-single-json",
       "--skip-download",
       "--no-playlist",

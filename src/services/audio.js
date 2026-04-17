@@ -4,6 +4,8 @@ const fsp = require("fs/promises");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const ffmpegPath = require("ffmpeg-static");
+const { previewAudioCacheRoot } = require("../config/runtime");
+const { buildYtDlpArgs } = require("./ytdlp");
 
 const execFileAsync = promisify(execFile);
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
@@ -12,7 +14,8 @@ const STREAM_URL_TTL_MS = 10 * 60 * 1000;
 const STREAM_RESOLVE_TIMEOUT_MS = 30000;
 const DOWNLOADED_AUDIO_TTL_MS = 12 * 60 * 60 * 1000;
 const AUDIO_DOWNLOAD_TIMEOUT_MS = 6 * 60 * 1000;
-const AUDIO_CACHE_ROOT = path.join(__dirname, "..", "..", "cache", "audio");
+const AUDIO_CACHE_ROOT = previewAudioCacheRoot;
+const ALLOW_BROWSER_COOKIES = process.env.ALLOW_BROWSER_COOKIES === "true";
 const streamUrlCache = new Map();
 const inFlightStreamRequests = new Map();
 const downloadedAudioCache = new Map();
@@ -22,50 +25,58 @@ const STREAM_ATTEMPTS = {
   audio: [
     {
       formatSelector: "bestaudio[ext=m4a]/bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
-      extraArgs: ["--extractor-args", "youtube:player_client=android,web,ios"]
+      fallbackClients: "android,web,ios"
     },
     {
       formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
-      extraArgs: ["--extractor-args", "youtube:player_client=android,web"]
+      fallbackClients: "android,web"
     },
     {
       formatSelector: "best[acodec!=none]/best",
-      extraArgs: []
+      fallbackClients: "web,mweb,tv,tv_simply"
     }
   ],
   video: [
     {
       formatSelector: "bestvideo[ext=mp4][height<=1080]/best[ext=mp4][height<=1080]/bestvideo[height<=1080]/best[height<=1080]/best",
-      extraArgs: ["--extractor-args", "youtube:player_client=android,web,ios"]
+      fallbackClients: "android,web,ios"
     },
     {
       formatSelector: "best[ext=mp4][height<=1080]/best[height<=1080]/best",
-      extraArgs: ["--extractor-args", "youtube:player_client=android,web"]
+      fallbackClients: "android,web,mweb"
     }
   ]
 };
 const AUDIO_DOWNLOAD_ATTEMPTS = [
   {
     formatSelector: "bestaudio[ext=m4a]/bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
-    extraArgs: ["--extractor-args", "youtube:player_client=android,web,ios"]
+    fallbackClients: "android,web,ios"
   },
   {
     formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
-    extraArgs: ["--extractor-args", "youtube:player_client=android,web"]
+    fallbackClients: "android,web,mweb"
   },
   {
     formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
-    extraArgs: ["--cookies-from-browser", "chrome"]
-  },
-  {
-    formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
-    extraArgs: ["--cookies-from-browser", "edge"]
-  },
-  {
-    formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
+    fallbackClients: "web,mweb,tv,tv_simply",
     extraArgs: []
   }
 ];
+
+if (ALLOW_BROWSER_COOKIES) {
+  AUDIO_DOWNLOAD_ATTEMPTS.splice(
+    2,
+    0,
+    {
+      formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
+      extraArgs: ["--cookies-from-browser", "chrome"]
+    },
+    {
+      formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
+      extraArgs: ["--cookies-from-browser", "edge"]
+    }
+  );
+}
 
 function createAudioError(message, statusCode = 500) {
   const error = new Error(message);
@@ -242,11 +253,16 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
 
     for (const attempt of AUDIO_DOWNLOAD_ATTEMPTS) {
       try {
+        const ytDlpArgs = buildYtDlpArgs({
+          kind: "audio",
+          fallbackClients: attempt.fallbackClients || ""
+        });
         await execFileWithRetry(
           "python",
           [
             "-m",
             "yt_dlp",
+            ...ytDlpArgs,
             "--no-playlist",
             "--no-warnings",
             "--extract-audio",
@@ -268,7 +284,7 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
             "--force-overwrites",
             "-f",
             attempt.formatSelector,
-            ...attempt.extraArgs,
+            ...(attempt.extraArgs || []),
             "-o",
             outputTemplate,
             toVideoUrl(videoId)
@@ -323,11 +339,16 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
   const requestPromise = (async () => {
     for (const attempt of attempts) {
       try {
+        const ytDlpArgs = buildYtDlpArgs({
+          kind,
+          fallbackClients: attempt.fallbackClients || ""
+        });
         const { stdout } = await execFileWithRetry(
           "python",
           [
             "-m",
             "yt_dlp",
+            ...ytDlpArgs,
             "--no-playlist",
             "--no-warnings",
             "--extractor-retries",
@@ -337,7 +358,6 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
             "--get-url",
             "-f",
             attempt.formatSelector || formatSelector,
-            ...attempt.extraArgs,
             toVideoUrl(videoId)
           ],
           {

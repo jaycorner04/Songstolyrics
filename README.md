@@ -66,6 +66,18 @@ HOST=0.0.0.0
 PORT=3000
 TRUST_PROXY=false
 RUNTIME_ROOT=
+ALLOW_BROWSER_COOKIES=false
+YTDLP_CONFIG_FILE=
+YTDLP_COOKIE_FILE=
+YTDLP_YOUTUBE_CLIENTS=
+YTDLP_AUDIO_CLIENTS=
+YTDLP_VIDEO_CLIENTS=
+YTDLP_CAPTION_CLIENTS=
+YTDLP_PLAYER_SKIP=
+YTDLP_YOUTUBETAB_SKIP=
+YTDLP_VISITOR_DATA=
+YTDLP_PO_TOKEN=
+YTDLP_PO_TOKEN_CLIENT=
 YOUTUBE_API_KEY=
 LYRICS_OVH_BASE_URL=https://api.lyrics.ovh
 ```
@@ -73,9 +85,14 @@ LYRICS_OVH_BASE_URL=https://api.lyrics.ovh
 - `HOST` controls the bind address.
 - `TRUST_PROXY=true` is recommended when the app sits behind Nginx, Caddy, a load balancer, or a platform proxy.
 - `RUNTIME_ROOT` optionally moves uploads, caches, render jobs, and renders outside the project directory.
+- `ALLOW_BROWSER_COOKIES=false` keeps audio resolution deploy-safe. Only turn it on for local machines where browser-cookie extraction is intentionally available.
+- `YTDLP_CONFIG_FILE` lets you point the app at a pinned yt-dlp config file for both local and deployed runs.
+- `YTDLP_COOKIE_FILE`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
 - `YOUTUBE_API_KEY` is optional, but improves metadata quality.
 
 If `RUNTIME_ROOT` is blank, runtime files are stored in `./runtime`.
+Preview and downloaded audio caches also live under that same runtime root, so local and deployed storage now behave the same way.
+The app ignores personal user/home yt-dlp config by default, so local runs match deployed runs unless you explicitly set `YTDLP_CONFIG_FILE`.
 
 ## Deploy checks
 
@@ -84,10 +101,20 @@ Run these before deploy:
 ```bash
 npm run doctor
 npm run smoke
+npm run e2e
 ```
 
 - `doctor` verifies runtime dependencies and reports whether the server is render-ready.
 - `smoke` boots the server on a temporary port and checks `/api/health` and `/api/readiness`.
+- `e2e` exercises multiple real YouTube links, checks the audio endpoint, completes a real render, and verifies the output still exists after a restart.
+
+If you want one command instead of three, run:
+
+```bash
+npm run predeploy:check
+```
+
+That wrapper runs `doctor`, `smoke`, and `e2e` in order with `NODE_ENV=production` and deploy-safe audio settings, then stops immediately if any step fails.
 
 ## Docker
 

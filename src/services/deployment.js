@@ -9,26 +9,49 @@ const { runtimeRoot } = require("../config/runtime");
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 12000;
+const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
+const CHECK_RETRY_DELAYS_MS = [250, 800];
 
 async function runCheck(command, args = []) {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      timeout: COMMAND_TIMEOUT_MS,
-      windowsHide: true
-    });
+  let lastError = null;
 
-    return {
-      ok: true,
-      detail: `${stdout || stderr || ""}`.trim().split(/\r?\n/)[0] || "available"
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      detail: `${error.stderr || error.stdout || error.message || "unavailable"}`
+  for (let attempt = 0; attempt <= CHECK_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const { stdout, stderr } = await execFileAsync(command, args, {
+        timeout: COMMAND_TIMEOUT_MS,
+        windowsHide: true
+      });
+
+      return {
+        ok: true,
+        detail: `${stdout || stderr || ""}`.trim().split(/\r?\n/)[0] || "available"
+      };
+    } catch (error) {
+      lastError = error;
+      const detail = `${error.stderr || error.stdout || error.message || "unavailable"}`
         .trim()
-        .split(/\r?\n/)[0]
-    };
+        .split(/\r?\n/)[0];
+
+      if (
+        !TRANSIENT_PROCESS_ERROR_REGEX.test(`${error?.message || ""}`) ||
+        attempt === CHECK_RETRY_DELAYS_MS.length
+      ) {
+        return {
+          ok: false,
+          detail
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, CHECK_RETRY_DELAYS_MS[attempt]));
+    }
   }
+
+  return {
+    ok: false,
+    detail: `${lastError?.stderr || lastError?.stdout || lastError?.message || "unavailable"}`
+      .trim()
+      .split(/\r?\n/)[0]
+  };
 }
 
 function buildCheck(ok, detail, required = true) {
@@ -40,17 +63,17 @@ function buildCheck(ok, detail, required = true) {
 }
 
 async function getRuntimeDiagnostics() {
-  const [nodeVersion, ffmpeg, ffprobe, python, ytDlp, fasterWhisper, openAiWhisper] = await Promise.all([
-    Promise.resolve(process.version),
-    ffmpegPath ? runCheck(ffmpegPath, ["-version"]) : Promise.resolve({ ok: false, detail: "ffmpeg-static missing" }),
-    ffprobePath
-      ? runCheck(ffprobePath, ["-version"])
-      : Promise.resolve({ ok: false, detail: "ffprobe-static missing" }),
-    runCheck("python", ["--version"]),
-    runCheck("python", ["-m", "yt_dlp", "--version"]),
-    runCheck("python", ["-c", "import faster_whisper"]),
-    runCheck("python", ["-c", "import whisper"])
-  ]);
+  const nodeVersion = process.version;
+  const ffmpeg = ffmpegPath
+    ? await runCheck(ffmpegPath, ["-version"])
+    : { ok: false, detail: "ffmpeg-static missing" };
+  const ffprobe = ffprobePath
+    ? await runCheck(ffprobePath, ["-version"])
+    : { ok: false, detail: "ffprobe-static missing" };
+  const python = await runCheck("python", ["--version"]);
+  const ytDlp = await runCheck("python", ["-m", "yt_dlp", "--version"]);
+  const fasterWhisper = await runCheck("python", ["-c", "import faster_whisper"]);
+  const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
