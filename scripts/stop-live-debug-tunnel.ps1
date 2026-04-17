@@ -1,6 +1,7 @@
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $stateDir = Join-Path $repoRoot ".live-debug"
 $pidFile = Join-Path $stateDir "live-debug.pid"
+$watchdogPidFile = Join-Path $stateDir "live-debug-watchdog.pid"
 $localPort = 3000
 $tunnelSpec = "${localPort}:127.0.0.1:3000"
 $remoteHost = "ec2-user@3.110.128.0"
@@ -44,4 +45,15 @@ if ($tunnelPid) {
 }
 
 Remove-Item -Path $pidFile -Force -ErrorAction SilentlyContinue
+
+if (Test-Path $watchdogPidFile) {
+  $watchdogPid = Get-Content -Path $watchdogPidFile | Select-Object -First 1
+
+  if ($watchdogPid) {
+    Stop-Process -Id $watchdogPid -Force -ErrorAction SilentlyContinue
+  }
+
+  Remove-Item -Path $watchdogPidFile -Force -ErrorAction SilentlyContinue
+}
+
 Write-Output "live debug tunnel stopped."

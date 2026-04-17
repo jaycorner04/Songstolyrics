@@ -12,6 +12,7 @@
     "predeploy:check": "node scripts/predeploy.js",
     "clean:runtime": "node scripts/clean-runtime.js",
     "live-debug:start": "powershell -ExecutionPolicy Bypass -File scripts/start-live-debug-tunnel.ps1",
+    "live-debug:watch": "powershell -ExecutionPolicy Bypass -File scripts/start-live-debug-watchdog.ps1",
     "live-debug:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-live-debug-tunnel.ps1",
     "autopush": "node scripts/auto-push.js",
     "autopush:start": "powershell -ExecutionPolicy Bypass -File scripts/start-autopush.ps1",
