@@ -84,7 +84,7 @@ let uploadedBackgrounds = [];
 let uploadedBackgroundVideo = null;
 let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
-const LOCAL_DEBUG_REFRESH_MS = 1200;
+const LOCAL_DEBUG_REFRESH_MS = 350;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const lyricPreviewSamples = {
   default: ["City lights in stereo", "You keep running through my mind", "Tonight the echo feels alive"],
@@ -1482,13 +1482,22 @@ function renderResult(result) {
   renderLyrics(result.lines || []);
   primeRenderState();
 
-  audioPlayer.src = result.audioUrl;
-  audioPlayer.load();
+  audioPlayer.pause();
+  audioPlayer.preload = "none";
+  if (result.audioUrl) {
+    audioPlayer.src = result.audioUrl;
+  } else {
+    audioPlayer.removeAttribute("src");
+  }
   updatePostRenderBackgroundStatus();
   updateArtworkVisibility();
 
   updateQueryString(result.inputUrl);
-  setStatus(`Loaded ${result.title}. Starting the lyric video render with your current style settings.`);
+  setStatus(
+    result.audioPreviewBlocked
+      ? `Loaded ${result.title}. Audio preview is currently blocked on the server, but the lyric render can still continue when server-side audio access is available.`
+      : `Loaded ${result.title}. Starting the lyric video render with your current style settings.`
+  );
 }
 
 function updateRenderJobUi(job) {

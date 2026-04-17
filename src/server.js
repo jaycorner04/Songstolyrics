@@ -18,7 +18,12 @@ const {
   runtimeRoot,
   uploadsRoot
 } = require("./config/runtime");
-const { resolveAudioInput, resolveAudioUrl, resolveVideoUrl } = require("./services/audio");
+const {
+  isYouTubeBotBlockError,
+  resolveAudioInput,
+  resolveAudioUrl,
+  resolveVideoUrl
+} = require("./services/audio");
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
 const { getRuntimeDiagnostics } = require("./services/deployment");
 const { buildLyricsPayload, inferSongFromVideo } = require("./services/lyrics");
@@ -146,6 +151,23 @@ function buildWarnings(result) {
   }
 
   return warnings;
+}
+
+function buildApiErrorMessage(error, req = {}) {
+  const requestPath = `${req.originalUrl || req.url || ""}`;
+
+  if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
+    if (/^\/api\/audio\//i.test(requestPath)) {
+      return "Audio preview is blocked for this video on the server right now. Rendering may still work later if server-side YouTube access is available.";
+    }
+
+    return "YouTube blocked audio access for this video on the server. Try another link or add a server cookie file.";
+  }
+
+  const statusCode = Number(error?.statusCode || 500);
+  return statusCode >= 500
+    ? "The server could not process that YouTube video right now."
+    : error?.message || "Request failed.";
 }
 
 function normalizeWhitespace(value = "") {
@@ -1242,7 +1264,13 @@ app.post(
       videoId,
       captionCues
     );
-    resolveAudioUrl(videoId).catch(() => {});
+    let audioPreviewBlocked = false;
+
+    resolveAudioUrl(videoId).catch((error) => {
+      if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
+        audioPreviewBlocked = true;
+      }
+    });
 
     res.json({
       inputUrl: videoUrl,
@@ -1253,7 +1281,8 @@ app.post(
       durationSeconds: metadata.durationSeconds,
       thumbnails: metadata.thumbnails,
       poster: metadata.poster,
-      audioUrl: `/api/audio/${videoId}`,
+      audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
+      audioPreviewBlocked,
       audioMimeType: "audio/mp4",
       song: lyricResult.song,
       lyricsSource: lyricResult.source,
@@ -1262,6 +1291,11 @@ app.post(
       warnings: [
         ...buildWarnings(lyricResult),
         ...previewWarnings,
+        ...(audioPreviewBlocked
+          ? [
+              "Audio preview is blocked for this video on the server right now, so the website will avoid auto-loading the player."
+            ]
+          : []),
         "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
         ...(shouldRomanizeTeluguLyrics(metadata, lyricResult)
           ? ["Telugu lyrics were detected. The render step will keep Telugu audio and show the lyrics in English letters when needed."]
@@ -1443,8 +1477,7 @@ app.use((error, req, res, next) => {
   }
 
   const statusCode = Number(error.statusCode || 500);
-  const message =
-    statusCode >= 500 ? "The server could not process that YouTube video right now." : error.message;
+  const message = buildApiErrorMessage(error, req);
 
   recordLocalDebugEvent({
     source: "api",
