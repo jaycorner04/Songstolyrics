@@ -308,6 +308,22 @@ function getSelectedLyricZoomValue() {
   return Math.max(70, Math.min(145, Number(lyricFontZoomInput?.value || 100)));
 }
 
+function getClientRenderProfile() {
+  const width = Math.max(0, Number(window.innerWidth || document.documentElement?.clientWidth || 0));
+  const height = Math.max(0, Number(window.innerHeight || document.documentElement?.clientHeight || 0));
+  const isMobileViewport = window.matchMedia("(max-width: 900px)").matches;
+  const isMobileAgent = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || "");
+
+  return {
+    clientViewport: {
+      width,
+      height,
+      devicePixelRatio: Math.max(1, Number(window.devicePixelRatio || 1))
+    },
+    clientIsMobile: Boolean(isMobileViewport || isMobileAgent)
+  };
+}
+
 function syncLyricZoomUi() {
   if (lyricFontZoomValue) {
     lyricFontZoomValue.textContent = `${getSelectedLyricZoomValue()}%`;
@@ -1619,7 +1635,8 @@ async function handleRender() {
       lyricFontZoom: getSelectedLyricZoomValue(),
       useStyleColor: getSelectedStyleColorSettings().enabled,
       styleColor: getSelectedStyleColorSettings().color,
-      neonGlow: getSelectedStyleColorSettings().glowPercent
+      neonGlow: getSelectedStyleColorSettings().glowPercent,
+      ...getClientRenderProfile()
     };
     const formData = new FormData();
     formData.append("renderPayload", JSON.stringify(renderPayload));
