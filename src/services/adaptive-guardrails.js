@@ -1,7 +1,8 @@
 const path = require("path");
 const fsp = require("fs/promises");
+const { cacheRoot } = require("../config/runtime");
 
-const MEMORY_PATH = path.join(__dirname, "..", "..", "cache", "adaptive-guardrails.json");
+const MEMORY_PATH = path.join(cacheRoot, "adaptive-guardrails.json");
 const KNOWN_LABEL_PATTERNS = /\b(saregama|t-series|sony music|zee music|aditya music|lahari|tips|think music|sun music|mango music|mythri|music south)\b/i;
 
 let memoryCache = null;
