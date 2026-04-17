@@ -1316,13 +1316,21 @@ app.post(
       captionCues
     );
     const audioPreviewProbe = await withTimeout(
-      resolveAudioUrl(videoId)
-        .then(() => ({ blocked: false }))
+      resolveAudioInput(videoId, {
+        outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
+        allowDownloadFallback: false
+      })
+        .then(() => ({ blocked: false, timedOut: false }))
         .catch((error) => ({
-          blocked: Boolean(error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error))
+          blocked: true,
+          timedOut: false,
+          reason:
+            error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)
+              ? "youtube-blocked"
+              : "preview-unavailable"
         })),
-      2500,
-      { blocked: false, timedOut: true }
+      5000,
+      { blocked: true, timedOut: true, reason: "probe-timeout" }
     );
     const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
 
@@ -1348,6 +1356,11 @@ app.post(
         ...(audioPreviewBlocked
           ? [
               "Audio preview is blocked for this video on the server right now, so the website will avoid auto-loading the player."
+            ]
+          : []),
+        ...(audioPreviewProbe?.timedOut
+          ? [
+              "Audio preview safety check timed out, so the website is staying conservative and not auto-loading the player for this link."
             ]
           : []),
         "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
