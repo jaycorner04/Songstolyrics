@@ -110,7 +110,18 @@ app.use(
 );
 app.use(compression());
 app.use(express.json({ limit: "35mb" }));
-app.use(express.static(publicRoot, { index: false }));
+app.use(
+  express.static(publicRoot, {
+    index: false,
+    setHeaders(res, filePath) {
+      if (/\.(?:js|css|html)$/i.test(filePath || "")) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    }
+  })
+);
 
 function asyncHandler(handler) {
   return function wrappedHandler(req, res, next) {
@@ -121,6 +132,9 @@ function asyncHandler(handler) {
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
   const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
   res.type("html").send(renderedHtml);
 }
 
