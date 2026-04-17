@@ -56,6 +56,16 @@ function resolveCookieFilePath() {
   return "";
 }
 
+function resolveProxyUrl() {
+  return normalizeWhitespace(
+    process.env.YTDLP_PROXY_URL ||
+      process.env.YTDLP_PROXY ||
+      process.env.HTTP_PROXY ||
+      process.env.HTTPS_PROXY ||
+      ""
+  );
+}
+
 function buildYtDlpArgs(options = {}) {
   const {
     kind = "",
@@ -78,6 +88,12 @@ function buildYtDlpArgs(options = {}) {
     if (cookieFile) {
       args.push("--cookies", cookieFile);
     }
+  }
+
+  const proxyUrl = resolveProxyUrl();
+
+  if (proxyUrl) {
+    args.push("--proxy", proxyUrl);
   }
 
   const extractorArgs = [];
@@ -124,5 +140,6 @@ function buildYtDlpArgs(options = {}) {
 
 module.exports = {
   buildYtDlpArgs,
-  resolveCookieFilePath
+  resolveCookieFilePath,
+  resolveProxyUrl
 };

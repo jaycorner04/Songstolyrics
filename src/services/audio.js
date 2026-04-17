@@ -5,7 +5,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const ffmpegPath = require("ffmpeg-static");
 const { previewAudioCacheRoot } = require("../config/runtime");
-const { buildYtDlpArgs, resolveCookieFilePath } = require("./ytdlp");
+const { buildYtDlpArgs, resolveCookieFilePath, resolveProxyUrl } = require("./ytdlp");
 
 let ytdl = null;
 
@@ -191,7 +191,11 @@ function getYtdlCookieAgent() {
     return null;
   }
 
-  cachedYtdlCookieAgent = ytdl.createAgent(cookies);
+  const proxyUrl = resolveProxyUrl();
+  cachedYtdlCookieAgent =
+    proxyUrl && ytdl?.createProxyAgent
+      ? ytdl.createProxyAgent(proxyUrl, cookies)
+      : ytdl.createAgent(cookies);
   cachedYtdlCookieAgentKey = cacheKey;
   return cachedYtdlCookieAgent;
 }

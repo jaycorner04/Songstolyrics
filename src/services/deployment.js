@@ -7,7 +7,7 @@ const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 
 const { runtimeRoot } = require("../config/runtime");
-const { resolveCookieFilePath } = require("./ytdlp");
+const { resolveCookieFilePath, resolveProxyUrl } = require("./ytdlp");
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 12000;
@@ -77,6 +77,7 @@ async function getRuntimeDiagnostics() {
   const fasterWhisper = await runCheck("python", ["-c", "import faster_whisper"]);
   const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
   const cookieFile = resolveCookieFilePath();
+  const proxyUrl = resolveProxyUrl();
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -89,6 +90,11 @@ async function getRuntimeDiagnostics() {
     ytDlpCookies: buildCheck(
       Boolean(cookieFile),
       cookieFile || `not configured (add ${path.join(runtimeRoot, "youtube-cookies.txt")} or set YTDLP_COOKIE_FILE)`,
+      false
+    ),
+    ytDlpProxy: buildCheck(
+      Boolean(proxyUrl),
+      proxyUrl || "not configured (set YTDLP_PROXY_URL for proxy-backed YouTube access)",
       false
     ),
     runtimeRoot: buildCheck(fs.existsSync(runtimeRoot), runtimeRoot, true)

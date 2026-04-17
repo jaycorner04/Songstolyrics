@@ -70,6 +70,7 @@ ALLOW_BROWSER_COOKIES=false
 ALLOW_SILENT_AUDIO_FALLBACK=false
 YTDLP_CONFIG_FILE=
 YTDLP_COOKIE_FILE=
+YTDLP_PROXY_URL=
 YTDLP_YOUTUBE_CLIENTS=
 YTDLP_AUDIO_CLIENTS=
 YTDLP_VIDEO_CLIENTS=
@@ -89,8 +90,9 @@ LYRICS_OVH_BASE_URL=https://api.lyrics.ovh
 - `ALLOW_BROWSER_COOKIES=false` keeps audio resolution deploy-safe. Only turn it on for local machines where browser-cookie extraction is intentionally available.
 - `ALLOW_SILENT_AUDIO_FALLBACK=false` prevents the app from shipping a mute `.mp4` when YouTube blocks server-side audio. Leave this off for production unless you explicitly want silent fallback videos.
 - `YTDLP_CONFIG_FILE` lets you point the app at a pinned yt-dlp config file for both local and deployed runs.
-- `YTDLP_COOKIE_FILE`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
+- `YTDLP_COOKIE_FILE`, `YTDLP_PROXY_URL`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
 - If `YTDLP_COOKIE_FILE` is blank, the app automatically looks for `runtime/youtube-cookies.txt` and `runtime/yt-dlp-cookies.txt`.
+- `YTDLP_PROXY_URL` is optional, but it lets both `yt-dlp` and the cookie-backed `ytdl-core` fallback use the same proxy when YouTube is blocking the server IP.
 - `YOUTUBE_API_KEY` is optional, but improves metadata quality.
 
 If `RUNTIME_ROOT` is blank, runtime files are stored in `./runtime`.
