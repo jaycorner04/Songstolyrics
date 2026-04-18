@@ -6054,6 +6054,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
+    const uploadedAudio = await saveUploadedAudio(payload, renderDirectory);
     const preferCookieBackedAudioRecovery =
       adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
 
@@ -6070,26 +6071,45 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
-    const audioUrlPromise = resolveAudioInput(payload.videoId, {
-      outputDirectory: audioInputDirectory,
-      allowDownloadFallback: true,
-      preferKnownBlockRecovery: preferCookieBackedAudioRecovery
-    }).then(
-      (audioSource) => ({
-        audioSource,
-        error: null
-      }),
-      (error) => ({
-        audioSource: null,
-        error
-      })
-    );
-    updateJob(job, {
-      stage: "Resolving video audio",
-      progress: 0.12
-    });
+    let audioResolution = null;
 
-    const audioResolution = await audioUrlPromise;
+    if (uploadedAudio?.filePath) {
+      updateJob(job, {
+        stage: "Preparing uploaded audio fallback",
+        progress: 0.12
+      });
+      audioResolution = {
+        audioSource: {
+          input: uploadedAudio.filePath,
+          sourceType: "file",
+          mimeType: uploadedAudio.mimeType || "",
+          recovered: true,
+          uploaded: true
+        },
+        error: null
+      };
+    } else {
+      const audioUrlPromise = resolveAudioInput(payload.videoId, {
+        outputDirectory: audioInputDirectory,
+        allowDownloadFallback: true,
+        preferKnownBlockRecovery: preferCookieBackedAudioRecovery
+      }).then(
+        (audioSource) => ({
+          audioSource,
+          error: null
+        }),
+        (error) => ({
+          audioSource: null,
+          error
+        })
+      );
+      updateJob(job, {
+        stage: "Resolving video audio",
+        progress: 0.12
+      });
+
+      audioResolution = await audioUrlPromise;
+    }
     let audioUrl = "";
     let usingSilentAudioFallback = false;
 
@@ -6138,7 +6158,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       audioUrl = audioResolution.audioSource.input;
     }
 
-    if (audioResolution.audioSource?.recovered) {
+    if (audioResolution.audioSource?.uploaded) {
+      renderNotes.push(
+        `Uploaded audio fallback ${uploadedAudio.originalName} is driving the soundtrack for this render.`
+      );
+    } else if (audioResolution.audioSource?.recovered) {
       renderNotes.push(
         "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
       );
