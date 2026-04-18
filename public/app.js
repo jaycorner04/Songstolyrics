@@ -3076,16 +3076,24 @@ async function handleSubmit(event) {
       payload.thumbnails = [];
     }
 
-    await renderResult(payload);
-
     const noLyricsAvailable =
       !isUploadedAudioProject(payload) &&
-      !payload.lines?.length &&
-      String(payload.lyricsSource || "").toLowerCase() === "unavailable";
+      (!payload.lines?.length || payload.syncMode === "none");
 
-    if (!noLyricsAvailable) {
-      await handleRender();
+    if (noLyricsAvailable) {
+      currentResult = null;
+      resultPanel.hidden = true;
+      setStatus(
+        "No lyrics or captions found for this video. Try a music video, or upload the audio file directly.",
+        true
+      );
+      setLoadingState(false);
+      return;
     }
+
+    await renderResult(payload);
+
+    await handleRender();
   } catch (error) {
     reportLocalDebugError({
       source: "client-submit",
