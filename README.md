@@ -79,6 +79,7 @@ YTDLP_PLUGIN_DIRS=
 YTDLP_BGUTIL_BASE_URL=
 YTDLP_BGUTIL_SERVER_HOME=
 YTDLP_EXTRACTOR_ARGS_EXTRA=
+YTDLP_PROFILE_CHAIN=
 YTDLP_YOUTUBE_CLIENTS=
 YTDLP_AUDIO_CLIENTS=
 YTDLP_VIDEO_CLIENTS=
@@ -99,13 +100,14 @@ LYRICS_OVH_BASE_URL=https://api.lyrics.ovh
 - `ALLOW_SILENT_AUDIO_FALLBACK=false` prevents the app from shipping a mute `.mp4` when YouTube blocks server-side audio. Leave this off for production unless you explicitly want silent fallback videos.
 - `RENDER_CONTINUE_ON_AUDIO_BLOCK=true` keeps the final lyric-video render from failing when YouTube blocks server-side audio. With the default setting, the render finishes with a fallback track instead of stopping the whole job.
 - `YTDLP_CONFIG_FILE` lets you point the app at a pinned yt-dlp config file for both local and deployed runs.
-- `YTDLP_COOKIE_FILE`, `YTDLP_PROXY_URL`, `YTDL_CORE_PROXY_URL`, `YTDLP_REMOTE_COMPONENTS`, `YTDLP_JS_RUNTIMES`, `YTDLP_PLUGIN_DIRS`, `YTDLP_BGUTIL_BASE_URL`, `YTDLP_BGUTIL_SERVER_HOME`, `YTDLP_EXTRACTOR_ARGS_EXTRA`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
+- `YTDLP_COOKIE_FILE`, `YTDLP_PROXY_URL`, `YTDL_CORE_PROXY_URL`, `YTDLP_REMOTE_COMPONENTS`, `YTDLP_JS_RUNTIMES`, `YTDLP_PLUGIN_DIRS`, `YTDLP_BGUTIL_BASE_URL`, `YTDLP_BGUTIL_SERVER_HOME`, `YTDLP_EXTRACTOR_ARGS_EXTRA`, `YTDLP_PROFILE_CHAIN`, `YTDLP_*_CLIENTS`, `YTDLP_PLAYER_SKIP`, `YTDLP_VISITOR_DATA`, and `YTDLP_PO_TOKEN` let you adjust YouTube extraction behavior without changing application code when yt-dlp/YouTube behavior shifts.
 - If `YTDLP_COOKIE_FILE` is blank, the app automatically looks for `runtime/youtube-cookies.txt` and `runtime/yt-dlp-cookies.txt`.
 - `YTDLP_PROXY_URL` is optional, but it lets `yt-dlp` use a proxy when YouTube is blocking the server IP.
 - `YTDL_CORE_PROXY_URL` is optional. If set, the cookie-backed `ytdl-core` fallback uses that proxy instead of the generic one. This is useful when you want to keep a residential proxy only on the recovery path.
 - `YTDLP_REMOTE_COMPONENTS` and `YTDLP_JS_RUNTIMES` let the app use newer yt-dlp remote components such as EJS when a pure-Python extractor path is no longer enough.
 - `YTDLP_PLUGIN_DIRS`, `YTDLP_BGUTIL_BASE_URL`, and `YTDLP_BGUTIL_SERVER_HOME` let the app work with PO-token provider plugins without changing the code again.
 - `YTDLP_EXTRACTOR_ARGS_EXTRA` accepts extra extractor args separated by `;` so emergency yt-dlp tuning can be rolled out from env only.
+- `YTDLP_PROFILE_CHAIN` lets the app automatically step through multiple recovery profiles such as `default,ejs,bgutil,aggressive` before it gives up on a blocked link.
 - `YOUTUBE_API_KEY` is optional, but improves metadata quality.
 
 If `RUNTIME_ROOT` is blank, runtime files are stored in `./runtime`.
@@ -153,6 +155,7 @@ YTDLP_PLUGIN_DIRS=/app/runtime/yt-dlp-plugins
 YTDLP_BGUTIL_BASE_URL=http://bgutil-provider:4416
 YTDLP_BGUTIL_SERVER_HOME=/app/runtime/bgutil
 YTDLP_EXTRACTOR_ARGS_EXTRA=youtubepot-bgutilhttp:base_url=http://bgutil-provider:4416
+YTDLP_PROFILE_CHAIN=default,ejs,bgutil,aggressive
 ```
 
 - `YTDLP_REMOTE_COMPONENTS=ejs:github` enables yt-dlp EJS-style remote components.
@@ -160,6 +163,7 @@ YTDLP_EXTRACTOR_ARGS_EXTRA=youtubepot-bgutilhttp:base_url=http://bgutil-provider
 - `YTDLP_PLUGIN_DIRS` points yt-dlp at a plugin directory if provider plugins are installed outside the default Python environment.
 - `YTDLP_BGUTIL_BASE_URL` and `YTDLP_BGUTIL_SERVER_HOME` prepare the app for bgutil PO-token providers.
 - `YTDLP_EXTRACTOR_ARGS_EXTRA` is a last-mile escape hatch for official extractor args when YouTube changes behavior again.
+- `YTDLP_PROFILE_CHAIN` makes the app try a stronger stack automatically instead of relying on a single yt-dlp profile.
 
 ## Deploy checks
 
