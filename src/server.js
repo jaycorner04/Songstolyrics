@@ -1781,11 +1781,20 @@ app.get(
       }
     }
 
-    const audioSource = await resolveAudioInput(videoId, {
-      outputDirectory,
-      allowDownloadFallback: true,
-      preferLocal: true
-    });
+    let audioSource;
+
+    try {
+      audioSource = await resolveAudioInput(videoId, {
+        outputDirectory,
+        allowDownloadFallback: true,
+        preferLocal: true
+      });
+    } catch (localPreviewError) {
+      audioSource = await resolveAudioInput(videoId, {
+        outputDirectory,
+        allowDownloadFallback: false
+      });
+    }
     res.setHeader("Cache-Control", "no-store");
 
     if (audioSource.sourceType === "file") {
