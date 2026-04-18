@@ -2026,10 +2026,21 @@ button {
 }
 
 @media (max-width: 760px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .page-shell {
     width: 100%;
     max-width: none;
     padding: 18px 10px 32px;
+    overflow-x: clip;
+  }
+
+  .ambient {
+    display: none;
   }
 
   .hero {
