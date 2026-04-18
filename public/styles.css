@@ -147,6 +147,10 @@ button {
   margin-bottom: 10px;
 }
 
+.mobile-topbar {
+  display: none;
+}
+
 .hero-side {
   display: grid;
   gap: 18px;
@@ -2365,6 +2369,47 @@ button {
 
   .ambient {
     display: none;
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03)),
+      rgba(8, 18, 33, 0.58);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  }
+
+  .mobile-topbar-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .mobile-topbar-title {
+    margin: 0;
+    color: var(--text);
+    font-family: "Syne", "Segoe UI", sans-serif;
+    font-size: 1.28rem;
+    line-height: 0.96;
+    letter-spacing: -0.03em;
+    text-transform: none;
+  }
+
+  .mobile-topbar-signature {
+    margin: 0;
+    color: rgba(255, 233, 220, 0.88);
+    font-family: "Manrope", "Segoe UI", sans-serif;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
   }
 
   .hero {
