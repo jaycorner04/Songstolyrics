@@ -515,6 +515,11 @@ function stripFileExtension(value = "") {
   return `${value || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
 }
 
+function getUploadedAudioDisplayTitle(audioMeta = uploadedAudioFallback) {
+  const cleanTitle = stripFileExtension(audioMeta?.name || "");
+  return cleanTitle || audioMeta?.name || "Uploaded audio";
+}
+
 function slugifyLocalProjectId(value = "") {
   return `${value || ""}`
     .toLowerCase()
@@ -742,19 +747,20 @@ function updateAudioFallbackStateUi(result = currentResult) {
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
   const audioAccess = getCurrentAudioAccessState(result);
   const mode = audioAccess.mode || "available";
+  const uploadedAudioTitle = getUploadedAudioDisplayTitle(uploadedAudioFallback);
 
   audioFallbackField.classList.remove("is-supported", "is-needed", "is-ready");
-
-  if (!hasResult) {
-    audioFallbackState.textContent = "Audio status will show here after you load a song.";
-    return;
-  }
 
   if (hasUploadedAudio) {
     audioFallbackField.classList.add("is-ready");
     audioFallbackState.textContent = isUploadedAudioProject(result)
-      ? `Uploaded audio ready: ${uploadedAudioFallback.name} will drive this render directly.`
-      : `Audio fallback ready: ${uploadedAudioFallback.name} will be used on the next render if needed.`;
+      ? `Uploaded song ready: ${uploadedAudioTitle} will drive this render directly.`
+      : `Uploaded song ready: ${uploadedAudioTitle} is attached and will be used on the next render if needed.`;
+    return;
+  }
+
+  if (!hasResult) {
+    audioFallbackState.textContent = "Audio status will show here after you load a song.";
     return;
   }
 
@@ -1838,7 +1844,7 @@ function renderAudioFallbackMeta() {
   }
 
   audioFallbackMeta.textContent =
-    `${uploadedAudioFallback.name} • ${formatTime(uploadedAudioFallback.duration)} • ${formatFileSize(uploadedAudioFallback.size)}`;
+    `Uploaded song: ${getUploadedAudioDisplayTitle(uploadedAudioFallback)} • ${formatTime(uploadedAudioFallback.duration)} • ${formatFileSize(uploadedAudioFallback.size)}`;
 }
 
 function showAudioFallbackRecovery(options = {}) {
