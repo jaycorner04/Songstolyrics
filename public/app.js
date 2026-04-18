@@ -937,6 +937,19 @@ function syncIdleRenderCta() {
 
   const audioAccess = getCurrentAudioAccessState();
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const noLyricsAvailable =
+    !isUploadedAudioProject() &&
+    !currentResult?.lines?.length &&
+    String(currentResult?.lyricsSource || "").toLowerCase() === "unavailable";
+
+  if (noLyricsAvailable) {
+    renderButton.disabled = true;
+    renderButton.textContent = "No Lyrics Found";
+    setRenderMessage(
+      "No lyrics were found for this video yet. Try another song link or upload the track audio directly to build from that file."
+    );
+    return;
+  }
 
   renderButton.disabled = false;
 
@@ -2410,7 +2423,10 @@ function primeRenderState() {
 
   if (!currentResult?.lines?.length) {
     setRenderMessage(
-      "Lyrics were not found for this track, so the renderer may fall back to title cards if needed."
+      String(currentResult?.lyricsSource || "").toLowerCase() === "unavailable" &&
+        !isUploadedAudioProject(currentResult)
+        ? "No lyrics were found for this video. Try another song link or upload the audio file directly."
+        : "Lyrics were not found for this track, so the renderer may fall back to title cards if needed."
     );
   }
 }
@@ -2675,8 +2691,14 @@ async function renderResult(result) {
   }
   syncIdleRenderCta();
   const audioAccess = getCurrentAudioAccessState(result);
+  const noLyricsAvailable =
+    !isUploadedAudioProject(result) &&
+    !result.lines?.length &&
+    String(result.lyricsSource || "").toLowerCase() === "unavailable";
   setStatus(
-    isUploadedAudioProject(result)
+    noLyricsAvailable
+      ? `No lyrics were found for ${result.title}. Try another song link or upload the track audio directly.`
+      : isUploadedAudioProject(result)
       ? `Uploaded audio loaded. The app can now create the lyric video directly from ${result.title}.`
       : audioAccess.mode === "available"
       ? `Loaded ${result.title}. Live soundtrack preview is ready, and the render can continue with your current style settings.`
@@ -3055,7 +3077,15 @@ async function handleSubmit(event) {
     }
 
     await renderResult(payload);
-    await handleRender();
+
+    const noLyricsAvailable =
+      !isUploadedAudioProject(payload) &&
+      !payload.lines?.length &&
+      String(payload.lyricsSource || "").toLowerCase() === "unavailable";
+
+    if (!noLyricsAvailable) {
+      await handleRender();
+    }
   } catch (error) {
     reportLocalDebugError({
       source: "client-submit",
