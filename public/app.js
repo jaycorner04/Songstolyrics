@@ -2220,6 +2220,14 @@ audioPlayer.addEventListener("error", () => {
     }
   });
 });
+audioAccessAction?.addEventListener("click", () => {
+  if (uploadedAudioFallback?.file) {
+    audioFallbackInput.click();
+    return;
+  }
+
+  audioFallbackInput.click();
+});
 form.addEventListener("submit", handleSubmit);
 shareButton.addEventListener("click", copyShareLink);
 renderButton.addEventListener("click", handleRender);

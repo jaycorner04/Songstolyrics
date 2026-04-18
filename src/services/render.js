@@ -1993,7 +1993,7 @@ function buildUserRenderMessage(job = {}) {
 
   if (job.status === "failed") {
     if (/YOUTUBE_BOT_BLOCK|not a bot|cookies-from-browser|temporarily blocked audio access/i.test(`${job.error || ""}`)) {
-      return "YouTube blocked the video audio for this link. Add a YouTube cookie file on the server or try another link.";
+      return "The soundtrack could not be unlocked from YouTube on this server. Upload audio to keep sound, or try another link.";
     }
 
     if (/verify|verified|match(?:ed)? .*detected vocals|sync check|sync quality|lyric timing|strongly enough|audio-built lyric fallback|too sparse across the song|trust as the final lyric sheet/i.test(`${job.error || ""}`)) {
