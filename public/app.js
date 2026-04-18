@@ -2037,11 +2037,15 @@ function resetRenderState() {
   activeRenderJobId = "";
   renderButton.disabled = true;
   renderButton.textContent = "Create Downloadable Lyric Video";
-  setRenderMessage("Paste a song and the app will build a downloadable lyric video automatically.");
+  setRenderMessage("Paste a song or upload audio and the app will build a downloadable lyric video automatically.");
   setRenderProgress(0);
   renderStageTimings({});
   resetRenderedVideo();
   clearHardAudioBlockPreview();
+  if (shareButton) {
+    shareButton.hidden = true;
+    shareButton.disabled = true;
+  }
   applyAudioAccessState(null);
 }
 
@@ -2294,7 +2298,9 @@ async function renderResult(result) {
   }
 
   updateQueryString(isShareableProject(result) ? result.inputUrl : "");
-  if (getCurrentAudioAccessState(result).mode !== "available") {
+  if (isUploadedAudioProject(result)) {
+    hideAudioFallbackRecovery();
+  } else if (getCurrentAudioAccessState(result).mode !== "available") {
     promptAudioFallbackRecovery(
       getCurrentAudioAccessState(result).mode === "recovery"
         ? "This link is in protected recovery mode. The server will try its stronger soundtrack path during render, and you can still upload audio now for guaranteed sound."
@@ -2313,7 +2319,9 @@ async function renderResult(result) {
   syncIdleRenderCta();
   const audioAccess = getCurrentAudioAccessState(result);
   setStatus(
-    audioAccess.mode === "available"
+    isUploadedAudioProject(result)
+      ? `Uploaded audio loaded. The app can now create the lyric video directly from ${result.title}.`
+      : audioAccess.mode === "available"
       ? `Loaded ${result.title}. Live soundtrack preview is ready, and the render can continue with your current style settings.`
       : audioAccess.mode === "recovery"
         ? `Loaded ${result.title}. This link opened in protected recovery mode, so the final render will try the stronger soundtrack path before needing uploaded audio.`
