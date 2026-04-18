@@ -167,6 +167,7 @@ function asyncHandler(handler) {
 
 function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
   const requestPath = `${req?.originalUrl || req?.url || ""}`.trim();
+  const requestMethod = `${req?.method || ""}`.trim().toUpperCase();
 
   if (`${req?.headers?.["x-local-debug-silent"] || ""}`.trim() === "1") {
     return true;
@@ -182,6 +183,14 @@ function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
   if (
     /^\/api\/render$/i.test(requestPath) &&
     /request aborted/i.test(`${error?.message || ""}`)
+  ) {
+    return true;
+  }
+
+  if (
+    requestMethod === "HEAD" &&
+    /^\/api\/audio\//i.test(requestPath) &&
+    (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error))
   ) {
     return true;
   }

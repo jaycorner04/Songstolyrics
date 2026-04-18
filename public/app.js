@@ -2151,6 +2151,13 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
     return;
   }
 
+  // When the server has already classified the link as recovery-only,
+  // don't fire a second automatic HEAD probe that just creates noisy debug errors.
+  if (audioAccess.mode === "recovery" && audioAccess.previewAvailable === false) {
+    handleHardAudioBlock(result);
+    return;
+  }
+
   try {
     const probeResponse = await Promise.race([
       fetch(`/api/audio/${encodeURIComponent(videoId)}`, {
