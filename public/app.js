@@ -49,6 +49,7 @@ const renderStageList = document.getElementById("render-stage-list");
 const renderStageTotalTime = document.getElementById("render-stage-total-time");
 const audioPlayer = document.getElementById("audio-player");
 const resultPanel = document.getElementById("result-panel");
+const mediaColumn = document.querySelector(".media-column");
 const statusText = document.getElementById("status-text");
 const localDebugShell = document.getElementById("local-debug-shell");
 const musicBulletinStamp = document.getElementById("music-bulletin-stamp");
@@ -892,6 +893,7 @@ function syncMobileStageCard() {
       mobileStageSlot.appendChild(renderStageCard);
     }
     mobileStageCard.hidden = renderStageCard.hidden;
+    mediaColumn?.classList.toggle("has-mobile-stage", !renderStageCard.hidden);
     return;
   }
 
@@ -904,6 +906,7 @@ function syncMobileStageCard() {
   }
 
   mobileStageCard.hidden = true;
+  mediaColumn?.classList.remove("has-mobile-stage");
 }
 
 function formatDebugDateTime(value = "") {

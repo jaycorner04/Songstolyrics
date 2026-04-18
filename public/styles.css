@@ -2310,14 +2310,20 @@ button {
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
     grid-template-areas:
       "poster track"
-      "access track"
-      "preview track"
       "thumb track"
       "video video";
     gap: 10px;
     align-items: start;
     width: 100%;
     min-width: 0;
+  }
+
+  .media-column.has-mobile-stage {
+    grid-template-areas:
+      "poster track"
+      "stage track"
+      "thumb track"
+      "video video";
   }
 
   .poster-frame {
@@ -2330,14 +2336,8 @@ button {
     grid-area: track;
   }
 
-  .mobile-audio-access-card,
-  #mobile-audio-access-card {
-    grid-area: access;
-  }
-
-  .mobile-audio-preview-card,
-  #mobile-audio-preview-card {
-    grid-area: preview;
+  #mobile-stage-card {
+    grid-area: stage;
   }
 
   .thumbnail-card {
@@ -2374,6 +2374,11 @@ button {
     margin-bottom: 10px;
     padding: 12px;
     border-radius: 14px;
+  }
+
+  #desktop-audio-access-slot,
+  #desktop-audio-preview-slot {
+    display: none !important;
   }
 
   .audio-access-copy strong {
@@ -2434,6 +2439,13 @@ button {
     white-space: normal;
     word-break: break-word;
     text-align: center;
+  }
+
+  .share-button {
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 0.84rem;
+    line-height: 1.2;
   }
 
   #audio-player,
