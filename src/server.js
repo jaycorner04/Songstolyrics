@@ -1489,6 +1489,7 @@ async function withTimeout(promise, timeoutMs, fallbackValue) {
 }
 
 app.get("/api/health", (req, res) => {
+  applyLocalDebugCors(req, res);
   res.json({
     ok: true,
     ready: Boolean(startupDiagnostics.ready),
@@ -1497,6 +1498,14 @@ app.get("/api/health", (req, res) => {
     now: new Date().toISOString()
   });
 });
+
+app.options(
+  ["/api/health", "/api/local-debug/errors", "/api/local-debug/stream", "/api/local-debug/errors/:id"],
+  (req, res) => {
+    applyLocalDebugCors(req, res);
+    res.status(204).end();
+  }
+);
 
 app.get("/api/readiness", (req, res) => {
   const payload = {
@@ -1516,6 +1525,7 @@ app.get("/api/local-debug/errors", (req, res) => {
     return;
   }
 
+  applyLocalDebugCors(req, res);
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
@@ -1531,6 +1541,7 @@ app.get("/api/local-debug/stream", (req, res) => {
     return;
   }
 
+  applyLocalDebugCors(req, res);
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Connection", "keep-alive");
@@ -1571,6 +1582,7 @@ app.post(
       throw createError("Not found.", 404);
     }
 
+    applyLocalDebugCors(req, res);
     const payload = req.body || {};
     const entry = recordLocalDebugEvent({
       source: normalizeWhitespace(payload.source || "client"),
@@ -1599,6 +1611,7 @@ app.delete("/api/local-debug/errors", (req, res) => {
     return;
   }
 
+  applyLocalDebugCors(req, res);
   clearLocalDebugEvents();
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.json({ ok: true });
@@ -1610,6 +1623,7 @@ app.delete("/api/local-debug/errors/:id", (req, res) => {
     return;
   }
 
+  applyLocalDebugCors(req, res);
   const deleted = deleteLocalDebugEvent(req.params.id);
 
   if (!deleted) {
