@@ -2289,6 +2289,30 @@ function canKeepStrongSourceAfterSparseValidationReport({
   return /too few|did not match enough|stable enough timing|covered too little|too sparse/.test(reason);
 }
 
+function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
+  if (!report || report.approved || !report.transcriptDerived) {
+    return false;
+  }
+
+  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
+
+  if (!/too sparse|too few|covered too little|did not detect enough words|stable enough timing/.test(reason)) {
+    return false;
+  }
+
+  const candidateMetrics = report.candidateMetrics || {};
+  const transcriptMetrics = report.transcriptMetrics || {};
+
+  return (
+    candidateMetrics.reliableForSourcePacing &&
+    Number(candidateMetrics.meaningfulCount || 0) >= 5 &&
+    Number(candidateMetrics.coverageRatio || 0) >= 0.18 &&
+    transcriptMetrics.reliableForWindowFit &&
+    Number(transcriptMetrics.coverageRatio || 0) >= 0.08 &&
+    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 8
+  );
+}
+
 function buildIntroPreservedTranscriptCandidate({
   sourceLines = [],
   transcriptLines = [],
@@ -3547,6 +3571,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
 
   if (report.approvalMode === "validation-transcript-intro-preserved") {
     return `Strict sync verification approved the render by keeping the trusted intro lyrics and matching the rest to the audio transcript.`;
+  }
+
+  if (report.approvalMode === "uploaded-audio-sparse-transcript-fallback") {
+    return "Strict sync verification approved the render using the uploaded audio transcript, even though the final transcript was too sparse for the normal full-song bar.";
   }
 
   return report.transcriptDerived
@@ -6187,6 +6215,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
     const uploadedAudio = await saveUploadedAudio(payload, renderDirectory);
+    const hasUploadedAudioOnlySource = Boolean(uploadedAudio?.filePath) && !`${payload.inputUrl || ""}`.trim();
     const preferCookieBackedAudioRecovery =
       adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
 
@@ -7153,6 +7182,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               category: "sparse_validation_preview",
               message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
             });
+          } else if (
+            hasUploadedAudioOnlySource &&
+            canApproveUploadedAudioSparseTranscriptReport(strictSyncReport)
+          ) {
+            strictSyncReport = {
+              ...strictSyncReport,
+              approved: true,
+              reason: "",
+              approvalMode: "uploaded-audio-sparse-transcript-fallback",
+              transcriptDerived: true
+            };
+            renderNotes.push(
+              "Strict sync verification approved this uploaded-audio render with the best available transcript even though the final transcript was sparse."
+            );
           } else {
             throw createStrictSyncValidationError(strictSyncReport);
           }
