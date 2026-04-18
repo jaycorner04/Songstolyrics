@@ -1925,7 +1925,7 @@ function resetRenderedVideo() {
 }
 
 function markRenderOutputStale(message = "Style or font changed. Render again to update the downloadable video.") {
-  if (!currentResult?.inputUrl) {
+  if (!hasProjectSource()) {
     return;
   }
 
@@ -2728,6 +2728,7 @@ audioAccessAction?.addEventListener("click", () => {
 
   audioFallbackInput.click();
 });
+uploadAudioInlineButton?.addEventListener("click", () => audioFallbackInput.click());
 form.addEventListener("submit", handleSubmit);
 shareButton.addEventListener("click", copyShareLink);
 renderButton.addEventListener("click", handleRender);
