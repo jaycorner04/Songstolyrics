@@ -474,11 +474,11 @@ function buildFallbackAudioAccessState(result = {}) {
   return {
     mode: "upload-recommended",
     previewAvailable: false,
-    badgeLabel: "Audio upload",
-    title: "This link needs a fallback soundtrack",
+    badgeLabel: "Add sound",
+    title: "This link is ready, and a sound file will make it perfect",
     summary:
-      "Lyrics and artwork are ready, but the server could not open a trustworthy preview audio path for this song. Upload the audio file for guaranteed sound in the final video.",
-    primaryActionLabel: "Upload audio",
+      "Lyrics and artwork are ready. Add the song audio file here if you want guaranteed sound in the final video.",
+    primaryActionLabel: "Add audio",
     recommendedAction: "upload-audio"
   };
 }
@@ -522,14 +522,14 @@ function applyAudioAccessState(result = currentResult) {
   audioAccessEyebrow.textContent = uploadRecommended
     ? "Fallback soundtrack"
     : recoveryMode
-      ? "Protected recovery"
+      ? "Smart recovery"
       : "Live soundtrack";
   audioAccessTitle.textContent = hasUploadedAudio && mode !== "available"
     ? "Uploaded audio is ready for the next render"
     : audioAccess.title || "Checking the soundtrack path";
   audioAccessText.textContent =
     hasUploadedAudio && mode !== "available"
-      ? `The uploaded audio fallback ${uploadedAudioFallback.name} is queued. The next render will use it instead of the blocked YouTube soundtrack.`
+      ? `The uploaded audio file ${uploadedAudioFallback.name} is queued. The next render will use it so the final video keeps sound.`
       : audioAccess.summary ||
         "The app will decide whether this link can use live YouTube audio, protected server recovery, or an uploaded soundtrack.";
 
@@ -539,7 +539,7 @@ function applyAudioAccessState(result = currentResult) {
       hasUploadedAudio && mode !== "available"
         ? "Change audio"
         : uploadRecommended
-          ? "Upload audio"
+          ? "Add audio"
           : "Keep audio ready";
   }
 
@@ -584,17 +584,17 @@ function syncIdleRenderCta() {
   if (hasUploadedAudio) {
     renderButton.textContent = "Render With Uploaded Audio";
     setRenderMessage(
-      `This link is in ${audioAccess.mode === "recovery" ? "recovery" : "fallback"} mode. The next render will use ${uploadedAudioFallback.name} for guaranteed sound.`
+      `This link is in ${audioAccess.mode === "recovery" ? "smart recovery" : "sound-ready"} mode. The next render will use ${uploadedAudioFallback.name} for guaranteed sound.`
     );
     return;
   }
 
   renderButton.textContent =
-    audioAccess.mode === "recovery" ? "Create Recovery Render" : "Upload Audio Or Render";
+    audioAccess.mode === "recovery" ? "Create Smart Recovery Render" : "Add Audio Or Render";
   setRenderMessage(
     audioAccess.mode === "recovery"
-      ? "This link opened in protected recovery mode. The server will try its stronger soundtrack path during render, and you can still add audio now for guaranteed sound."
-      : "This link opened without a playable server preview. Upload audio now for guaranteed sound, or render anyway and let the server try one last recovery pass."
+      ? "This link opened in smart recovery mode. The server will try its stronger soundtrack path during render, and you can still add audio now for guaranteed sound."
+      : "This link is ready to render. Add audio now for guaranteed sound, or render anyway and let the server try one more soundtrack pass."
   );
 }
 
