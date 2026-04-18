@@ -6,6 +6,8 @@ const backgroundVideoInput = document.getElementById("background-video");
 const backgroundVideoMeta = document.getElementById("background-video-meta");
 const audioFallbackInput = document.getElementById("audio-fallback");
 const audioFallbackMeta = document.getElementById("audio-fallback-meta");
+const audioFallbackField = document.getElementById("audio-fallback-field");
+const audioFallbackState = document.getElementById("audio-fallback-state");
 const changeAudioFallbackButton = document.getElementById("change-audio-fallback-button");
 const deleteAudioFallbackButton = document.getElementById("delete-audio-fallback-button");
 const audioFallbackTip = document.getElementById("audio-fallback-tip");
@@ -504,11 +506,48 @@ function getCurrentAudioAccessState(result = currentResult) {
   return result?.audioAccess || buildFallbackAudioAccessState(result || {});
 }
 
+function updateAudioFallbackStateUi(result = currentResult) {
+  if (!audioFallbackField || !audioFallbackState) {
+    return;
+  }
+
+  const hasResult = Boolean(result?.inputUrl);
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const audioAccess = getCurrentAudioAccessState(result);
+  const mode = audioAccess.mode || "available";
+
+  audioFallbackField.classList.remove("is-supported", "is-needed", "is-ready");
+
+  if (!hasResult) {
+    audioFallbackState.textContent = "Audio status will show here after you load a song.";
+    return;
+  }
+
+  if (hasUploadedAudio) {
+    audioFallbackField.classList.add("is-ready");
+    audioFallbackState.textContent = `Audio fallback ready: ${uploadedAudioFallback.name} will be used on the next render if needed.`;
+    return;
+  }
+
+  if (mode === "available") {
+    audioFallbackField.classList.add("is-supported");
+    audioFallbackState.textContent = "Audio supported: live soundtrack is available. Upload is optional.";
+    return;
+  }
+
+  audioFallbackField.classList.add("is-needed");
+  audioFallbackState.textContent =
+    mode === "recovery"
+      ? "Audio may still recover on the server, but upload audio for guaranteed sound in the final video."
+      : "Audio needed: upload the song file here if you want guaranteed sound in the final video.";
+}
+
 function applyAudioAccessState(result = currentResult) {
   if (!audioAccessShell || !audioStatusBadge || !audioAccessTitle || !audioAccessText) {
     return;
   }
 
+  audioStatusBadge.classList.remove("is-audio-live", "is-audio-recovery", "is-audio-upload");
   audioStatusBadge.style.background = "";
   audioStatusBadge.style.color = "";
 
@@ -524,6 +563,7 @@ function applyAudioAccessState(result = currentResult) {
       audioAccessAction.textContent = "Upload audio";
     }
     audioPlayer.hidden = false;
+    updateAudioFallbackStateUi(result);
     syncMobileAudioCards(result);
     return;
   }
@@ -540,6 +580,9 @@ function applyAudioAccessState(result = currentResult) {
     mode === "available" ? "is-live" : uploadRecommended ? "is-upload" : "is-recovery"
   );
   audioStatusBadge.textContent = audioAccess.badgeLabel || "Audio status";
+  audioStatusBadge.classList.add(
+    mode === "available" ? "is-audio-live" : uploadRecommended ? "is-audio-upload" : "is-audio-recovery"
+  );
   audioAccessEyebrow.textContent = uploadRecommended
     ? "Fallback soundtrack"
     : recoveryMode
@@ -565,6 +608,7 @@ function applyAudioAccessState(result = currentResult) {
   }
 
   audioPlayer.hidden = !Boolean(audioAccess.previewAvailable && result?.audioUrl);
+  updateAudioFallbackStateUi(result);
   syncMobileAudioCards(result);
 }
 
