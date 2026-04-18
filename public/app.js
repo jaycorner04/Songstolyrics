@@ -18,6 +18,7 @@ const audioFallbackPopup = document.getElementById("audio-fallback-popup");
 const audioFallbackPopupTitle = document.getElementById("audio-fallback-popup-title");
 const audioFallbackPopupText = document.getElementById("audio-fallback-popup-text");
 const audioFallbackPopupButton = document.getElementById("audio-fallback-popup-button");
+const audioFallbackPopupClose = document.getElementById("audio-fallback-popup-close");
 const outputFormatInput = document.getElementById("output-format");
 const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
@@ -113,6 +114,8 @@ let uploadedBackgroundVideo = null;
 let uploadedAudioFallback = null;
 let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
+let audioFallbackPopupDismissed = false;
+let audioFallbackPopupKey = "";
 const LOCAL_DEBUG_REFRESH_MS = 350;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const lyricPreviewSamples = {
@@ -551,11 +554,22 @@ function syncAudioFallbackPopup(result = currentResult) {
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
   const audioAccess = getCurrentAudioAccessState(result);
   const mode = audioAccess.mode || "available";
+  const nextPopupKey = hasResult ? `${result?.videoId || result?.inputUrl || ""}:${mode}:${hasUploadedAudio}` : "";
+
+  if (audioFallbackPopupKey !== nextPopupKey) {
+    audioFallbackPopupKey = nextPopupKey;
+    audioFallbackPopupDismissed = false;
+  }
+
   const shouldShow = hasResult && !hasUploadedAudio && mode !== "available";
 
-  audioFallbackPopup.hidden = !shouldShow;
+  audioFallbackPopup.hidden = !shouldShow || audioFallbackPopupDismissed;
 
   if (!shouldShow) {
+    if (!hasResult || hasUploadedAudio || mode === "available") {
+      audioFallbackPopupDismissed = false;
+      audioFallbackPopupKey = nextPopupKey;
+    }
     return;
   }
 
@@ -2633,6 +2647,12 @@ backgroundVideoInput.addEventListener("change", handleBackgroundVideoUpload);
 audioFallbackInput.addEventListener("change", handleAudioFallbackUpload);
 audioFallbackTipButton.addEventListener("click", () => audioFallbackInput.click());
 audioFallbackPopupButton?.addEventListener("click", () => audioFallbackInput.click());
+audioFallbackPopupClose?.addEventListener("click", () => {
+  audioFallbackPopupDismissed = true;
+  if (audioFallbackPopup) {
+    audioFallbackPopup.hidden = true;
+  }
+});
 changeAudioFallbackButton.addEventListener("click", () => audioFallbackInput.click());
 deleteAudioFallbackButton.addEventListener("click", () => {
   clearAudioFallbackSelection();

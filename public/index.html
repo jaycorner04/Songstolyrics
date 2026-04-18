@@ -570,7 +570,17 @@
 
       <div id="audio-fallback-popup" class="audio-fallback-popup" hidden>
         <div class="audio-fallback-popup-copy">
-          <span class="audio-fallback-popup-label">Audio needed</span>
+          <div class="audio-fallback-popup-head">
+            <span class="audio-fallback-popup-label">Audio needed</span>
+            <button
+              id="audio-fallback-popup-close"
+              type="button"
+              class="audio-fallback-popup-close"
+              aria-label="Dismiss audio popup"
+            >
+              X
+            </button>
+          </div>
           <strong id="audio-fallback-popup-title">This link needs uploaded audio</strong>
           <p id="audio-fallback-popup-text">
             Add the song audio file here to keep sound in the final video.
