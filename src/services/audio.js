@@ -834,6 +834,7 @@ async function resolveVideoUrl(videoId) {
 }
 
 module.exports = {
+  cacheRemoteAudioUrlToFile: transcodeRemoteAudioUrlToFile,
   getAudioMimeType,
   isYouTubeBotBlockError,
   resolveAudioInput,
