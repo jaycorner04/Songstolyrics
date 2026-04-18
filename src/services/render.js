@@ -4074,8 +4074,20 @@ function createAssSubtitleContent(
       clamp(targetCenterY, safeMargin + boxHeight / 2, videoSize.height - safeMargin - boxHeight / 2)
     );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
-    const fadeInMs = Math.round(LYRIC_FADE_MS * 0.72);
-    const fadeOutMs = Math.round(LYRIC_FADE_MS * 0.92);
+    const motionProfile = buildAdaptiveLyricMotionProfile(
+      {
+        ...line,
+        duration: lineDurationSeconds
+      },
+      selectedVariant,
+      textLines
+    );
+    const revealMs = motionProfile.revealMs;
+    const fadeInMs = motionProfile.fadeInMs;
+    const fadeOutMs = motionProfile.fadeOutMs;
+    const travelX = Math.round(cinematicTravelX * motionProfile.movementMultiplier);
+    const travelY = Math.round(cinematicTravelY * motionProfile.movementMultiplier);
+    const bounceY = Math.round(bounceTravelY * motionProfile.movementMultiplier);
     const lineEmojiAnchors = plainWords
       .map((word, wordIndex) => ({
         emoji: getLyricEmojiForWord(word),
@@ -4138,19 +4150,19 @@ function createAssSubtitleContent(
     if (selectedVariant === "typewriter" || selectedVariant === "word-by-word") {
       const styledText = buildWordByWordLyricText(
         displayText,
-        Math.min(lineDurationSeconds * 0.82, MAX_LYRIC_HOLD_SECONDS),
-        wrapLength,
+        motionProfile.wordBuildDuration,
+        effectiveWrapLength,
         {
           emojiAssetMap,
           baseTextHex: primaryTextHex
         }
       );
       const startX = alignmentTag === "\\an4"
-        ? Math.max(safeMargin, centerX - Math.round(cinematicTravelX * 0.5))
-        : centerX + (index % 2 === 0 ? -Math.round(cinematicTravelX * 0.55) : Math.round(cinematicTravelX * 0.55));
-      const startY = centerY + Math.round(cinematicTravelY * 1.2);
+        ? Math.max(safeMargin, centerX - Math.round(travelX * 0.5))
+        : centerX + (index % 2 === 0 ? -Math.round(travelX * 0.55) : Math.round(travelX * 0.55));
+      const startY = centerY + Math.round(travelY * 1.2);
       const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.1
+        revealMs * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord2.8\\shad0\\blur0.45\\fscx100\\fscy100\\fsp1.2\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4167,7 +4179,7 @@ function createAssSubtitleContent(
       });
       const comicRotation = index % 2 === 0 ? -1.4 : 1.2;
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(bounceTravelY * 1.05)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+        revealMs * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx84\\fscy84\\bord1.2\\shad0\\blur0.05\\frz${comicRotation}\\fsp0.8\\t(0,130,\\fscx112\\fscy112)\\t(130,260,\\fscx100\\fscy100\\frz0)\\c${hexToAssColor(
         customStyleColorHex || "#111111"
       )}\\3c${hexToAssColor(customStyleColorHex || "#111111")}}`;
@@ -4243,8 +4255,8 @@ function createAssSubtitleContent(
         emojiAssetMap,
         baseTextHex: primaryTextHex
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + bounceTravelY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.15
+      const textTag = `{\\an5\\move(${centerX},${centerY + bounceY},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx74\\fscy74\\bord3.4\\shad0\\blur0.25\\frz0\\t(0,120,\\fscx122\\fscy122)\\t(120,260,\\fscx100\\fscy100)\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4255,7 +4267,7 @@ function createAssSubtitleContent(
     }
 
     if (selectedVariant === "line-by-line") {
-      const perLineDelay = lineCount > 1 ? Math.max(0.12, Math.min(0.34, lineDurationSeconds / (lineCount + 1))) : 0;
+      const perLineDelay = motionProfile.multiLineDelay;
 
       return textLines.map((textLine, textLineIndex) => {
         const eventStartSeconds = Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex);
@@ -4269,7 +4281,7 @@ function createAssSubtitleContent(
           disableHighlight: textLineIndex !== lineCount - 1
         });
         const textTag = `{\\an5\\move(${centerX},${eventY + 26},${centerX},${eventY},0,${Math.round(
-          LYRIC_REVEAL_MS * 0.9
+          revealMs * 0.9
         )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.8\\shad0\\blur0.2\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4290,7 +4302,7 @@ function createAssSubtitleContent(
           disableHighlight: false
         });
         const textTag = `{\\an4\\move(${laneX - 42},${laneY + 16},${laneX},${laneY},0,${Math.round(
-          LYRIC_REVEAL_MS
+          revealMs
         )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.1\\shad0\\blur0.32\\fscx100\\fscy100\\fsp0.8\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4304,8 +4316,8 @@ function createAssSubtitleContent(
         emojiAssetMap,
         baseTextHex: customStyleColorHex || "#ffffff"
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.15
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(travelY * 1.2)},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord1.2\\shad0\\blur0.2\\fsp1.1\\b1\\c${hexToAssColor(
         customStyleColorHex || "#ffffff"
       )}\\3c${hexToAssColor(customStyleColorHex || "#ffffff")}}`;
@@ -4322,9 +4334,9 @@ function createAssSubtitleContent(
         baseTextHex: "#ffffff",
         disableHighlight: false
       });
-      const magicTravelY = Math.round(isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45);
+      const magicTravelY = Math.round((isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45) * motionProfile.movementMultiplier);
       const textTag = `{\\an5\\move(${centerX},${centerY + magicTravelY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+        revealMs * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 0.78)})\\fscx96\\fscy96\\bord1.6\\shad0\\blur0.7\\fsp0.3\\i1\\c${hexToAssColor(
         "#ffffff"
       )}\\3c${hexToAssColor("#171717")}\\t(0,150,\\fscx104\\fscy104)\\t(150,260,\\fscx100\\fscy100)}`;
@@ -4341,8 +4353,8 @@ function createAssSubtitleContent(
         baseTextHex: neonHex,
         disableHighlight: true
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 0.95)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(travelY * 0.95)},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx102\\fscy102\\bord1.1\\shad0\\blur${(0.45 + neonGlowStrength * 2.4).toFixed(2)}\\fsp${(
         0.8 + neonGlowStrength * 1.2
       ).toFixed(2)}\\b1\\c${hexToAssColor(
@@ -4364,7 +4376,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const baseTag = `{\\an5\\move(${centerX + 8},${centerY + 12},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS
+        revealMs
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.6\\shad0\\blur0.25\\fsp0.9\\b1\\c${hexToAssColor(
         glitchPrimaryHex
       )}\\3c${hexToAssColor("#0f1015")}}`;
@@ -4384,13 +4396,13 @@ function createAssSubtitleContent(
 
     if (selectedVariant === "karaoke") {
       const karaokeHex = customStyleColorHex || accentHex || "#ffe17c";
-      const styledText = buildStyledLyricText(displayText, karaokeHex, wrapLength, {
+      const styledText = buildWordByWordLyricText(displayText, motionProfile.wordBuildDuration, effectiveWrapLength, {
         emojiAssetMap,
         baseTextHex: "#111111",
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 18},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 0.9
+        revealMs * 0.9
       )})\\fad(${Math.round(fadeInMs * 0.82)},${Math.round(fadeOutMs * 0.86)})\\fscx100\\fscy100\\bord0\\shad0\\blur0\\fsp0.6\\b1\\c${hexToAssColor(
         "#111111"
       )}\\3c${hexToAssColor("#111111")}}`;
@@ -4408,7 +4420,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 14},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+        revealMs * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 1.05)})\\1a&H18&\\fscx100\\fscy100\\bord1.2\\shad0\\blur0.7\\fsp2.1\\c${hexToAssColor(
         whisperHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4430,7 +4442,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{${alignmentTag}\\move(${startPosterX},${centerY},${arrivalX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 0.95
+        revealMs * 0.95
       )})\\fad(${Math.round(fadeInMs * 0.8)},${Math.round(fadeOutMs * 0.82)})\\fscx98\\fscy98\\bord1.4\\shad0.4\\blur0.05\\fsp-0.25\\b1\\c${hexToAssColor(
         posterTextHex
       )}\\3c${hexToAssColor(posterOutlineHex)}}`;
@@ -4481,17 +4493,17 @@ function createAssSubtitleContent(
         : selectedVariant === "cinematic"
           ? (index % 2 === 0 ? -1 : 1)
           : -1;
-    const startX = centerX + cinematicDirection * cinematicTravelX;
-    const startY = centerY + cinematicTravelY;
+    const startX = centerX + cinematicDirection * travelX;
+    const startY = centerY + travelY;
     const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
       emojiAssetMap,
       baseTextHex: primaryTextHex
     });
     const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-      LYRIC_REVEAL_MS * 1.4
+      revealMs * 1.4
     )})\\fad(${fadeInMs},${fadeOutMs})\\fscx106\\fscy106\\bord3\\shad0\\blur1.05\\fsp1.3\\frz${
       cinematicDirection * -1.2
-    }\\t(0,${Math.round(LYRIC_REVEAL_MS * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
+    }\\t(0,${Math.round(revealMs * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
       primaryTextHex
     )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
@@ -6162,6 +6174,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderProfile.fastMode
         ? "Fast Render mode is active, so the app is using a lighter background pipeline and a quicker export profile."
         : "Standard render mode is active for the full visual pipeline."
+    );
+    renderNotes.push(
+      "Lyric animation pacing now adapts to each line's vocal timing, so slower phrases hold longer and faster phrases reveal more quickly."
     );
 
     if (adaptiveProfile.knownLyricsRisk) {
