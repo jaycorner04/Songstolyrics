@@ -19,7 +19,9 @@ const {
   uploadsRoot
 } = require("./config/runtime");
 const {
+  cacheRemoteAudioUrlToFile,
   isYouTubeBotBlockError,
+  getAudioMimeType,
   resolveAudioInput,
   resolveAudioUrl,
   resolveVideoUrl
@@ -1693,10 +1695,10 @@ app.get(
   "/api/audio/:videoId",
   asyncHandler(async (req, res) => {
     const videoId = extractVideoId(req.params.videoId);
+    const outputDirectory = path.join(previewAudioCacheRoot, videoId);
     const audioSource = await resolveAudioInput(videoId, {
-      outputDirectory: path.join(previewAudioCacheRoot, videoId),
-      allowDownloadFallback: true,
-      preferLocal: true
+      outputDirectory,
+      allowDownloadFallback: true
     });
     res.setHeader("Cache-Control", "no-store");
 
@@ -1705,6 +1707,20 @@ app.get(
       res.sendFile(audioSource.input);
       return;
     }
+
+    try {
+      const cachedPreviewPath = await cacheRemoteAudioUrlToFile(
+        audioSource.input,
+        outputDirectory,
+        videoId
+      );
+
+      if (cachedPreviewPath) {
+        res.type(getAudioMimeType(cachedPreviewPath) || audioSource.mimeType || "audio/mpeg");
+        res.sendFile(cachedPreviewPath);
+        return;
+      }
+    } catch {}
 
     await proxyRemoteMedia(req, res, audioSource.input, audioSource.mimeType || "audio/mpeg");
   })
