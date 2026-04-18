@@ -793,6 +793,9 @@ function syncIdleRenderCta() {
 function setLoadingState(isLoading) {
   submitButton.disabled = isLoading;
   submitButton.textContent = isLoading ? "Loading..." : "Create";
+  if (uploadAudioInlineButton) {
+    uploadAudioInlineButton.disabled = isLoading;
+  }
 }
 
 function updateLyricFontPreview() {
@@ -1680,6 +1683,7 @@ async function handleBackgroundVideoUpload() {
 
 async function handleAudioFallbackUpload() {
   const [file] = Array.from(audioFallbackInput.files || []);
+  revokeUploadedAudioPreviewUrl();
   uploadedAudioFallback = null;
   renderAudioFallbackMeta();
 
@@ -1692,20 +1696,29 @@ async function handleAudioFallbackUpload() {
   try {
     uploadedAudioFallback = await readAudioFileMetadata(file);
     renderAudioFallbackMeta();
-    applyAudioAccessState();
+    if (!urlInput.value.trim() && (!currentResult || isUploadedAudioProject(currentResult))) {
+      await renderResult(buildUploadedAudioProjectResult(uploadedAudioFallback));
+    } else {
+      applyAudioAccessState();
+    }
     promptAudioFallbackRecovery(
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
-        : `Audio fallback ${uploadedAudioFallback.name} is ready. The app will only use it if YouTube audio becomes unavailable.`,
+        : isUploadedAudioProject(currentResult)
+          ? `Uploaded audio ${uploadedAudioFallback.name} is ready. Press create and the app will build the lyric video directly from this file.`
+          : `Audio fallback ${uploadedAudioFallback.name} is ready. The app will only use it if YouTube audio becomes unavailable.`,
       { scroll: false }
     );
     syncIdleRenderCta();
     setStatus(
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ready: ${uploadedAudioFallback.name}. The next render will use it instead of blocked YouTube audio.`
-        : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
+        : isUploadedAudioProject(currentResult)
+          ? `Uploaded audio ready: ${uploadedAudioFallback.name}. You can create the lyric video without pasting a YouTube link.`
+          : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
     );
   } catch (error) {
+    revokeUploadedAudioPreviewUrl();
     uploadedAudioFallback = null;
     renderAudioFallbackMeta();
     applyAudioAccessState();
@@ -1715,10 +1728,20 @@ async function handleAudioFallbackUpload() {
 }
 
 function clearAudioFallbackSelection() {
+  revokeUploadedAudioPreviewUrl();
   uploadedAudioFallback = null;
   audioFallbackInput.value = "";
   renderAudioFallbackMeta();
   hideAudioFallbackRecovery();
+  if (isUploadedAudioProject(currentResult)) {
+    currentResult = null;
+    resultPanel.hidden = true;
+    updateQueryString("");
+    if (shareButton) {
+      shareButton.hidden = true;
+      shareButton.disabled = true;
+    }
+  }
   applyAudioAccessState();
   syncIdleRenderCta();
 }
@@ -2434,8 +2457,8 @@ async function pollRenderJob(jobId) {
 }
 
 async function handleRender() {
-  if (!currentResult?.inputUrl) {
-    setStatus("Load a YouTube track before rendering a video.", true);
+  if (!hasProjectSource()) {
+    setStatus("Paste a YouTube link or upload audio before rendering a video.", true);
     return;
   }
 
@@ -2463,7 +2486,7 @@ async function handleRender() {
 
   try {
     const renderPayload = {
-      inputUrl: currentResult.inputUrl,
+      inputUrl: isUploadedAudioProject(currentResult) ? "" : currentResult.inputUrl,
       videoId: currentResult.videoId,
       title: currentResult.title,
       channelTitle: currentResult.channelTitle,
@@ -2562,16 +2585,34 @@ async function handleSubmit(event) {
   event.preventDefault();
 
   const videoUrl = urlInput.value.trim();
-  if (!videoUrl) {
-    setStatus("Paste a YouTube link before continuing.", true);
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+
+  if (!videoUrl && !hasUploadedAudio) {
+    setStatus("Paste a YouTube link or upload audio before continuing.", true);
     return;
   }
 
   setLoadingState(true);
   resetRenderState();
-  setStatus("Fetching video details, audio, and lyrics...");
+  setStatus(
+    videoUrl
+      ? "Fetching video details, audio, and lyrics..."
+      : "Preparing the uploaded audio project..."
+  );
 
   try {
+    if (!videoUrl && hasUploadedAudio) {
+      const uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+
+      if (!uploadedAudioProject) {
+        throw new Error("The uploaded audio could not be prepared.");
+      }
+
+      await renderResult(uploadedAudioProject);
+      await handleRender();
+      return;
+    }
+
     const response = await fetch("/api/convert", {
       method: "POST",
       headers: {
