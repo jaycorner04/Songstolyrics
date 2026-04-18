@@ -1805,12 +1805,16 @@ app.post(
       throw createError("Upload an audio file to start an audio-only project.", 400);
     }
 
-    const payload = await buildUploadedAudioPreview(audioFileUpload, {
-      title: `${req.body?.title || ""}`.trim(),
-      durationSeconds: Number(req.body?.durationSeconds || 0)
-    });
+    try {
+      const payload = await buildUploadedAudioPreview(audioFileUpload, {
+        title: `${req.body?.title || ""}`.trim(),
+        durationSeconds: Number(req.body?.durationSeconds || 0)
+      });
 
-    res.json(payload);
+      res.json(payload);
+    } finally {
+      await fsp.rm(audioFileUpload.path, { force: true }).catch(() => {});
+    }
   })
 );
 

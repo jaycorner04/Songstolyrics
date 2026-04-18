@@ -1944,6 +1944,24 @@ async function handleAudioFallbackUpload() {
           : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
     );
   } catch (error) {
+    if (uploadedAudioFallback?.file) {
+      renderAudioFallbackMeta();
+
+      if (!urlInput.value.trim() && (!currentResult || isUploadedAudioProject(currentResult))) {
+        await renderResult(buildUploadedAudioProjectResult(uploadedAudioFallback));
+      } else {
+        applyAudioAccessState();
+      }
+
+      syncIdleRenderCta();
+      setStatus(
+        error.message ||
+          "The uploaded audio is ready, but the lyric preview could not be prepared yet. The final render will still build from the file.",
+        true
+      );
+      return;
+    }
+
     revokeUploadedAudioPreviewUrl();
     uploadedAudioFallback = null;
     renderAudioFallbackMeta();
