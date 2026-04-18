@@ -79,6 +79,10 @@ async function getRuntimeDiagnostics() {
   const cookieFile = resolveCookieFilePath();
   const proxyUrl = resolveProxyUrl();
   const ytdlCoreProxyUrl = resolveProxyUrl("ytdlCore");
+  const remoteComponents = `${process.env.YTDLP_REMOTE_COMPONENTS || ""}`.trim();
+  const jsRuntimes = `${process.env.YTDLP_JS_RUNTIMES || ""}`.trim();
+  const bgutilBaseUrl = `${process.env.YTDLP_BGUTIL_BASE_URL || ""}`.trim();
+  const pluginDirs = `${process.env.YTDLP_PLUGIN_DIRS || ""}`.trim();
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -102,6 +106,26 @@ async function getRuntimeDiagnostics() {
       Boolean(ytdlCoreProxyUrl),
       ytdlCoreProxyUrl ||
         "not configured (set YTDL_CORE_PROXY_URL if the cookie-backed ytdl-core fallback should use a different proxy)",
+      false
+    ),
+    ytDlpRemoteComponents: buildCheck(
+      Boolean(remoteComponents),
+      remoteComponents || "not configured (set YTDLP_REMOTE_COMPONENTS for yt-dlp EJS or other remote components)",
+      false
+    ),
+    ytDlpJsRuntimes: buildCheck(
+      Boolean(jsRuntimes),
+      jsRuntimes || "not configured (set YTDLP_JS_RUNTIMES when yt-dlp needs a JS runtime such as node)",
+      false
+    ),
+    ytDlpBgutilProvider: buildCheck(
+      Boolean(bgutilBaseUrl),
+      bgutilBaseUrl || "not configured (set YTDLP_BGUTIL_BASE_URL if using a bgutil PO-token provider service)",
+      false
+    ),
+    ytDlpPluginDirs: buildCheck(
+      Boolean(pluginDirs),
+      pluginDirs || "not configured (set YTDLP_PLUGIN_DIRS if yt-dlp plugins live outside the default environment)",
       false
     ),
     runtimeRoot: buildCheck(fs.existsSync(runtimeRoot), runtimeRoot, true)
