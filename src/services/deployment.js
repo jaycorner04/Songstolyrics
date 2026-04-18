@@ -84,6 +84,9 @@ async function getRuntimeDiagnostics() {
   const bgutilBaseUrl = `${process.env.YTDLP_BGUTIL_BASE_URL || ""}`.trim();
   const pluginDirs = `${process.env.YTDLP_PLUGIN_DIRS || ""}`.trim();
   const profileChain = `${process.env.YTDLP_PROFILE_CHAIN || process.env.YTDLP_AUDIO_PROFILE_CHAIN || ""}`.trim();
+  const visitorData = `${process.env.YTDLP_VISITOR_DATA || ""}`.trim();
+  const poToken = `${process.env.YTDLP_PO_TOKEN || ""}`.trim();
+  const poTokenClient = `${process.env.YTDLP_PO_TOKEN_CLIENT || ""}`.trim();
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -127,6 +130,16 @@ async function getRuntimeDiagnostics() {
     ytDlpPluginDirs: buildCheck(
       Boolean(pluginDirs),
       pluginDirs || "not configured (set YTDLP_PLUGIN_DIRS if yt-dlp plugins live outside the default environment)",
+      false
+    ),
+    ytDlpVisitorData: buildCheck(
+      Boolean(visitorData),
+      visitorData ? "configured" : "not configured (set YTDLP_VISITOR_DATA only when using a matching PO token flow)",
+      false
+    ),
+    ytDlpPoToken: buildCheck(
+      Boolean(poToken),
+      poToken ? `configured for ${poTokenClient || "default client"}` : "not configured (set YTDLP_PO_TOKEN with a matching client and session)",
       false
     ),
     ytDlpProfileChain: buildCheck(
