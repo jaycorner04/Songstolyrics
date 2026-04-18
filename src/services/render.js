@@ -2345,6 +2345,18 @@ function canApproveShortCaptionReferenceReport({
   );
 }
 
+function shouldBypassStrictSyncFailure(payload = {}) {
+  const sourceText = normalizeWhitespace(
+    `${payload?.videoId || ""} ${payload?.title || ""} ${payload?.channelTitle || ""} ${payload?.song?.title || ""} ${payload?.song?.artist || ""}`
+  );
+  const uploadedAudioOnly = /^upload-/i.test(`${payload?.videoId || ""}`.trim()) && !`${payload?.inputUrl || ""}`.trim();
+  const teluguOrDevotional = /\b(telugu|devotional|stotram|mantra|bhajan|chalisa|aarti|slokam|ashtakam|sahasranamam|suprabhatam)\b/i.test(
+    sourceText
+  );
+
+  return uploadedAudioOnly || teluguOrDevotional;
+}
+
 function buildIntroPreservedTranscriptCandidate({
   sourceLines = [],
   transcriptLines = [],
@@ -3611,6 +3623,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
 
   if (report.approvalMode === "short-caption-reference-fallback") {
     return "Strict sync verification kept the caption-timed lyric sheet for this short-form video because the validation transcript was too sparse to replace it safely.";
+  }
+
+  if (report.approvalMode === "trusted-sparse-source-bypass") {
+    return "Strict sync verification was bypassed for this uploaded-audio or Telugu/devotional render, so the export continued with the best available lyric timing.";
   }
 
   return report.transcriptDerived
@@ -7294,7 +7310,24 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               "Strict sync verification approved this uploaded-audio render with the best available transcript even though the final transcript was sparse."
             );
             } else {
-              if (hasUploadedAudioOnlySource && renderLines.length >= 4) {
+              if (shouldBypassStrictSyncFailure(payload)) {
+                if (renderLines.length < 2) {
+                  renderLines = buildFallbackLines(payload, durationSeconds);
+                }
+
+                strictSyncReport = {
+                  ...strictSyncReport,
+                  approved: true,
+                  reason: "",
+                  approvalMode: "trusted-sparse-source-bypass",
+                  transcriptDerived: renderLinesAreTranscriptDerived,
+                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
+                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
+                };
+                renderNotes.push(
+                  "Strict sync validation was bypassed for this uploaded-audio or Telugu/devotional render, so the export continued with the best available lyric source."
+                );
+              } else if (hasUploadedAudioOnlySource && renderLines.length >= 4) {
                 renderNotes.push(
                   "Strict sync check was relaxed for uploaded audio and the render trusted the user-provided file."
                 );
@@ -7333,7 +7366,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         message: "No verified lyric lines were available after all render-time recovery steps."
       });
 
-      if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
+      if (payload.requireVerifiedSync !== false && canUseAudioTranscription && !shouldBypassStrictSyncFailure(payload)) {
         throw createRenderError(
           "No verified lyric lines were available for this video, so the app stopped before rendering.",
           422
@@ -7341,7 +7374,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
 
       renderLines = buildFallbackLines(payload, durationSeconds);
-      renderNotes.push("Lyrics were not found or transcribed, so the video uses artist and title cards instead.");
+      renderNotes.push(
+        shouldBypassStrictSyncFailure(payload)
+          ? "Verified lyrics stayed too sparse, so this uploaded-audio or Telugu/devotional render continued with safe fallback title cards."
+          : "Lyrics were not found or transcribed, so the video uses artist and title cards instead."
+      );
     } else {
       renderNotes.push("Lyrics animate in bold kinetic title cards with fast entry and exit motion.");
     }
