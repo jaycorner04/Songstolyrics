@@ -74,6 +74,7 @@ async function getRuntimeDiagnostics() {
     : { ok: false, detail: "ffprobe-static missing" };
   const python = await runCheck("python", ["--version"]);
   const ytDlp = await runCheck("python", ["-m", "yt_dlp", "--version"]);
+  const deno = await runCheck("deno", ["--version"]);
   const fasterWhisper = await runCheck("python", ["-c", "import faster_whisper"]);
   const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
   const cookieFile = resolveCookieFilePath();
@@ -94,6 +95,7 @@ async function getRuntimeDiagnostics() {
     ffprobe: buildCheck(ffprobe.ok, ffprobe.detail, true),
     python: buildCheck(python.ok, python.detail, true),
     ytDlp: buildCheck(ytDlp.ok, ytDlp.detail, true),
+    deno: buildCheck(deno.ok, deno.detail, false),
     fasterWhisper: buildCheck(fasterWhisper.ok, fasterWhisper.detail, false),
     openAiWhisper: buildCheck(openAiWhisper.ok, openAiWhisper.detail, false),
     ytDlpCookies: buildCheck(
