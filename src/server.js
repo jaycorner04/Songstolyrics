@@ -1042,6 +1042,26 @@ function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
   return false;
 }
 
+function shouldPreferCaptionPreviewForShortVideo(metadata = {}, captionSummary = {}) {
+  const durationSeconds = Number(metadata?.durationSeconds || 0);
+  const title = normalizeWhitespace(metadata?.title || "").toLowerCase();
+  const description = normalizeWhitespace(metadata?.description || "").toLowerCase();
+  const readableCount = Number(captionSummary?.readableCount || 0);
+  const totalCount = Number(captionSummary?.total || 0);
+  const readableRatio = totalCount > 0 ? readableCount / totalCount : 0;
+  const shortTagDetected = /(^|[\s#])shorts?\b/.test(title) || /(^|[\s#])shorts?\b/.test(description);
+
+  if (!durationSeconds || durationSeconds > 70) {
+    return false;
+  }
+
+  if (readableCount < 4) {
+    return false;
+  }
+
+  return shortTagDetected || readableRatio >= 0.55 || totalCount <= 12;
+}
+
 function shouldUseAudioFallbackForPreview(metadata = {}, lyricResult = {}, options = {}) {
   if (options.hasFastDescriptionLyrics) {
     return false;
@@ -1094,6 +1114,31 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
   });
   const captionSummary = selectCaptionCuesForLyrics(captionCues, adaptiveProfile);
   const safeCaptionCues = captionSummary.usableCues;
+
+  if (shouldPreferCaptionPreviewForShortVideo(metadata, captionSummary)) {
+    const captionFallback = buildCaptionFallbackPayload(
+      captionSummary.readableCues,
+      metadata.durationSeconds,
+      descriptionSong || fallbackSong
+    );
+
+    if (captionFallback?.lines?.length) {
+      const romanizedCaptionFallback = romanizeLyricResultIfNeeded(captionFallback);
+      const warnings = [
+        "This short-form video opened with YouTube captions for a faster preview."
+      ];
+
+      if (romanizedCaptionFallback.changed) {
+        warnings.push("Telugu lyrics were converted into English letters for the website preview.");
+      }
+
+      return {
+        lyricResult: romanizedCaptionFallback.lyricResult,
+        warnings
+      };
+    }
+  }
+
   let lyricResult = await withTimeout(
     buildLyricsPayload({
       rawTitle: metadata.title,
