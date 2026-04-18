@@ -1783,7 +1783,8 @@ app.get(
 
     const audioSource = await resolveAudioInput(videoId, {
       outputDirectory,
-      allowDownloadFallback: true
+      allowDownloadFallback: true,
+      preferLocal: true
     });
     res.setHeader("Cache-Control", "no-store");
 
