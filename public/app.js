@@ -100,6 +100,7 @@ let renderPollTimer = null;
 let activeRenderJobId = "";
 let localDebugPollTimer = null;
 let localDebugRefreshInFlight = false;
+let localDebugRefreshQueued = false;
 let localDebugLastRefreshedAt = "";
 let musicBulletinTimer = null;
 let uploadedBackgrounds = [];
@@ -1020,37 +1021,38 @@ function renderLocalDebugStatus({
   localDebugStatus.textContent = parts.join(" • ");
 }
 
-async function refreshLocalDebugPanel() {
+async function refreshLocalDebugPanel(options = {}) {
   if (!isLocalDebugMode || !localDebugCard || !localDebugList) {
     return;
   }
 
   if (localDebugRefreshInFlight) {
+    localDebugRefreshQueued = true;
     return;
   }
 
   localDebugRefreshInFlight = true;
+  localDebugRefreshQueued = false;
 
   try {
-    const healthResponse = await fetch(`/api/health?ts=${Date.now()}`, {
+    const requestTs = Date.now();
+    const fetchOptions = {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-cache"
       }
-    });
-    const healthPayload = healthResponse.ok ? await healthResponse.json() : {};
-    const response = await fetch(`/api/local-debug/errors?ts=${Date.now()}`, {
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache"
-      }
-    });
+    };
+    const [healthResponse, response] = await Promise.all([
+      fetch(`/api/health?ts=${requestTs}`, fetchOptions),
+      fetch(`/api/local-debug/errors?ts=${requestTs}`, fetchOptions)
+    ]);
 
     if (!response.ok) {
       return;
     }
 
-      const payload = await response.json();
+    const healthPayload = healthResponse.ok ? await healthResponse.json() : {};
+    const payload = await response.json();
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     localDebugLastRefreshedAt = new Date().toLocaleTimeString();
     renderLocalDebugPanel(entries);
@@ -1069,6 +1071,13 @@ async function refreshLocalDebugPanel() {
     });
   } finally {
     localDebugRefreshInFlight = false;
+
+    if (localDebugRefreshQueued || options.immediateFollowup) {
+      localDebugRefreshQueued = false;
+      window.setTimeout(() => {
+        refreshLocalDebugPanel().catch(() => {});
+      }, 0);
+    }
   }
 }
 
