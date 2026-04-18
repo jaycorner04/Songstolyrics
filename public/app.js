@@ -123,6 +123,7 @@ const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const LOCAL_DEBUG_REFRESH_MS = 350;
+const LOCAL_DEBUG_REQUEST_TIMEOUT_MS = 4500;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const configuredLocalDebugBaseUrl = (
   document.querySelector('meta[name="local-debug-base-url"]')?.getAttribute("content") || ""
@@ -1274,6 +1275,23 @@ function buildLocalDebugUrl(pathname = "") {
   return `${effectiveLocalDebugBaseUrl}${safePath}`;
 }
 
+async function fetchLocalDebugJson(pathname = "", options = {}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, LOCAL_DEBUG_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(buildLocalDebugUrl(pathname), {
+      cache: "no-store",
+      signal: controller.signal,
+      ...options
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function persistLocalDebugCache({
   entries = [],
   runtimeRoot = "",
@@ -1449,12 +1467,9 @@ async function refreshLocalDebugPanel(options = {}) {
 
   try {
     const requestTs = Date.now();
-    const fetchOptions = {
-      cache: "no-store"
-    };
     const [healthResponse, response] = await Promise.all([
-      fetch(buildLocalDebugUrl(`/api/health?ts=${requestTs}`), fetchOptions),
-      fetch(buildLocalDebugUrl(`/api/local-debug/errors?ts=${requestTs}`), fetchOptions)
+      fetchLocalDebugJson(`/api/health?ts=${requestTs}`),
+      fetchLocalDebugJson(`/api/local-debug/errors?ts=${requestTs}`)
     ]);
 
     if (!response.ok) {
