@@ -20,6 +20,7 @@ const {
 } = require("./config/runtime");
 const {
   cacheRemoteAudioUrlToFile,
+  findDownloadedAudioFile,
   isYouTubeBotBlockError,
   getAudioMimeType,
   resolveAudioInput,
@@ -154,12 +155,12 @@ function asyncHandler(handler) {
 
 function warmPreviewAudioCache(videoId, audioSource) {
   if (!videoId || !audioSource?.input) {
-    return;
+    return Promise.resolve();
   }
 
   const outputDirectory = path.join(previewAudioCacheRoot, videoId);
 
-  Promise.resolve()
+  return Promise.resolve()
     .then(async () => {
       if (audioSource.sourceType === "file") {
         return;
@@ -188,7 +189,7 @@ function queuePreviewWarmup(videoId) {
         outputDirectory,
         allowDownloadFallback: true
       });
-      warmPreviewAudioCache(videoId, source);
+      await warmPreviewAudioCache(videoId, source);
     })
     .catch(() => {})
     .finally(() => {
@@ -270,6 +271,19 @@ async function proxyRemoteMedia(req, res, sourceUrl, defaultMimeType = "applicat
       }
     })
   );
+}
+
+async function sendCachedPreviewAudio(res, videoId, outputDirectory, fallbackMimeType = "audio/mpeg") {
+  const cachedPreviewPath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+  if (!cachedPreviewPath) {
+    return false;
+  }
+
+  res.setHeader("Cache-Control", "no-store");
+  res.type(getAudioMimeType(cachedPreviewPath) || fallbackMimeType);
+  res.sendFile(cachedPreviewPath);
+  return true;
 }
 
 async function sendIndexHtml(req, res) {
@@ -1749,6 +1763,24 @@ app.get(
   asyncHandler(async (req, res) => {
     const videoId = extractVideoId(req.params.videoId);
     const outputDirectory = path.join(previewAudioCacheRoot, videoId);
+
+    if (await sendCachedPreviewAudio(res, videoId, outputDirectory)) {
+      return;
+    }
+
+    const activeWarmup = previewWarmups.get(videoId);
+
+    if (activeWarmup) {
+      await Promise.race([
+        activeWarmup.catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 20000))
+      ]);
+
+      if (await sendCachedPreviewAudio(res, videoId, outputDirectory)) {
+        return;
+      }
+    }
+
     const audioSource = await resolveAudioInput(videoId, {
       outputDirectory,
       allowDownloadFallback: true
@@ -1768,16 +1800,20 @@ app.get(
         videoId
       );
 
-      if (cachedPreviewPath) {
-        res.type(getAudioMimeType(cachedPreviewPath) || audioSource.mimeType || "audio/mpeg");
-        res.sendFile(cachedPreviewPath);
+        if (cachedPreviewPath) {
+          res.type(getAudioMimeType(cachedPreviewPath) || audioSource.mimeType || "audio/mpeg");
+          res.sendFile(cachedPreviewPath);
+          return;
+        }
+      } catch {}
+
+      if (await sendCachedPreviewAudio(res, videoId, outputDirectory, audioSource.mimeType || "audio/mpeg")) {
         return;
       }
-    } catch {}
 
-    await proxyRemoteMedia(req, res, audioSource.input, audioSource.mimeType || "audio/mpeg");
-  })
-);
+      await proxyRemoteMedia(req, res, audioSource.input, audioSource.mimeType || "audio/mpeg");
+    })
+  );
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
