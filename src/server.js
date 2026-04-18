@@ -1940,6 +1940,9 @@ app.post(
 app.post(
   "/api/convert",
   asyncHandler(async (req, res) => {
+    req.socket.setTimeout(55000);
+    res.setTimeout(55000);
+
     const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
 
     if (!videoUrl) {
