@@ -32,7 +32,6 @@ const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptiv
 const { getRuntimeDiagnostics } = require("./services/deployment");
 const {
   buildLyricsPayload,
-  buildTimedLines,
   estimateStartsFromDuration,
   inferSongFromFilename,
   inferSongFromVideo,
