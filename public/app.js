@@ -871,10 +871,6 @@ function syncMobileAudioCards(result = currentResult) {
   if (previewNode && previewNode.parentNode !== desktopAudioPreviewSlot) {
     desktopAudioPreviewSlot.appendChild(previewNode);
   }
-
-  if (mobileStageCard) {
-    mobileStageCard.hidden = true;
-  }
 }
 
 function syncMobileStageCard() {
@@ -883,9 +879,6 @@ function syncMobileStageCard() {
   }
 
   const mobileLayout = isCompactMobileLayout();
-  const target = mobileLayout ? mobileStageSlot : renderStageCard.dataset.desktopParent
-    ? document.getElementById(renderStageCard.dataset.desktopParent)
-    : null;
 
   if (!renderStageCard.dataset.desktopParent) {
     const parentId = renderStageCard.parentElement?.id || "";
@@ -2618,6 +2611,7 @@ updateLyricStylePreview();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();
 syncMobileAudioCards();
+syncMobileStageCard();
 renderLocalDebugPanel([]);
 renderLocalDebugStatus({
   connected: false,
@@ -2714,6 +2708,7 @@ window.addEventListener("DOMContentLoaded", () => {
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
   syncMobileAudioCards();
+  syncMobileStageCard();
   const params = new URLSearchParams(window.location.search);
   const initialUrl = params.get("url");
 
@@ -2725,4 +2720,5 @@ window.addEventListener("DOMContentLoaded", () => {
 
 window.addEventListener("resize", () => {
   syncMobileAudioCards();
+  syncMobileStageCard();
 });
