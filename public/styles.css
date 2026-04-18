@@ -938,10 +938,21 @@ button {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.input-row .input-row-secondary-button {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+
 .input-row button:hover,
 .share-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 30px rgba(255, 122, 69, 0.28);
+}
+
+.input-row .input-row-secondary-button:hover {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .input-row button:disabled,
@@ -950,6 +961,10 @@ button {
   cursor: wait;
   transform: none;
   box-shadow: none;
+}
+
+.input-row .input-row-secondary-button:disabled {
+  color: var(--muted);
 }
 
 .helper-text {

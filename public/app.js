@@ -1,5 +1,6 @@
 const form = document.getElementById("converter-form");
 const urlInput = document.getElementById("video-url");
+const uploadAudioInlineButton = document.getElementById("upload-audio-inline-button");
 const submitButton = document.getElementById("submit-button");
 const backgroundImagesInput = document.getElementById("background-images");
 const backgroundVideoInput = document.getElementById("background-video");
@@ -450,6 +451,77 @@ function extractVideoIdFromUrl(value = "") {
     /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
   );
   return match ? match[1] : "";
+}
+
+function stripFileExtension(value = "") {
+  return `${value || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
+}
+
+function slugifyLocalProjectId(value = "") {
+  return `${value || ""}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function isUploadedAudioProject(result = currentResult) {
+  return result?.sourceType === "uploaded-audio";
+}
+
+function hasProjectSource(result = currentResult) {
+  return Boolean(result?.inputUrl) || isUploadedAudioProject(result);
+}
+
+function isShareableProject(result = currentResult) {
+  return Boolean(result?.inputUrl) && !isUploadedAudioProject(result);
+}
+
+function buildUploadedAudioProjectResult(audioMeta = uploadedAudioFallback) {
+  if (!audioMeta?.file) {
+    return null;
+  }
+
+  const rawTitle = stripFileExtension(audioMeta.name || "Uploaded audio");
+  const title = rawTitle || "Uploaded audio";
+  const projectId = slugifyLocalProjectId(title) || "uploaded-audio";
+
+  return {
+    sourceType: "uploaded-audio",
+    projectId,
+    inputUrl: "",
+    videoId: `upload-${projectId}`,
+    title,
+    channelTitle: "Uploaded audio",
+    description: "This project was started from an uploaded audio file.",
+    durationSeconds: Number(audioMeta.duration || 0),
+    thumbnails: [],
+    poster: "",
+    audioUrl: audioMeta.previewUrl || "",
+    audioPreviewBlocked: false,
+    audioAccess: {
+      mode: "available",
+      previewAvailable: Boolean(audioMeta.previewUrl),
+      badgeLabel: "Audio uploaded",
+      title: "Uploaded audio is ready",
+      summary:
+        "This project will render directly from your uploaded audio file. A YouTube link is optional for this path.",
+      primaryActionLabel: "Create lyric video",
+      recommendedAction: "render"
+    },
+    audioMimeType: audioMeta.mimeType || "audio/mpeg",
+    song: {
+      title,
+      artist: "Uploaded audio"
+    },
+    lyricsSource: "uploaded-audio",
+    syncMode: "transcribed",
+    lines: [],
+    warnings: [
+      "This project started from uploaded audio, so the render will build timing from the file instead of from a YouTube link.",
+      "Add background images or a background video if you want custom visuals before the render starts."
+    ]
+  };
 }
 
 function formatTime(seconds) {
@@ -1324,9 +1396,9 @@ function readAudioFileMetadata(file) {
         name: file.name,
         duration: Number(audio.duration || 0),
         size: Number(file.size || 0),
-        mimeType: file.type || ""
+        mimeType: file.type || "",
+        previewUrl: objectUrl
       });
-      URL.revokeObjectURL(objectUrl);
     };
     audio.onerror = () => {
       URL.revokeObjectURL(objectUrl);
