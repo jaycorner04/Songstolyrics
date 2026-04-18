@@ -22,6 +22,17 @@ function cleanSongTitleFragment(value = "") {
   );
 }
 
+function cleanUploadedFilenameFragment(value = "") {
+  return normalizeWhitespace(
+    `${value || ""}`
+      .replace(
+        /\b(upload|uploaded|audio|song|music|official|lyrics?|lyrical|video|hd|4k|viral|status|edit|shorts?|reel|instagram|insta)\b/gi,
+        ""
+      )
+      .replace(/\s{2,}/g, " ")
+  );
+}
+
 function stripFeaturedArtists(value = "") {
   return normalizeWhitespace(
     `${value || ""}`
@@ -128,12 +139,10 @@ function inferSongFromVideo(rawTitle, channelTitle) {
 }
 
 function inferSongFromFilename(filename = "") {
-  const cleanedFilename = normalizeWhitespace(
+  const cleanedFilename = cleanUploadedFilenameFragment(
     `${filename || ""}`
       .replace(/\.[^/.]+$/, "")
       .replace(/[_-]+/g, " ")
-      .replace(/\b(upload|uploaded|audio|song|music|official|lyrics?|lyrical|video|hd|4k)\b/gi, "")
-      .replace(/\s{2,}/g, " ")
   );
 
   if (!cleanedFilename) {
@@ -151,12 +160,42 @@ function inferSongFromFilename(filename = "") {
     };
   }
 
+  const devotionalAnchorIndex = cleanedFilename
+    .toLowerCase()
+    .split(/\s+/)
+    .findIndex((token) =>
+      /^(stotram|mantra|bhajan|chalisa|aarti|aarti|slokam|ashtakam|sahasranamam|suprabhatam|keerthana|kirtan)$/.test(
+        token
+      )
+    );
+  const devotionalTitle =
+    devotionalAnchorIndex >= 0
+      ? normalizeWhitespace(
+          cleanedFilename
+            .split(/\s+/)
+            .slice(0, devotionalAnchorIndex + 1)
+            .join(" ")
+        )
+      : "";
+
+  if (devotionalTitle) {
+    return {
+      artist: "",
+      title: stripFeaturedArtists(devotionalTitle),
+      searchQuery: devotionalTitle,
+      cleanedVideoTitle: cleanedFilename
+    };
+  }
+
   const guessedFromTitle = inferSongFromVideo(cleanedFilename, "Uploaded audio");
+  const normalizedArtist =
+    /^uploaded audio$/i.test(normalizeWhitespace(guessedFromTitle.artist || "")) ? "" : guessedFromTitle.artist;
 
   return {
     ...guessedFromTitle,
+    artist: normalizedArtist,
     searchQuery:
-      normalizeWhitespace(`${guessedFromTitle.artist} ${guessedFromTitle.title}`) || cleanedFilename,
+      normalizeWhitespace(`${normalizedArtist} ${guessedFromTitle.title}`) || cleanedFilename,
     cleanedVideoTitle: cleanedFilename
   };
 }
