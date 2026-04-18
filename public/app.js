@@ -1370,7 +1370,6 @@ function connectLocalDebugStream() {
   }
 
   try {
-    const stream = new window.EventSource(`/api/local-debug/stream?ts=${Date.now()}`);
     const stream = new window.EventSource(buildLocalDebugUrl(`/api/local-debug/stream?ts=${Date.now()}`));
     localDebugEventSource = stream;
 
@@ -1399,7 +1398,6 @@ async function reportLocalDebugError(payload = {}) {
   }
 
   try {
-    await fetch("/api/local-debug/errors", {
     await fetch(buildLocalDebugUrl("/api/local-debug/errors"), {
       method: "POST",
       cache: "no-store",
@@ -1428,7 +1426,6 @@ async function clearLocalDebugPanel() {
   });
 
   try {
-    await fetch("/api/local-debug/errors", {
     await fetch(buildLocalDebugUrl("/api/local-debug/errors"), {
       method: "DELETE",
       cache: "no-store",
@@ -1451,7 +1448,6 @@ async function deleteLocalDebugEntry(id) {
     .filter((entry) => entry.id && entry.id !== Number(id));
 
   try {
-    await fetch(`/api/local-debug/errors/${encodeURIComponent(id)}`, {
     await fetch(buildLocalDebugUrl(`/api/local-debug/errors/${encodeURIComponent(id)}`), {
       method: "DELETE",
       cache: "no-store",
