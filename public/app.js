@@ -14,6 +14,10 @@ const audioFallbackTip = document.getElementById("audio-fallback-tip");
 const audioFallbackTipTitle = document.getElementById("audio-fallback-tip-title");
 const audioFallbackTipText = document.getElementById("audio-fallback-tip-text");
 const audioFallbackTipButton = document.getElementById("audio-fallback-tip-button");
+const audioFallbackPopup = document.getElementById("audio-fallback-popup");
+const audioFallbackPopupTitle = document.getElementById("audio-fallback-popup-title");
+const audioFallbackPopupText = document.getElementById("audio-fallback-popup-text");
+const audioFallbackPopupButton = document.getElementById("audio-fallback-popup-button");
 const outputFormatInput = document.getElementById("output-format");
 const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
@@ -538,6 +542,35 @@ function updateAudioFallbackStateUi(result = currentResult) {
       : "Audio needed: upload the song file here if you want guaranteed sound in the final video.";
 }
 
+function syncAudioFallbackPopup(result = currentResult) {
+  if (!audioFallbackPopup || !audioFallbackPopupTitle || !audioFallbackPopupText) {
+    return;
+  }
+
+  const hasResult = Boolean(result?.inputUrl);
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const audioAccess = getCurrentAudioAccessState(result);
+  const mode = audioAccess.mode || "available";
+  const shouldShow = hasResult && !hasUploadedAudio && mode !== "available";
+
+  audioFallbackPopup.hidden = !shouldShow;
+
+  if (!shouldShow) {
+    return;
+  }
+
+  if (mode === "recovery") {
+    audioFallbackPopupTitle.textContent = "Add audio for guaranteed sound";
+    audioFallbackPopupText.textContent =
+      "This link is still trying smart recovery. Upload the song file now if you want guaranteed sound in the final video.";
+    return;
+  }
+
+  audioFallbackPopupTitle.textContent = "This link needs audio";
+  audioFallbackPopupText.textContent =
+    "Lyrics and artwork are ready. Add the song audio file now so the final video keeps sound.";
+}
+
 function applyAudioAccessState(result = currentResult) {
   if (!audioAccessShell || !audioStatusBadge || !audioAccessTitle || !audioAccessText) {
     return;
@@ -560,6 +593,7 @@ function applyAudioAccessState(result = currentResult) {
     }
     audioPlayer.hidden = false;
     updateAudioFallbackStateUi(result);
+    syncAudioFallbackPopup(result);
     syncMobileAudioCards(result);
     return;
   }
@@ -605,6 +639,7 @@ function applyAudioAccessState(result = currentResult) {
 
   audioPlayer.hidden = !Boolean(audioAccess.previewAvailable && result?.audioUrl);
   updateAudioFallbackStateUi(result);
+  syncAudioFallbackPopup(result);
   syncMobileAudioCards(result);
 }
 
