@@ -587,7 +587,7 @@ function updateAudioFallbackStateUi(result = currentResult) {
     return;
   }
 
-  const hasResult = Boolean(result?.inputUrl);
+  const hasResult = hasProjectSource(result);
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
   const audioAccess = getCurrentAudioAccessState(result);
   const mode = audioAccess.mode || "available";
@@ -623,18 +623,20 @@ function syncAudioFallbackPopup(result = currentResult) {
     return;
   }
 
-  const hasResult = Boolean(result?.inputUrl);
+  const hasResult = hasProjectSource(result);
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
   const audioAccess = getCurrentAudioAccessState(result);
   const mode = audioAccess.mode || "available";
-  const nextPopupKey = hasResult ? `${result?.videoId || result?.inputUrl || ""}:${mode}:${hasUploadedAudio}` : "";
+  const nextPopupKey = hasResult
+    ? `${result?.projectId || result?.videoId || result?.inputUrl || result?.title || ""}:${isUploadedAudioProject(result) ? "upload" : "source"}`
+    : "";
 
   if (audioFallbackPopupKey !== nextPopupKey) {
     audioFallbackPopupKey = nextPopupKey;
     audioFallbackPopupDismissed = false;
   }
 
-  const shouldShow = hasResult && !hasUploadedAudio && mode !== "available";
+  const shouldShow = hasResult && !isUploadedAudioProject(result) && !hasUploadedAudio && mode !== "available";
 
   audioFallbackPopup.hidden = !shouldShow || audioFallbackPopupDismissed;
 
@@ -667,12 +669,12 @@ function applyAudioAccessState(result = currentResult) {
   audioStatusBadge.style.background = "";
   audioStatusBadge.style.color = "";
 
-  if (!result?.inputUrl) {
+  if (!hasProjectSource(result)) {
     audioStatusBadge.textContent = "Audio status";
     audioAccessEyebrow.textContent = "Sound mode";
     audioAccessTitle.textContent = "Checking the soundtrack path";
     audioAccessText.textContent =
-      "The app will decide whether this link can use live YouTube audio, protected server recovery, or an uploaded soundtrack.";
+      "The app will decide whether this project uses live YouTube audio, protected server recovery, or your uploaded soundtrack.";
     audioAccessShell.classList.remove("is-live", "is-recovery", "is-upload");
     if (audioAccessAction) {
       audioAccessAction.hidden = true;
@@ -735,10 +737,10 @@ function syncIdleRenderCta() {
     return;
   }
 
-  if (!currentResult?.inputUrl) {
+  if (!hasProjectSource()) {
     renderButton.disabled = true;
     renderButton.textContent = "Create Downloadable Lyric Video";
-    setRenderMessage("Paste a song and the app will build a downloadable lyric video automatically.");
+    setRenderMessage("Paste a song or upload audio and the app will build a downloadable lyric video automatically.");
     return;
   }
 
@@ -754,11 +756,17 @@ function syncIdleRenderCta() {
   }
 
   if (audioAccess.mode === "available") {
-    renderButton.textContent = videoOutputCard.hidden
-      ? "Create Downloadable Lyric Video"
-      : "Create Another Render";
+    renderButton.textContent = isUploadedAudioProject()
+      ? videoOutputCard.hidden
+        ? "Create From Uploaded Audio"
+        : "Create Another Audio Render"
+      : videoOutputCard.hidden
+        ? "Create Downloadable Lyric Video"
+        : "Create Another Render";
     setRenderMessage(
-      hasUploadedAudio
+      isUploadedAudioProject()
+        ? "Uploaded audio preview is ready. Press create and the render will build lyrics and timing directly from your file."
+        : hasUploadedAudio
         ? `YouTube audio is live for this link. ${uploadedAudioFallback.name} will stay on standby in case recovery is needed later.`
         : "YouTube audio preview is live. The final render will still verify timing before export."
     );
@@ -1540,6 +1548,12 @@ function renderBackgroundVideoMeta() {
     `${formatTime(uploadedBackgroundVideo.duration)} • ${formatFileSize(uploadedBackgroundVideo.size)} • ${orientation}`;
 }
 
+function revokeUploadedAudioPreviewUrl() {
+  if (uploadedAudioFallback?.previewUrl) {
+    URL.revokeObjectURL(uploadedAudioFallback.previewUrl);
+  }
+}
+
 function renderAudioFallbackMeta() {
   if (!uploadedAudioFallback) {
     audioFallbackMeta.textContent = "No audio fallback selected.";
@@ -2198,12 +2212,16 @@ function syncLyricsToPlayback() {
 
 function updateQueryString(videoUrl) {
   const url = new URL(window.location.href);
-  url.searchParams.set("url", videoUrl);
+  if (videoUrl) {
+    url.searchParams.set("url", videoUrl);
+  } else {
+    url.searchParams.delete("url");
+  }
   window.history.replaceState({}, "", url);
 }
 
 async function copyShareLink() {
-  if (!currentResult?.inputUrl) {
+  if (!isShareableProject()) {
     return;
   }
 
@@ -2247,7 +2265,12 @@ async function renderResult(result) {
   applyAudioAccessState(result);
   await applyAudioPlayerWithRecovery(result);
 
-  updateQueryString(result.inputUrl);
+  if (shareButton) {
+    shareButton.hidden = !isShareableProject(result);
+    shareButton.disabled = !isShareableProject(result);
+  }
+
+  updateQueryString(isShareableProject(result) ? result.inputUrl : "");
   if (getCurrentAudioAccessState(result).mode !== "available") {
     promptAudioFallbackRecovery(
       getCurrentAudioAccessState(result).mode === "recovery"
