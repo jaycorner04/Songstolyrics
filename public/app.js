@@ -533,6 +533,79 @@ function buildUploadedAudioProjectResult(audioMeta = uploadedAudioFallback) {
   };
 }
 
+function getUploadedAudioProjectCacheKey(audioMeta = uploadedAudioFallback) {
+  if (!audioMeta?.file) {
+    return "";
+  }
+
+  return [
+    audioMeta.name || "",
+    Number(audioMeta.size || 0),
+    Number(audioMeta.file?.lastModified || 0),
+    audioMeta.mimeType || ""
+  ].join(":");
+}
+
+function mergeUploadedAudioProjectResult(serverResult = {}, audioMeta = uploadedAudioFallback) {
+  if (!audioMeta?.file) {
+    return serverResult;
+  }
+
+  return {
+    ...serverResult,
+    sourceType: "uploaded-audio",
+    inputUrl: "",
+    audioUrl: audioMeta.previewUrl || serverResult.audioUrl || "",
+    durationSeconds: Number(serverResult.durationSeconds || audioMeta.duration || 0),
+    audioMimeType: audioMeta.mimeType || serverResult.audioMimeType || "audio/mpeg",
+    audioAccess: {
+      ...(serverResult.audioAccess || {}),
+      mode: "available",
+      previewAvailable: Boolean(audioMeta.previewUrl),
+      badgeLabel: "Audio uploaded",
+      title:
+        serverResult.audioAccess?.title ||
+        "Uploaded audio is ready",
+      summary:
+        serverResult.audioAccess?.summary ||
+        "This project can build lyrics and the final video directly from your uploaded audio file. A YouTube link is optional for this path.",
+      primaryActionLabel: "Create lyric video",
+      recommendedAction: "render"
+    }
+  };
+}
+
+async function prepareUploadedAudioProject(audioMeta = uploadedAudioFallback) {
+  if (!audioMeta?.file) {
+    throw new Error("Upload audio before starting an audio-only project.");
+  }
+
+  const cacheKey = getUploadedAudioProjectCacheKey(audioMeta);
+
+  if (audioMeta.preparedProject && audioMeta.preparedProjectCacheKey === cacheKey) {
+    return mergeUploadedAudioProjectResult(audioMeta.preparedProject, audioMeta);
+  }
+
+  const formData = new FormData();
+  formData.append("audioFile", audioMeta.file, audioMeta.name || "uploaded-audio");
+  formData.append("title", stripFileExtension(audioMeta.name || "Uploaded audio"));
+  formData.append("durationSeconds", String(Number(audioMeta.duration || 0)));
+
+  const response = await fetch("/api/convert-audio", {
+    method: "POST",
+    body: formData
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "The uploaded audio could not be analyzed.");
+  }
+
+  audioMeta.preparedProject = payload;
+  audioMeta.preparedProjectCacheKey = cacheKey;
+  return mergeUploadedAudioProjectResult(payload, audioMeta);
+}
+
 function persistDismissedAudioPopupKeys() {
   try {
     window.sessionStorage.setItem(
