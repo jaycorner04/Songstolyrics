@@ -64,6 +64,8 @@ const port = Number(process.env.PORT || 3000);
 const trustProxy = process.env.TRUST_PROXY === "true";
 const buildMarker =
   `${process.env.BUILD_MARKER || `dev-${Date.now()}`}`.trim() || `dev-${Date.now()}`;
+const localDebugRemoteBaseUrl =
+  `${process.env.LOCAL_DEBUG_REMOTE_BASE_URL || "https://d2nlogmzadt51n.cloudfront.net"}`.trim();
 const publicIndexPath = path.join(publicRoot, "index.html");
 let startupDiagnostics = {
   checkedAt: "",
@@ -314,11 +316,38 @@ async function sendCachedPreviewAudio(res, videoId, outputDirectory, fallbackMim
 
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
-  const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
+  const renderedHtml = html
+    .replace(/__BUILD_MARKER__/g, buildMarker)
+    .replace(/__LOCAL_DEBUG_BASE_URL__/g, localDebugRemoteBaseUrl);
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
   res.type("html").send(renderedHtml);
+}
+
+function isAllowedLocalDebugCorsOrigin(origin = "") {
+  try {
+    const parsed = new URL(`${origin || ""}`.trim());
+    const hostname = `${parsed.hostname || ""}`.trim().toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function applyLocalDebugCors(req, res) {
+  const origin = `${req.headers?.origin || ""}`.trim();
+
+  if (!isAllowedLocalDebugCorsOrigin(origin)) {
+    return false;
+  }
+
+  res.set("Access-Control-Allow-Origin", origin);
+  res.set("Vary", "Origin");
+  res.set("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type,Cache-Control,X-Local-Debug-Silent");
+  res.set("Access-Control-Allow-Credentials", "false");
+  return true;
 }
 
 app.get(
