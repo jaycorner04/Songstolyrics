@@ -1278,6 +1278,67 @@ button {
   margin-bottom: 14px;
 }
 
+.audio-access-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(229, 214, 255, 0.18), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.audio-access-shell.is-live {
+  border-color: rgba(144, 246, 179, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(144, 246, 179, 0.14), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.audio-access-shell.is-recovery {
+  border-color: rgba(127, 232, 255, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(127, 232, 255, 0.14), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.audio-access-shell.is-upload {
+  border-color: rgba(255, 147, 80, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(255, 147, 80, 0.14), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.audio-access-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.audio-access-eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.audio-access-copy strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.audio-access-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
 .share-button {
   width: 100%;
 }
@@ -1944,6 +2005,10 @@ button {
   }
 
   .post-render-button-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audio-access-shell {
     grid-template-columns: 1fr;
   }
 }
