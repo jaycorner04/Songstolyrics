@@ -1143,10 +1143,7 @@ function buildWordByWordLyricText(text = "", durationSeconds = 0, maxLength = 24
 
   const displayWords = [...words];
   const wrappedLines = wrapLyricWords(displayWords, maxLength);
-  const totalCentiseconds = Math.max(words.length * 12, Math.round(Math.max(1, durationSeconds) * 100));
-  const baseDuration = Math.max(10, Math.floor(totalCentiseconds / words.length));
-  const allocations = words.map(() => baseDuration);
-  allocations[allocations.length - 1] += totalCentiseconds - baseDuration * words.length;
+  const allocations = buildAdaptiveWordTimingAllocations(words, durationSeconds);
   const baseColor = hexToAssColor(options.baseTextHex || "#ffffff");
 
   return wrappedLines
@@ -1158,9 +1155,111 @@ function buildWordByWordLyricText(text = "", durationSeconds = 0, maxLength = 24
     .join("\\N");
 }
 
+function buildAdaptiveWordTimingAllocations(words = [], durationSeconds = 0) {
+  const normalizedWords = Array.isArray(words) ? words.filter(Boolean) : [];
+
+  if (!normalizedWords.length) {
+    return [];
+  }
+
+  const totalCentiseconds = Math.max(
+    normalizedWords.length * 10,
+    Math.round(Math.max(0.65, Number(durationSeconds || 0)) * 100)
+  );
+  const weights = normalizedWords.map((word) => {
+    const plain = sanitizeKeywordToken(word).replace(/'/g, "");
+    const vowelBursts = (plain.match(/[aeiouy]+/gi) || []).length;
+    const punctuationBoost = /[,.!?]$/.test(`${word || ""}`) ? 0.35 : 0;
+    const syllableWeight = Math.max(0, vowelBursts - 1) * 0.35;
+
+    return Math.max(0.8, plain.length * 0.42 + vowelBursts * 0.55 + syllableWeight + punctuationBoost);
+  });
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || normalizedWords.length;
+  const baseAllocations = weights.map((weight) =>
+    Math.max(7, Math.floor((totalCentiseconds * weight) / totalWeight))
+  );
+  let assignedCentiseconds = baseAllocations.reduce((sum, value) => sum + value, 0);
+
+  if (assignedCentiseconds < totalCentiseconds) {
+    baseAllocations[baseAllocations.length - 1] += totalCentiseconds - assignedCentiseconds;
+    assignedCentiseconds = totalCentiseconds;
+  }
+
+  while (assignedCentiseconds > totalCentiseconds) {
+    let adjusted = false;
+
+    for (let index = 0; index < baseAllocations.length && assignedCentiseconds > totalCentiseconds; index += 1) {
+      if (baseAllocations[index] <= 7) {
+        continue;
+      }
+
+      baseAllocations[index] -= 1;
+      assignedCentiseconds -= 1;
+      adjusted = true;
+    }
+
+    if (!adjusted) {
+      break;
+    }
+  }
+
+  return baseAllocations;
+}
+
+function buildAdaptiveLyricMotionProfile(line = {}, selectedVariant = "", textLines = []) {
+  const lineDurationSeconds = Math.max(0.18, Number(line?.duration || 0));
+  const words = tokenizeLyricWords(line?.text || "");
+  const wordCount = Math.max(1, words.length);
+  const characterCount = normalizeWhitespace(line?.text || "").length || wordCount;
+  const wordsPerSecond = wordCount / Math.max(0.25, lineDurationSeconds);
+  const charsPerSecond = characterCount / Math.max(0.25, lineDurationSeconds);
+  const isFastPace = wordsPerSecond >= 3.2 || charsPerSecond >= 17;
+  const isSlowPace = wordsPerSecond <= 1.45 && charsPerSecond <= 9;
+  const revealMs = clamp(
+    Math.round(420 - wordsPerSecond * 58 + Math.min(lineDurationSeconds, 4) * 42),
+    120,
+    620
+  );
+  const fadeInMs = clamp(Math.round(revealMs * (isFastPace ? 0.48 : isSlowPace ? 0.72 : 0.6)), 70, 280);
+  const fadeOutMs = clamp(
+    Math.round(Math.min(260, Math.max(90, lineDurationSeconds * (isSlowPace ? 120 : isFastPace ? 78 : 96)))),
+    80,
+    280
+  );
+  const movementMultiplier = isSlowPace ? 1.18 : isFastPace ? 0.76 : 1;
+  const wordBuildDuration = clamp(
+    lineDurationSeconds * (isFastPace ? 0.94 : isSlowPace ? 0.74 : 0.84),
+    0.45,
+    MAX_LYRIC_HOLD_SECONDS
+  );
+  const multiLineDelay = textLines.length > 1
+    ? clamp(
+        lineDurationSeconds /
+          (textLines.length + (isFastPace ? 1.8 : isSlowPace ? 0.7 : 1.15)),
+        0.06,
+        isSlowPace ? 0.46 : 0.28
+      )
+    : 0;
+
+  return {
+    lineDurationSeconds,
+    wordsPerSecond,
+    charsPerSecond,
+    pace: isFastPace ? "fast" : isSlowPace ? "slow" : "steady",
+    revealMs,
+    fadeInMs,
+    fadeOutMs,
+    movementMultiplier,
+    wordBuildDuration,
+    multiLineDelay,
+    karaokeActive: selectedVariant === "karaoke" || (selectedVariant === "word-by-word" && isFastPace)
+  };
+}
+
 function pickLyricAnimationVariant(line = {}, index = 0) {
   const wordCount = tokenizeLyricWords(line.text).length;
   const duration = Number(line.duration || 0);
+  const wordsPerSecond = wordCount / Math.max(0.25, duration || 0.25);
   const autoMixVariants = [
     "bounce",
     "magic",
@@ -1177,7 +1276,11 @@ function pickLyricAnimationVariant(line = {}, index = 0) {
   ];
   let selectedVariant = autoMixVariants[index % autoMixVariants.length];
 
-  if (duration >= 2.8 && wordCount >= 6) {
+  if (wordsPerSecond >= 3.25 && wordCount >= 4) {
+    selectedVariant = index % 2 === 0 ? "word-by-word" : "karaoke";
+  } else if (wordsPerSecond <= 1.4 && duration >= 2.6) {
+    selectedVariant = index % 2 === 0 ? "cinematic-left" : "whisper";
+  } else if (duration >= 2.8 && wordCount >= 6) {
     selectedVariant = index % 3 === 0 ? "word-by-word" : "line-by-line";
   } else if (wordCount <= 3 || duration <= 1.2) {
     selectedVariant = index % 2 === 0 ? "bounce" : "magic";
