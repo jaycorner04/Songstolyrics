@@ -431,6 +431,7 @@ button {
 .converter-card,
 .status-card,
 .track-card,
+.support-card,
 .thumbnail-card,
 .lyrics-card,
 .video-output-card {
@@ -1233,6 +1234,7 @@ button {
 }
 
 .track-card,
+.support-card,
 .thumbnail-card,
 .lyrics-card,
 .video-output-card,
@@ -1349,6 +1351,19 @@ button {
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.55;
+}
+
+.mobile-support-card {
+  display: none;
+}
+
+.mobile-support-slot {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-card-head {
+  margin-bottom: 10px;
 }
 
 .share-button {
@@ -1936,6 +1951,7 @@ button {
   .converter-card,
   .status-card,
   .track-card,
+  .support-card,
   .thumbnail-card,
   .lyrics-card,
   .video-output-card {
@@ -2064,6 +2080,7 @@ button {
   .style-preview-card,
   .status-card,
   .track-card,
+  .support-card,
   .thumbnail-card,
   .lyrics-card,
   .video-output-card {
@@ -2208,6 +2225,8 @@ button {
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
     grid-template-areas:
       "poster track"
+      "access track"
+      "preview track"
       "thumb track"
       "video video";
     gap: 10px;
@@ -2224,6 +2243,16 @@ button {
 
   .track-card {
     grid-area: track;
+  }
+
+  .mobile-audio-access-card,
+  #mobile-audio-access-card {
+    grid-area: access;
+  }
+
+  .mobile-audio-preview-card,
+  #mobile-audio-preview-card {
+    grid-area: preview;
   }
 
   .thumbnail-card {
@@ -2269,6 +2298,10 @@ button {
   .audio-access-copy p {
     font-size: 0.78rem;
     line-height: 1.4;
+  }
+
+  .mobile-support-card:not([hidden]) {
+    display: block;
   }
 
   #audio-player,
