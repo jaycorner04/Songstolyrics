@@ -492,6 +492,14 @@ function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
 }
 
+function slugifyProjectId(value = "") {
+  return `${value || ""}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
 function dedupeSequentialLines(lines = []) {
   const deduped = [];
 
