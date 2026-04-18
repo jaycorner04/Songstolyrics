@@ -395,6 +395,22 @@
             <img id="poster-image" alt="Video artwork" />
           </div>
 
+          <div id="mobile-audio-access-card" class="support-card mobile-support-card" hidden>
+            <div class="card-head compact-card-head">
+              <h3 id="mobile-audio-access-title">Smart recovery</h3>
+              <p id="mobile-audio-access-text">Audio guidance moves here on mobile.</p>
+            </div>
+            <div id="mobile-audio-access-slot" class="mobile-support-slot"></div>
+          </div>
+
+          <div id="mobile-audio-preview-card" class="support-card mobile-support-card" hidden>
+            <div class="card-head compact-card-head">
+              <h3 id="mobile-audio-preview-title">Audio preview</h3>
+              <p id="mobile-audio-preview-text">Listen to the active preview here.</p>
+            </div>
+            <div id="mobile-audio-preview-slot" class="mobile-support-slot"></div>
+          </div>
+
           <div class="track-card">
             <div class="track-heading">
               <p class="eyebrow">Now loading</p>
@@ -408,21 +424,25 @@
               <span id="audio-status-badge" class="badge">Audio status</span>
             </div>
 
-            <div id="audio-access-shell" class="audio-access-shell">
-              <div class="audio-access-copy">
-                <p id="audio-access-eyebrow" class="audio-access-eyebrow">Sound mode</p>
-                <strong id="audio-access-title">Checking the soundtrack path</strong>
-                <p id="audio-access-text">
-                  The app will decide whether this link can use live YouTube audio, protected server recovery,
-                  or an uploaded soundtrack.
-                </p>
+            <div id="desktop-audio-access-slot">
+              <div id="audio-access-shell" class="audio-access-shell">
+                <div class="audio-access-copy">
+                  <p id="audio-access-eyebrow" class="audio-access-eyebrow">Sound mode</p>
+                  <strong id="audio-access-title">Checking the soundtrack path</strong>
+                  <p id="audio-access-text">
+                    The app will decide whether this link can use live YouTube audio, protected server recovery,
+                    or an uploaded soundtrack.
+                  </p>
+                </div>
+                <button id="audio-access-action" type="button" class="mini-action-button" hidden>
+                  Upload audio
+                </button>
               </div>
-              <button id="audio-access-action" type="button" class="mini-action-button" hidden>
-                Upload audio
-              </button>
             </div>
 
-            <audio id="audio-player" controls preload="metadata"></audio>
+            <div id="desktop-audio-preview-slot">
+              <audio id="audio-player" controls preload="metadata"></audio>
+            </div>
 
             <button id="share-button" type="button" class="share-button">Copy share link</button>
 
