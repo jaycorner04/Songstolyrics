@@ -6,6 +6,8 @@ DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APP_URL="${APP_URL:-http://127.0.0.1:3000}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-240}"
 BUILD_MARKER="${BUILD_MARKER:-}"
+APP_NETWORK="${APP_NETWORK:-song-to-lyrics-net}"
+BGUTIL_PROVIDER_IMAGE="${BGUTIL_PROVIDER_IMAGE:-brainicism/bgutil-ytdlp-pot-provider}"
 
 log() {
   printf '[deploy-remote] %s\n' "$1"
@@ -108,14 +110,34 @@ docker_container_available() {
   docker_cmd inspect song-to-lyrics >/dev/null 2>&1
 }
 
+ensure_app_network() {
+  if ! docker_cmd network inspect "$APP_NETWORK" >/dev/null 2>&1; then
+    docker_cmd network create "$APP_NETWORK" >/dev/null
+  fi
+}
+
+run_bgutil_provider() {
+  ensure_app_network
+  docker_cmd rm -f bgutil-provider >/dev/null 2>&1 || true
+  docker_cmd run -d \
+    --name bgutil-provider \
+    --restart unless-stopped \
+    --network "$APP_NETWORK" \
+    --network-alias bgutil-provider \
+    "$BGUTIL_PROVIDER_IMAGE" >/dev/null
+}
+
 deploy_with_docker_container() {
   log "detected single-container docker deployment"
   mkdir -p runtime
+  ensure_app_network
+  run_bgutil_provider
   docker_cmd build -t song-to-lyrics .
   docker_cmd rm -f song-to-lyrics >/dev/null 2>&1 || true
   docker_cmd run -d \
     --name song-to-lyrics \
     --restart unless-stopped \
+    --network "$APP_NETWORK" \
     --env-file .env \
     -e RUNTIME_ROOT=/data \
     -e BUILD_MARKER="$BUILD_MARKER" \
