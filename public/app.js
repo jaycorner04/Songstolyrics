@@ -429,6 +429,13 @@ function looksLikeYouTubeUrl(value) {
   return /(?:youtube\.com|youtu\.be)/i.test(`${value || ""}`);
 }
 
+function extractVideoIdFromUrl(value = "") {
+  const match = `${value || ""}`.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  return match ? match[1] : "";
+}
+
 function formatTime(seconds) {
   const value = Math.max(0, Number(seconds || 0));
   const minutes = Math.floor(value / 60);
@@ -1451,14 +1458,81 @@ function spotlightAudioFallbackInput(options = {}) {
   }, 3000);
 }
 
+function clearHardAudioBlockPreview() {
+  const existingEmbed = document.getElementById("yt-audio-embed");
+
+  if (existingEmbed) {
+    existingEmbed.remove();
+  }
+}
+
+function handleHardAudioBlock(result = currentResult) {
+  const videoId = result?.videoId || extractVideoIdFromUrl(result?.inputUrl || "");
+
+  audioPlayer.pause();
+  audioPlayer.hidden = true;
+  audioPlayer.removeAttribute("src");
+
+  clearHardAudioBlockPreview();
+
+  if (videoId && audioPlayer.parentNode) {
+    const wrap = document.createElement("div");
+    wrap.id = "yt-audio-embed";
+    wrap.className = "youtube-audio-embed";
+    wrap.innerHTML = `
+      <iframe
+        width="100%"
+        height="96"
+        src="https://www.youtube.com/embed/${videoId}?controls=1&modestbranding=1&rel=0"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        style="display:block;border:0;border-radius:16px;">
+      </iframe>`;
+    audioPlayer.parentNode.insertBefore(wrap, audioPlayer.nextSibling);
+  }
+
+  if (audioStatusBadge) {
+    audioStatusBadge.textContent = "Upload for video";
+    audioStatusBadge.style.background = "#f59e0b";
+    audioStatusBadge.style.color = "#16191d";
+  }
+
+  if (audioAccessTitle) {
+    audioAccessTitle.textContent = "Preview plays through YouTube";
+  }
+
+  if (audioAccessText) {
+    audioAccessText.textContent =
+      "You can still hear the song above. To include sound in the downloaded lyric video, upload the MP3 below and render again.";
+  }
+
+  if (audioFallbackTip) {
+    audioFallbackTip.hidden = false;
+
+    if (audioFallbackTipTitle) {
+      audioFallbackTipTitle.textContent = "Upload MP3 for the downloadable video";
+    }
+
+    if (audioFallbackTipText) {
+      audioFallbackTipText.textContent =
+        "The preview above still works through YouTube. To burn audio into the downloaded MP4, add the song audio file here and render again.";
+    }
+  }
+
+  spotlightAudioFallbackInput();
+}
+
 async function applyAudioPlayerWithRecovery(result = currentResult) {
-  const videoId = result?.videoId || extractVideoId(result?.inputUrl || "");
+  const videoId = result?.videoId || extractVideoIdFromUrl(result?.inputUrl || "");
   const audioAccess = getCurrentAudioAccessState(result);
 
   audioPlayer.pause();
   audioPlayer.preload = "none";
 
   if (result?.audioUrl && audioAccess.mode === "available") {
+    clearHardAudioBlockPreview();
+    audioStatusBadge.style.background = "";
+    audioStatusBadge.style.color = "";
     audioPlayer.src = result.audioUrl;
     audioPlayer.hidden = false;
     return;
@@ -1497,13 +1571,16 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
       };
       audioPlayer.src = recoveredUrl;
       audioPlayer.hidden = false;
+      clearHardAudioBlockPreview();
+      audioStatusBadge.style.background = "";
+      audioStatusBadge.style.color = "";
       applyAudioAccessState(result);
       syncIdleRenderCta();
       return;
     }
   } catch {}
 
-  spotlightAudioFallbackInput({ scroll: false });
+  handleHardAudioBlock(result);
 }
 
 function clearCustomBackgroundSelection() {
@@ -1647,6 +1724,7 @@ function resetRenderState() {
   setRenderProgress(0);
   renderStageTimings({});
   resetRenderedVideo();
+  clearHardAudioBlockPreview();
   applyAudioAccessState(null);
 }
 
