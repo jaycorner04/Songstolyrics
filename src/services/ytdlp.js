@@ -310,7 +310,8 @@ function buildYtDlpArgs(options = {}) {
 
 function buildYtDlpArgVariants(options = {}) {
   const kind = options.kind || "";
-  const profiles = resolveProfileChain(kind);
+  const explicitProfile = normalizeWhitespace(options.profile || "");
+  const profiles = explicitProfile ? [explicitProfile] : resolveProfileChain(kind);
   const variants = [];
   const seen = new Set();
 

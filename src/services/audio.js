@@ -45,6 +45,11 @@ const STREAM_ATTEMPTS = {
       fallbackClients: "android,web"
     },
     {
+      formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
+      fallbackClients: "web,mweb,tv,tv_simply",
+      profile: "bgutil"
+    },
+    {
       formatSelector: "best[acodec!=none]/best",
       fallbackClients: "web,mweb,tv,tv_simply"
     }
@@ -72,6 +77,7 @@ const AUDIO_DOWNLOAD_ATTEMPTS = [
   {
     formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
     fallbackClients: "web,mweb,tv,tv_simply",
+    profile: "bgutil",
     extraArgs: []
   }
 ];
@@ -532,7 +538,8 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     for (const attempt of AUDIO_DOWNLOAD_ATTEMPTS) {
       const argVariants = buildYtDlpArgVariants({
         kind: "audio",
-        fallbackClients: attempt.fallbackClients || ""
+        fallbackClients: attempt.fallbackClients || "",
+        profile: attempt.profile || ""
       });
 
       for (const variant of argVariants) {
@@ -677,7 +684,8 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
     for (const attempt of attempts) {
       const argVariants = buildYtDlpArgVariants({
         kind,
-        fallbackClients: attempt.fallbackClients || ""
+        fallbackClients: attempt.fallbackClients || "",
+        profile: attempt.profile || ""
       });
 
       for (const variant of argVariants) {
