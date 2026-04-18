@@ -85,6 +85,7 @@ const localDebugCard = document.getElementById("local-debug-card");
 const localDebugList = document.getElementById("local-debug-list");
 const localDebugRefreshButton = document.getElementById("local-debug-refresh-button");
 const localDebugClearButton = document.getElementById("local-debug-clear-button");
+const localDebugBanner = document.getElementById("local-debug-banner");
 const localDebugStatus = document.getElementById("local-debug-status");
 const videoOutputCard = document.getElementById("video-output-card");
 const renderedVideo = document.getElementById("rendered-video");
