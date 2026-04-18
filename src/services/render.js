@@ -5208,6 +5208,54 @@ async function saveUploadedBackgroundVideo(payload, renderDirectory) {
   };
 }
 
+function resolveUploadedAudioExtension(uploadedAudio = {}) {
+  const originalExtension = path.extname(uploadedAudio.originalName || "");
+
+  if (originalExtension) {
+    return originalExtension;
+  }
+
+  if (/wav/i.test(uploadedAudio.mimeType || "")) {
+    return ".wav";
+  }
+
+  if (/ogg/i.test(uploadedAudio.mimeType || "")) {
+    return ".ogg";
+  }
+
+  if (/aac/i.test(uploadedAudio.mimeType || "")) {
+    return ".aac";
+  }
+
+  return ".mp3";
+}
+
+async function saveUploadedAudio(payload, renderDirectory) {
+  const uploadedAudio = payload.customAudioUpload;
+
+  if (!uploadedAudio?.tempPath || !fs.existsSync(uploadedAudio.tempPath)) {
+    return null;
+  }
+
+  const targetPath = path.join(
+    renderDirectory,
+    `uploaded-audio${resolveUploadedAudioExtension(uploadedAudio)}`
+  );
+
+  await fsp.copyFile(uploadedAudio.tempPath, targetPath);
+
+  try {
+    await fsp.unlink(uploadedAudio.tempPath);
+  } catch {}
+
+  return {
+    filePath: targetPath,
+    duration: Number(uploadedAudio.duration || 0),
+    originalName: uploadedAudio.originalName || path.basename(targetPath),
+    mimeType: uploadedAudio.mimeType || ""
+  };
+}
+
 async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirectory, backgroundPlan, videoSize) {
   updateJob(job, {
     stage: "Preparing uploaded image backgrounds",
