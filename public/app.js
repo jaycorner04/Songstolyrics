@@ -452,14 +452,63 @@ function decorateLyricLine(text = "") {
 }
 
 function looksLikeYouTubeUrl(value) {
-  return /(?:youtube\.com|youtu\.be)/i.test(`${value || ""}`);
+  const rawValue = `${value || ""}`.trim();
+
+  if (!rawValue) {
+    return false;
+  }
+
+  try {
+    const url = new URL(rawValue);
+    const hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    return /(?:^|\.)youtube\.com$/i.test(hostname) || hostname === "youtu.be";
+  } catch (error) {
+    return /(?:youtube\.com|youtu\.be)/i.test(rawValue);
+  }
 }
 
 function extractVideoIdFromUrl(value = "") {
-  const match = `${value || ""}`.match(
-    /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-  );
-  return match ? match[1] : "";
+  const rawValue = `${value || ""}`.trim();
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(rawValue)) {
+    return rawValue;
+  }
+
+  try {
+    const url = new URL(rawValue);
+    const hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    url.searchParams.delete("si");
+
+    if (hostname === "youtu.be") {
+      const shortId = url.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
+      return /^[a-zA-Z0-9_-]{11}$/.test(shortId) ? shortId : "";
+    }
+
+    if (
+      hostname === "youtube.com" ||
+      hostname === "m.youtube.com" ||
+      hostname === "music.youtube.com"
+    ) {
+      const queryId = url.searchParams.get("v");
+      if (/^[a-zA-Z0-9_-]{11}$/.test(queryId || "")) {
+        return queryId;
+      }
+
+      const shortsMatch = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})(?:[/?]|$)/);
+      if (shortsMatch) {
+        return shortsMatch[1];
+      }
+
+      const pathMatch = url.pathname.match(/\/(?:embed|live)\/([a-zA-Z0-9_-]{11})(?:[/?]|$)/);
+      if (pathMatch) {
+        return pathMatch[1];
+      }
+    }
+  } catch (error) {
+    return "";
+  }
+
+  return "";
 }
 
 function stripFileExtension(value = "") {
