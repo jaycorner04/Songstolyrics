@@ -2632,6 +2632,7 @@ backgroundImagesInput.addEventListener("change", handleBackgroundUpload);
 backgroundVideoInput.addEventListener("change", handleBackgroundVideoUpload);
 audioFallbackInput.addEventListener("change", handleAudioFallbackUpload);
 audioFallbackTipButton.addEventListener("click", () => audioFallbackInput.click());
+audioFallbackPopupButton?.addEventListener("click", () => audioFallbackInput.click());
 changeAudioFallbackButton.addEventListener("click", () => audioFallbackInput.click());
 deleteAudioFallbackButton.addEventListener("click", () => {
   clearAudioFallbackSelection();
