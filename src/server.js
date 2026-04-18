@@ -192,14 +192,14 @@ function buildApiErrorMessage(error, req = {}) {
 
   if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
     if (/^\/api\/audio\//i.test(requestPath)) {
-      return "Audio preview is blocked for this video on the server right now. Rendering may still work later if server-side YouTube access is available.";
+      return "Live preview audio is not available from this server for this song right now. You can still render it, or add the song audio for guaranteed sound.";
     }
 
     if (/^\/api\/video-frames\//i.test(requestPath)) {
       return "The server could not sample live video frames for this song, so the app should fall back to artwork instead.";
     }
 
-    return "YouTube blocked audio access for this video on the server. Try another link or add a server cookie file.";
+    return "This song opened in recovery mode because live YouTube audio is limited on this server right now. You can still continue, or add audio for guaranteed sound.";
   }
 
   const statusCode = Number(error?.statusCode || 500);
@@ -258,13 +258,13 @@ function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe 
       proxyConfigured,
       recoveryConfigured,
       probeReason,
-      badgeLabel: "Audio recovery",
-      title: "This link is in protected recovery mode",
+      badgeLabel: "Recovery ready",
+      title: "This link is ready in smart recovery mode",
       summary:
         probeReason === "probe-timeout"
-          ? `The quick preview check stayed conservative, so the player is hidden for now. The final render will still try ${recoveryLabel} before asking for uploaded audio.`
-          : `Preview audio is blocked on this server, but the final render will still try ${recoveryLabel} before falling back to uploaded audio.`,
-      primaryActionLabel: "Create recovery render",
+          ? `The quick sound check stayed conservative, so the preview player is hidden for now. The final render will still try ${recoveryLabel} before asking for an uploaded audio file.`
+          : `Live preview audio is not available on this server for this link, but the final render will still try ${recoveryLabel} before asking for an uploaded audio file.`,
+      primaryActionLabel: "Create smart recovery render",
       recommendedAction: "render-or-upload"
     };
   }
@@ -276,11 +276,11 @@ function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe 
     proxyConfigured,
     recoveryConfigured,
     probeReason,
-    badgeLabel: "Audio upload",
-    title: "This link needs a fallback soundtrack",
+    badgeLabel: "Add sound",
+    title: "This link is ready, and a sound file will make it perfect",
     summary:
-      "Lyrics and artwork are ready, but the server could not open a trustworthy preview audio path for this song. Upload the audio file for guaranteed sound in the final video.",
-    primaryActionLabel: "Upload audio",
+      "Lyrics and artwork are ready. Add the song audio file here if you want guaranteed sound in the final video.",
+    primaryActionLabel: "Add audio",
     recommendedAction: "upload-audio"
   };
 }
