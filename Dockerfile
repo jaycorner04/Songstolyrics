@@ -8,10 +8,12 @@ ENV PORT=3000
 ENV TRUST_PROXY=true
 ENV ALLOW_BROWSER_COOKIES=false
 ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
+ENV DENO_INSTALL=/opt/deno
+ENV PATH="/opt/deno/bin:/opt/venv/bin:${PATH}"
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip python3-venv \
+  && apt-get install -y --no-install-recommends curl unzip python3 python3-pip python3-venv \
+  && curl -fsSL https://deno.land/install.sh | sh \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -19,7 +21,7 @@ RUN npm ci --omit=dev
 
 RUN python3 -m venv "${VIRTUAL_ENV}" \
   && "${VIRTUAL_ENV}/bin/pip" install --no-cache-dir --upgrade pip \
-  && "${VIRTUAL_ENV}/bin/pip" install --no-cache-dir yt-dlp faster-whisper
+  && "${VIRTUAL_ENV}/bin/pip" install --no-cache-dir "yt-dlp[default]" faster-whisper
 
 COPY src ./src
 COPY public ./public
