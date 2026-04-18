@@ -804,6 +804,77 @@ function simplifyUiMessage(message, fallback = "Something went wrong. Please try
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
 
+function isCompactMobileLayout() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
+function getActiveAudioPreviewNode() {
+  return document.getElementById("yt-audio-embed") || audioPlayer;
+}
+
+function syncMobileAudioCards(result = currentResult) {
+  if (
+    !audioAccessShell ||
+    !audioPlayer ||
+    !desktopAudioAccessSlot ||
+    !desktopAudioPreviewSlot ||
+    !mobileAudioAccessCard ||
+    !mobileAudioAccessSlot ||
+    !mobileAudioPreviewCard ||
+    !mobileAudioPreviewSlot
+  ) {
+    return;
+  }
+
+  const mobileLayout = isCompactMobileLayout();
+  const accessTarget = mobileLayout ? mobileAudioAccessSlot : desktopAudioAccessSlot;
+  const previewTarget = mobileLayout ? mobileAudioPreviewSlot : desktopAudioPreviewSlot;
+  const previewNode = getActiveAudioPreviewNode();
+  const usingYoutubeEmbed = previewNode?.id === "yt-audio-embed";
+  const hasResult = Boolean(result?.inputUrl);
+  const previewVisible = Boolean(
+    usingYoutubeEmbed ||
+    (!audioPlayer.hidden && (audioPlayer.currentSrc || audioPlayer.getAttribute("src")))
+  );
+
+  if (audioAccessShell.parentNode !== accessTarget) {
+    accessTarget.appendChild(audioAccessShell);
+  }
+
+  if (previewNode && previewNode.parentNode !== previewTarget) {
+    previewTarget.appendChild(previewNode);
+  }
+
+  if (!mobileLayout) {
+    mobileAudioAccessCard.hidden = true;
+    mobileAudioPreviewCard.hidden = true;
+    return;
+  }
+
+  if (mobileAudioAccessTitle) {
+    mobileAudioAccessTitle.textContent = "Smart recovery";
+  }
+
+  if (mobileAudioAccessText) {
+    mobileAudioAccessText.textContent = hasResult
+      ? "Sound guidance stays on the left on mobile so the track card remains compact."
+      : "Add a song link to reveal the smart recovery card.";
+  }
+
+  if (mobileAudioPreviewTitle) {
+    mobileAudioPreviewTitle.textContent = usingYoutubeEmbed ? "Watch YouTube" : "Audio preview";
+  }
+
+  if (mobileAudioPreviewText) {
+    mobileAudioPreviewText.textContent = usingYoutubeEmbed
+      ? "Use the YouTube watch panel here when direct server preview is unavailable."
+      : "Listen to the current soundtrack preview from the left column.";
+  }
+
+  mobileAudioAccessCard.hidden = !hasResult;
+  mobileAudioPreviewCard.hidden = !(hasResult && previewVisible);
+}
+
 function formatDebugDateTime(value = "") {
   const date = new Date(value);
 
