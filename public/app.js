@@ -2717,7 +2717,7 @@ async function handleSubmit(event) {
       throw new Error(payload.error || "The video could not be processed.");
     }
 
-    if (payload.videoId && !uploadedBackgrounds.length && !uploadedBackgroundVideo) {
+    if (payload.inputUrl && payload.videoId && !uploadedBackgrounds.length && !uploadedBackgroundVideo) {
       try {
         const frameResponse = await fetch(
           `/api/video-frames/${payload.videoId}?duration=${encodeURIComponent(payload.durationSeconds || 0)}`
