@@ -1048,7 +1048,24 @@ function renderLocalDebugStatus({
   runtimeRoot = "",
   lastRefreshedAt = ""
 } = {}) {
-  if (!localDebugStatus || !isLocalDebugMode) {
+  if ((!localDebugStatus && !localDebugBanner) || !isLocalDebugMode) {
+    return;
+  }
+
+  const isEc2Feed = Boolean(runtimeRoot && runtimeRoot.includes("/data"));
+  const bannerState = connected ? (isEc2Feed ? "live" : "local") : "offline";
+  const bannerMessage = connected
+    ? isEc2Feed
+      ? "Live EC2 feed connected"
+      : "Local app feed connected"
+    : "Debug feed disconnected";
+
+  if (localDebugBanner) {
+    localDebugBanner.dataset.state = bannerState;
+    localDebugBanner.textContent = bannerMessage;
+  }
+
+  if (!localDebugStatus) {
     return;
   }
 
