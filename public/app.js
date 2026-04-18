@@ -107,6 +107,8 @@ let activeLineIndex = -1;
 let renderPollTimer = null;
 let activeRenderJobId = "";
 let localDebugPollTimer = null;
+let localDebugEventSource = null;
+let localDebugStreamRetryTimer = null;
 let localDebugRefreshInFlight = false;
 let localDebugRefreshQueued = false;
 let localDebugLastRefreshedAt = "";
@@ -1287,6 +1289,46 @@ function scheduleLocalDebugRefresh() {
     await refreshLocalDebugPanel();
     scheduleLocalDebugRefresh();
   }, LOCAL_DEBUG_REFRESH_MS);
+}
+
+function closeLocalDebugStream() {
+  if (localDebugEventSource) {
+    localDebugEventSource.close();
+    localDebugEventSource = null;
+  }
+
+  if (localDebugStreamRetryTimer) {
+    window.clearTimeout(localDebugStreamRetryTimer);
+    localDebugStreamRetryTimer = null;
+  }
+}
+
+function connectLocalDebugStream() {
+  if (!isLocalDebugMode || typeof window.EventSource !== "function" || localDebugEventSource) {
+    return;
+  }
+
+  try {
+    const stream = new window.EventSource(`/api/local-debug/stream?ts=${Date.now()}`);
+    localDebugEventSource = stream;
+
+    const handleUpdate = () => {
+      refreshLocalDebugPanel({ immediateFollowup: true }).catch(() => {});
+    };
+
+    stream.addEventListener("ready", handleUpdate);
+    stream.addEventListener("update", handleUpdate);
+    stream.onopen = () => {
+      refreshLocalDebugPanel({ immediateFollowup: true }).catch(() => {});
+    };
+    stream.onerror = () => {
+      closeLocalDebugStream();
+      localDebugStreamRetryTimer = window.setTimeout(() => {
+        localDebugStreamRetryTimer = null;
+        connectLocalDebugStream();
+      }, 1500);
+    };
+  } catch {}
 }
 
 async function reportLocalDebugError(payload = {}) {
@@ -2999,6 +3041,7 @@ window.addEventListener("beforeunload", () => {
   if (localDebugPollTimer) {
     window.clearTimeout(localDebugPollTimer);
   }
+  closeLocalDebugStream();
 });
 
 window.addEventListener("focus", () => {
@@ -3008,6 +3051,7 @@ window.addEventListener("focus", () => {
 
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
+  connectLocalDebugStream();
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -3017,11 +3061,13 @@ document.addEventListener("visibilitychange", () => {
 
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
+  connectLocalDebugStream();
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
+  connectLocalDebugStream();
   syncMobileAudioCards();
   syncMobileStageCard();
   urlInput.value = "";

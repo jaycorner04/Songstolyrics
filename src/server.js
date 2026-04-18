@@ -37,7 +37,8 @@ const {
   deleteLocalDebugEvent,
   getLocalDebugEvents,
   isLocalDebugRequest,
-  recordLocalDebugEvent
+  recordLocalDebugEvent,
+  subscribeLocalDebugEvents
 } = require("./services/local-debug");
 const { containsTeluguScript, romanizeLyricLines } = require("./services/telugu");
 const { transcribeYouTubeAudio } = require("./services/transcription");
@@ -1492,6 +1493,45 @@ app.get("/api/local-debug/errors", (req, res) => {
   res.json({
     enabled: true,
     entries: getLocalDebugEvents()
+  });
+});
+
+app.get("/api/local-debug/stream", (req, res) => {
+  if (!isLocalDebugRequest(req)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+
+  const send = (eventName, payload = {}) => {
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  send("ready", {
+    ok: true,
+    entryCount: getLocalDebugEvents().length,
+    updatedAt: new Date().toISOString()
+  });
+
+  const unsubscribe = subscribeLocalDebugEvents((payload) => {
+    send("update", payload);
+  });
+  const heartbeat = setInterval(() => {
+    res.write(": keep-alive\n\n");
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
   });
 });
 
