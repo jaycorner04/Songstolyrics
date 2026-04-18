@@ -1846,6 +1846,49 @@ button {
   margin-bottom: 14px;
 }
 
+.local-debug-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: #eef7ff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.local-debug-banner::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+
+.local-debug-banner[data-state="live"] {
+  border-color: rgba(144, 246, 179, 0.28);
+  background: rgba(144, 246, 179, 0.12);
+  color: #b7ffd1;
+}
+
+.local-debug-banner[data-state="local"] {
+  border-color: rgba(255, 196, 126, 0.28);
+  background: rgba(255, 196, 126, 0.12);
+  color: #ffd7a8;
+}
+
+.local-debug-banner[data-state="offline"] {
+  border-color: rgba(255, 122, 69, 0.24);
+  background: rgba(255, 122, 69, 0.12);
+  color: #ffc5ad;
+}
+
 .local-debug-status {
   margin-bottom: 14px;
   padding: 12px 14px;
