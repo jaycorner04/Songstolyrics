@@ -509,6 +509,14 @@ function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
 }
 
+function getLatestTimedItemEnd(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((largestEnd, item) => {
+    const start = Math.max(0, Number(item?.start || 0));
+    const duration = Math.max(0, Number(item?.duration || 0));
+    return Math.max(largestEnd, start + duration);
+  }, 0);
+}
+
 function slugifyProjectId(value = "") {
   return `${value || ""}`
     .toLowerCase()
@@ -1939,8 +1947,19 @@ app.post(
 
     const videoId = extractVideoId(videoUrl);
     const info = await getVideoInfo(videoId);
-    const metadata = await getVideoMetadata(videoId, info);
+    const rawMetadata = await getVideoMetadata(videoId, info);
     const captionCues = await getCaptionCues(info);
+    const metadataDurationSeconds = Math.max(
+      Number(rawMetadata?.durationSeconds || 0),
+      getLatestTimedItemEnd(captionCues)
+    );
+    const metadata =
+      metadataDurationSeconds > Number(rawMetadata?.durationSeconds || 0)
+        ? {
+            ...rawMetadata,
+            durationSeconds: metadataDurationSeconds
+          }
+        : rawMetadata;
     const { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
       metadata,
       videoId,
@@ -2037,8 +2056,10 @@ app.post(
     const renderTitle = `${body?.title || ""}`.trim() || uploadedAudioTitle || "Uploaded audio";
     const renderChannelTitle = `${body?.channelTitle || ""}`.trim() || (hasUploadedAudio ? "Uploaded audio" : "");
     const renderVideoId = `${body?.videoId || ""}`.trim() || (hasUploadedAudio ? `upload-${Date.now()}` : "");
-    const renderDurationSeconds = Number(
-      body?.durationSeconds || body?.customAudioUpload?.duration || 0
+    const renderDurationSeconds = Math.max(
+      Number(body?.durationSeconds || 0),
+      Number(body?.customAudioUpload?.duration || 0),
+      getLatestTimedItemEnd(renderLines)
     );
 
     if (!renderSong && hasUploadedAudio) {
