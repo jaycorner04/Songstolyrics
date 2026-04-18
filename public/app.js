@@ -1070,15 +1070,21 @@ function renderLocalDebugStatus({
   }
 
   const parts = [];
-  parts.push(connected ? "Live debug connected" : "Live debug disconnected");
+  parts.push(
+    connected
+      ? isEc2Feed
+        ? "Reading errors from the live EC2 server"
+        : "Reading errors from the local app on this machine"
+      : "Waiting for the debug feed"
+  );
   parts.push(`${entryCount} error${entryCount === 1 ? "" : "s"}`);
 
   if (runtimeRoot) {
-    parts.push(runtimeRoot.includes("/data") ? "EC2 live feed" : "local app feed");
+    parts.push(`Runtime ${runtimeRoot}`);
   }
 
   if (lastRefreshedAt) {
-    parts.push(`Last refreshed ${lastRefreshedAt}`);
+    parts.push(`Refreshed ${lastRefreshedAt}`);
   }
 
   localDebugStatus.textContent = parts.join(" • ");
