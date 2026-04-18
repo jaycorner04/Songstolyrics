@@ -1870,8 +1870,6 @@ function updateRenderJobUi(job) {
   if (job.status === "completed") {
     activeRenderJobId = "";
     renderButton.disabled = false;
-    renderButton.textContent = renderSettingsDirty ? "Apply Style & Render" : "Create Another Render";
-    setRenderMessage(userMessage || (job.notes?.[0] ? `Done. ${job.notes[0]}` : "Lyric video ready."));
     setRenderProgress(1);
     videoOutputCard.hidden = false;
     renderedVideo.src = job.videoUrl;
@@ -1900,6 +1898,9 @@ function updateRenderJobUi(job) {
         { scroll: false }
       );
     }
+    applyAudioAccessState();
+    syncIdleRenderCta();
+    setRenderMessage(userMessage || (job.notes?.[0] ? `Done. ${job.notes[0]}` : "Lyric video ready."));
     setStatus(userMessage || "The lyric video is ready to preview and download.");
     refreshLocalDebugPanel().catch(() => {});
     return;
@@ -1907,11 +1908,12 @@ function updateRenderJobUi(job) {
 
   activeRenderJobId = "";
   renderButton.disabled = false;
-  renderButton.textContent = "Try Render Again";
   if (rerenderBackgroundButton) {
     rerenderBackgroundButton.textContent = "Rebuild final video";
     rerenderBackgroundButton.disabled = !Boolean(uploadedBackgroundVideo || uploadedBackgrounds.length);
   }
+  applyAudioAccessState();
+  syncIdleRenderCta();
   setRenderMessage(userMessage, true);
   if (/blocked audio|cookie file|silent fallback|no stable transcription audio|could not reach the video audio/i.test(`${job.error || ""} ${job.userMessage || ""}`)) {
     promptAudioFallbackRecovery(
@@ -1986,14 +1988,27 @@ async function handleRender() {
     return;
   }
 
+  const audioAccess = getCurrentAudioAccessState();
   clearRenderPolling();
   resetRenderedVideo();
   renderSettingsDirty = false;
   renderButton.disabled = true;
   renderButton.textContent = "Starting...";
-  setRenderMessage("Checking the link, verifying lyric timing against the audio, and preparing the download job...");
+  setRenderMessage(
+    audioAccess.mode === "available"
+      ? "Checking the link, verifying lyric timing against the audio, and preparing the download job..."
+      : audioAccess.mode === "recovery"
+        ? "Starting protected recovery mode. The app will try the stronger soundtrack path before it asks for uploaded audio."
+        : "Starting the render in fallback mode. The app will try one last server recovery pass, but uploaded audio is still the safest way to keep sound."
+  );
   setRenderProgress(0.04);
-  setStatus("Starting the lyric video render after the sync check passes...");
+  setStatus(
+    audioAccess.mode === "available"
+      ? "Starting the lyric video render after the sync check passes..."
+      : audioAccess.mode === "recovery"
+        ? "Starting a protected recovery render for this link..."
+        : "Starting the render without a trusted preview soundtrack. Upload audio any time if you need guaranteed sound."
+  );
 
   try {
     const renderPayload = {
