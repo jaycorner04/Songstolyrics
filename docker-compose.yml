@@ -1,8 +1,15 @@
 services:
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    container_name: bgutil-provider
+    restart: unless-stopped
+
   song-to-lyrics:
     build: .
     container_name: song-to-lyrics
     restart: unless-stopped
+    depends_on:
+      - bgutil-provider
     ports:
       - "3000:3000"
     environment:
@@ -19,7 +26,7 @@ services:
       YTDLP_REMOTE_COMPONENTS: ${YTDLP_REMOTE_COMPONENTS:-}
       YTDLP_JS_RUNTIMES: ${YTDLP_JS_RUNTIMES:-}
       YTDLP_PLUGIN_DIRS: ${YTDLP_PLUGIN_DIRS:-}
-      YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-}
+      YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-http://bgutil-provider:4416}
       YTDLP_BGUTIL_SERVER_HOME: ${YTDLP_BGUTIL_SERVER_HOME:-}
       YTDLP_EXTRACTOR_ARGS_EXTRA: ${YTDLP_EXTRACTOR_ARGS_EXTRA:-}
       YTDLP_PROFILE_CHAIN: ${YTDLP_PROFILE_CHAIN:-default,ejs,bgutil,aggressive}
