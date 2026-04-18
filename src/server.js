@@ -149,6 +149,80 @@ function asyncHandler(handler) {
   };
 }
 
+async function proxyRemoteMedia(req, res, sourceUrl, defaultMimeType = "application/octet-stream") {
+  const upstreamHeaders = new Headers();
+  const requestedRange = `${req.headers.range || ""}`.trim();
+
+  if (requestedRange) {
+    upstreamHeaders.set("Range", requestedRange);
+  }
+
+  const upstreamResponse = await fetch(sourceUrl, {
+    method: "GET",
+    headers: upstreamHeaders,
+    redirect: "follow"
+  });
+
+  if (!upstreamResponse.ok && upstreamResponse.status !== 206) {
+    throw createError("The server could not stream that soundtrack right now.", 502);
+  }
+
+  const passthroughHeaders = [
+    "accept-ranges",
+    "content-length",
+    "content-range",
+    "content-type",
+    "etag",
+    "last-modified"
+  ];
+
+  res.setHeader("Cache-Control", "no-store");
+  res.status(upstreamResponse.status);
+
+  passthroughHeaders.forEach((headerName) => {
+    const value = upstreamResponse.headers.get(headerName);
+
+    if (value) {
+      res.setHeader(headerName, value);
+    }
+  });
+
+  if (!res.getHeader("content-type")) {
+    res.type(defaultMimeType);
+  }
+
+  if (!upstreamResponse.body) {
+    res.end();
+    return;
+  }
+
+  const upstreamStream = upstreamResponse.body;
+  const writable = res;
+
+  await upstreamStream.pipeTo(
+    new WritableStream({
+      write(chunk) {
+        return new Promise((resolve, reject) => {
+          writable.write(Buffer.from(chunk), (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      },
+      close() {
+        writable.end();
+      },
+      abort(error) {
+        writable.destroy(error);
+      }
+    })
+  );
+}
+
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
   const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
@@ -1631,7 +1705,7 @@ app.get(
       return;
     }
 
-    res.redirect(302, audioSource.input);
+    await proxyRemoteMedia(req, res, audioSource.input, audioSource.mimeType || "audio/mpeg");
   })
 );
 
