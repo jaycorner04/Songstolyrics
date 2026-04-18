@@ -1695,7 +1695,8 @@ app.get(
     const videoId = extractVideoId(req.params.videoId);
     const audioSource = await resolveAudioInput(videoId, {
       outputDirectory: path.join(previewAudioCacheRoot, videoId),
-      allowDownloadFallback: true
+      allowDownloadFallback: true,
+      preferLocal: true
     });
     res.setHeader("Cache-Control", "no-store");
 
