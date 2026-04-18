@@ -2027,6 +2027,8 @@ button {
 
 @media (max-width: 760px) {
   .page-shell {
+    width: 100%;
+    max-width: none;
     padding: 18px 10px 32px;
   }
 
@@ -2042,6 +2044,8 @@ button {
   }
 
   .hero-side {
+    width: 100%;
+    min-width: 0;
     gap: 10px;
   }
 
@@ -2052,6 +2056,9 @@ button {
   .thumbnail-card,
   .lyrics-card,
   .video-output-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 14px;
     border-radius: 18px;
   }
@@ -2077,13 +2084,9 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 10px;
     margin-top: 12px;
-  }
-
-  .background-controls .upload-field:first-child {
-    grid-column: 1 / -1;
   }
 
   .background-controls .input-label {
@@ -2184,6 +2187,8 @@ button {
   }
 
   .result-panel {
+    width: 100%;
+    max-width: 100%;
     gap: 12px;
   }
 
@@ -2196,6 +2201,8 @@ button {
       "video video";
     gap: 10px;
     align-items: start;
+    width: 100%;
+    min-width: 0;
   }
 
   .poster-frame {
@@ -2306,6 +2313,8 @@ button {
   }
 
   .lyrics-column {
+    width: 100%;
+    min-width: 0;
     gap: 10px;
   }
 
