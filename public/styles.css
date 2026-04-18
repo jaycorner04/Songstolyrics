@@ -1092,6 +1092,38 @@ button {
   line-height: 1.5;
 }
 
+.audio-fallback-tip {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 147, 80, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(255, 147, 80, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.045);
+  display: grid;
+  gap: 12px;
+}
+
+.audio-fallback-tip strong {
+  display: block;
+  color: #ffd7c8;
+  font-size: 0.9rem;
+}
+
+.audio-fallback-tip p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.audio-fallback-tip.is-ready {
+  border-color: rgba(144, 246, 179, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(144, 246, 179, 0.1), transparent 36%),
+    rgba(255, 255, 255, 0.045);
+}
+
 .upload-preview-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
