@@ -601,7 +601,9 @@ function updateAudioFallbackStateUi(result = currentResult) {
 
   if (hasUploadedAudio) {
     audioFallbackField.classList.add("is-ready");
-    audioFallbackState.textContent = `Audio fallback ready: ${uploadedAudioFallback.name} will be used on the next render if needed.`;
+    audioFallbackState.textContent = isUploadedAudioProject(result)
+      ? `Uploaded audio ready: ${uploadedAudioFallback.name} will drive this render directly.`
+      : `Audio fallback ready: ${uploadedAudioFallback.name} will be used on the next render if needed.`;
     return;
   }
 
@@ -719,7 +721,9 @@ function applyAudioAccessState(result = currentResult) {
   if (audioAccessAction) {
     audioAccessAction.hidden = !showUploadAction;
     audioAccessAction.textContent =
-      hasUploadedAudio && mode !== "available"
+      isUploadedAudioProject(result)
+        ? "Change audio"
+        : hasUploadedAudio && mode !== "available"
         ? "Change audio"
         : uploadRecommended
           ? "Add audio"
@@ -2275,9 +2279,11 @@ async function renderResult(result) {
   resultPanel.hidden = false;
 
   trackTitle.textContent = result.title;
-  trackArtist.textContent = result.song?.artist
-    ? `${result.song.artist} - ${result.channelTitle}`
-    : result.channelTitle;
+  trackArtist.textContent = isUploadedAudioProject(result)
+    ? `Uploaded file • ${formatTime(result.durationSeconds || 0)}`
+    : result.song?.artist
+      ? `${result.song.artist} - ${result.channelTitle}`
+      : result.channelTitle;
   lyricsSource.textContent = `Source: ${result.lyricsSource.replace(/-/g, " ")}`;
   syncMode.textContent = `Sync: ${result.syncMode.replace(/-/g, " ")}`;
 
