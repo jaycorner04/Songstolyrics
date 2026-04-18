@@ -405,6 +405,21 @@
             <div class="meta-badges">
               <span id="lyrics-source" class="badge">Lyrics source</span>
               <span id="sync-mode" class="badge">Sync mode</span>
+              <span id="audio-status-badge" class="badge">Audio status</span>
+            </div>
+
+            <div id="audio-access-shell" class="audio-access-shell">
+              <div class="audio-access-copy">
+                <p id="audio-access-eyebrow" class="audio-access-eyebrow">Sound mode</p>
+                <strong id="audio-access-title">Checking the soundtrack path</strong>
+                <p id="audio-access-text">
+                  The app will decide whether this link can use live YouTube audio, protected server recovery,
+                  or an uploaded soundtrack.
+                </p>
+              </div>
+              <button id="audio-access-action" type="button" class="mini-action-button" hidden>
+                Upload audio
+              </button>
             </div>
 
             <audio id="audio-player" controls preload="metadata"></audio>

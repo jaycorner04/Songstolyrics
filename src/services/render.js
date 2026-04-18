@@ -1970,6 +1970,20 @@ async function ensureDirectory(directoryPath) {
 
 function buildUserRenderMessage(job = {}) {
   if (job.status === "completed") {
+    const notes = Array.isArray(job.notes) ? job.notes : [];
+
+    if (notes.some((note) => /uploaded audio fallback/i.test(`${note || ""}`))) {
+      return "Your lyric video is ready with the uploaded soundtrack in place.";
+    }
+
+    if (notes.some((note) => /silent fallback/i.test(`${note || ""}`))) {
+      return "Your visual draft is ready, but this link still needs uploaded audio if you want sound in the final export.";
+    }
+
+    if (notes.some((note) => /downloaded a local audio fallback automatically|replacing the audio source/i.test(`${note || ""}`))) {
+      return "Your lyric video is ready. The app recovered the soundtrack automatically before export.";
+    }
+
     return "Your lyric video is ready to preview and download.";
   }
 

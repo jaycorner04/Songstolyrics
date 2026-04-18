@@ -208,6 +208,83 @@ function buildApiErrorMessage(error, req = {}) {
     : error?.message || "Request failed.";
 }
 
+function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe = {} } = {}) {
+  const checks = startupDiagnostics?.checks || {};
+  const cookieConfigured = Boolean(checks.ytDlpCookies?.ok);
+  const ytDlpProxyConfigured = Boolean(checks.ytDlpProxy?.ok);
+  const ytdlCoreProxyConfigured = Boolean(checks.ytdlCoreProxy?.ok);
+  const proxyConfigured = ytDlpProxyConfigured || ytdlCoreProxyConfigured;
+  const recoveryConfigured = cookieConfigured || proxyConfigured;
+  const probeReason = normalizeWhitespace(
+    audioPreviewProbe?.reason || (audioPreviewProbe?.timedOut ? "probe-timeout" : "")
+  );
+  const hasDedicatedRecoveryProxy = Boolean(ytdlCoreProxyConfigured);
+  const recoveryParts = [];
+
+  if (cookieConfigured) {
+    recoveryParts.push("signed-in cookies");
+  }
+
+  if (hasDedicatedRecoveryProxy) {
+    recoveryParts.push("a dedicated recovery proxy");
+  } else if (ytDlpProxyConfigured) {
+    recoveryParts.push("a server proxy");
+  }
+
+  const recoveryLabel = recoveryParts.length ? recoveryParts.join(" + ") : "server recovery";
+
+  if (!audioPreviewBlocked) {
+    return {
+      mode: "available",
+      previewAvailable: true,
+      cookieConfigured,
+      proxyConfigured,
+      recoveryConfigured,
+      probeReason,
+      badgeLabel: "Audio live",
+      title: "Live soundtrack is reachable",
+      summary:
+        "YouTube preview audio is available for this link. The final render will still verify timing before export.",
+      primaryActionLabel: "Create lyric video",
+      recommendedAction: "render"
+    };
+  }
+
+  if (recoveryConfigured) {
+    return {
+      mode: "recovery",
+      previewAvailable: false,
+      cookieConfigured,
+      proxyConfigured,
+      recoveryConfigured,
+      probeReason,
+      badgeLabel: "Audio recovery",
+      title: "This link is in protected recovery mode",
+      summary:
+        probeReason === "probe-timeout"
+          ? `The quick preview check stayed conservative, so the player is hidden for now. The final render will still try ${recoveryLabel} before asking for uploaded audio.`
+          : `Preview audio is blocked on this server, but the final render will still try ${recoveryLabel} before falling back to uploaded audio.`,
+      primaryActionLabel: "Create recovery render",
+      recommendedAction: "render-or-upload"
+    };
+  }
+
+  return {
+    mode: "upload-recommended",
+    previewAvailable: false,
+    cookieConfigured,
+    proxyConfigured,
+    recoveryConfigured,
+    probeReason,
+    badgeLabel: "Audio upload",
+    title: "This link needs a fallback soundtrack",
+    summary:
+      "Lyrics and artwork are ready, but the server could not open a trustworthy preview audio path for this song. Upload the audio file for guaranteed sound in the final video.",
+    primaryActionLabel: "Upload audio",
+    recommendedAction: "upload-audio"
+  };
+}
+
 function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
 }
@@ -1352,6 +1429,10 @@ app.post(
       { blocked: true, timedOut: true, reason: "probe-timeout" }
     );
     const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
+    const audioAccess = buildAudioAccessState({
+      audioPreviewBlocked,
+      audioPreviewProbe
+    });
 
     res.json({
       inputUrl: videoUrl,
@@ -1364,6 +1445,7 @@ app.post(
       poster: metadata.poster,
       audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
       audioPreviewBlocked,
+      audioAccess,
       audioMimeType: "audio/mp4",
       song: lyricResult.song,
       lyricsSource: lyricResult.source,
@@ -1372,11 +1454,11 @@ app.post(
       warnings: [
         ...buildWarnings(lyricResult),
         ...previewWarnings,
-        ...(audioPreviewBlocked
-          ? [
-              "Audio preview is blocked for this video on the server right now, so the website will avoid auto-loading the player."
-            ]
-          : []),
+        ...(audioAccess.mode === "recovery"
+          ? [audioAccess.summary]
+          : audioAccess.mode === "upload-recommended"
+            ? [audioAccess.summary]
+            : []),
         ...(audioPreviewProbe?.timedOut
           ? [
               "Audio preview safety check timed out, so the website is staying conservative and not auto-loading the player for this link."
