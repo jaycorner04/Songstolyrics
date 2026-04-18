@@ -159,6 +159,12 @@ button {
   min-height: 100%;
 }
 
+.hero-title-wrap {
+  position: relative;
+  width: fit-content;
+  max-width: min(100%, 46rem);
+}
+
 .hero-copy h1 {
   margin: 18px 0 0;
   font-family: "Syne", "Segoe UI", sans-serif;
@@ -166,6 +172,20 @@ button {
   line-height: 0.94;
   letter-spacing: -0.04em;
   max-width: 14ch;
+}
+
+.hero-signature {
+  position: absolute;
+  right: -0.15rem;
+  bottom: 0.2rem;
+  margin: 0;
+  color: rgba(255, 233, 220, 0.88);
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  font-size: clamp(0.8rem, 1.35vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .eyebrow {
@@ -2163,6 +2183,13 @@ button {
 
   .hero-copy h1 {
     max-width: 100%;
+  }
+
+  .hero-signature {
+    right: 0;
+    bottom: -1.35rem;
+    font-size: 0.82rem;
+    letter-spacing: 0.2em;
   }
 
   .hero-stats {
