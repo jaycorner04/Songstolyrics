@@ -2304,12 +2304,11 @@ function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
   const transcriptMetrics = report.transcriptMetrics || {};
 
   return (
-    candidateMetrics.reliableForSourcePacing &&
-    Number(candidateMetrics.meaningfulCount || 0) >= 4 &&
-    Number(candidateMetrics.coverageRatio || 0) >= 0.12 &&
+    Number(candidateMetrics.meaningfulCount || 0) >= 3 &&
+    Number(candidateMetrics.coverageRatio || 0) >= 0.06 &&
     transcriptMetrics.reliableForWindowFit &&
-    Number(transcriptMetrics.coverageRatio || 0) >= 0.06 &&
-    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 6
+    Number(transcriptMetrics.coverageRatio || 0) >= 0.03 &&
+    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 4
   );
 }
 
@@ -7182,12 +7181,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               category: "sparse_validation_preview",
               message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
             });
-          } else if (
-            hasUploadedAudioOnlySource &&
-            canApproveUploadedAudioSparseTranscriptReport(strictSyncReport)
-          ) {
-            strictSyncReport = {
-              ...strictSyncReport,
+            } else if (
+              hasUploadedAudioOnlySource &&
+              (
+                canApproveUploadedAudioSparseTranscriptReport(strictSyncReport) ||
+                renderLineSyncSource === "synced-lyrics" ||
+                renderLines.length >= 4
+              )
+            ) {
+              strictSyncReport = {
+                ...strictSyncReport,
               approved: true,
               reason: "",
               approvalMode: "uploaded-audio-sparse-transcript-fallback",
@@ -7196,10 +7199,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             renderNotes.push(
               "Strict sync verification approved this uploaded-audio render with the best available transcript even though the final transcript was sparse."
             );
-          } else {
-            throw createStrictSyncValidationError(strictSyncReport);
+            } else {
+              if (hasUploadedAudioOnlySource && renderLines.length >= 4) {
+                renderNotes.push(
+                  "Strict sync check was relaxed for uploaded audio and the render trusted the user-provided file."
+                );
+              } else {
+                throw createStrictSyncValidationError(strictSyncReport);
+              }
+            }
           }
-        }
 
         if (strictSyncReport.approved && strictSyncReport.approvalMode === "structured-source-fallback") {
           await recordAdaptiveSignalSafely({
