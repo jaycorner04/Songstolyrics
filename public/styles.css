@@ -1258,9 +1258,12 @@ button {
 }
 
 .audio-fallback-tip strong {
-  display: block;
+  display: inline-block;
   color: #ffd7c8;
-  font-size: 0.9rem;
+  max-width: 16ch;
+  font-size: 0.82rem;
+  line-height: 1.28;
+  letter-spacing: -0.01em;
 }
 
 .audio-fallback-tip p {

@@ -1887,7 +1887,7 @@ function showAudioFallbackRecovery(options = {}) {
   }
 
   const {
-    title = "Upload audio if this link has no sound",
+    title = "Add audio if sound is missing",
     text = "The app already tried the normal YouTube audio path. If this song stays silent, add the audio file here and render again.",
     ready = false
   } = options;
