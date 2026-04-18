@@ -1,9 +1,0 @@
-{
-  "commands": [
-    "set -e",
-    "uname -a",
-    "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}' || true",
-    "sudo systemctl status docker --no-pager -l | head -n 40",
-    "ps -eo pid,ppid,%mem,%cpu,comm,args --sort=-%mem | head -n 15"
-  ]
-}
