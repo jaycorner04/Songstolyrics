@@ -2572,6 +2572,7 @@ updateStyleSpecificControls();
 updateLyricStylePreview();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();
+syncMobileAudioCards();
 renderLocalDebugPanel([]);
 renderLocalDebugStatus({
   connected: false,
@@ -2667,6 +2668,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("DOMContentLoaded", () => {
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
+  syncMobileAudioCards();
   const params = new URLSearchParams(window.location.search);
   const initialUrl = params.get("url");
 
@@ -2674,4 +2676,8 @@ window.addEventListener("DOMContentLoaded", () => {
     urlInput.value = initialUrl;
     form.requestSubmit();
   }
+});
+
+window.addEventListener("resize", () => {
+  syncMobileAudioCards();
 });
