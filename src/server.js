@@ -69,6 +69,7 @@ let startupDiagnostics = {
   transcriptionReady: false,
   checks: {}
 };
+const previewWarmups = new Map();
 
 const renderUpload = multer({
   storage: multer.diskStorage({
@@ -167,6 +168,34 @@ function warmPreviewAudioCache(videoId, audioSource) {
       await cacheRemoteAudioUrlToFile(audioSource.input, outputDirectory, videoId);
     })
     .catch(() => {});
+}
+
+function queuePreviewWarmup(videoId) {
+  if (!videoId) {
+    return;
+  }
+
+  const existingWarmup = previewWarmups.get(videoId);
+
+  if (existingWarmup) {
+    return;
+  }
+
+  const warmupPromise = Promise.resolve()
+    .then(async () => {
+      const outputDirectory = path.join(previewAudioCacheRoot, videoId);
+      const source = await resolveAudioInput(videoId, {
+        outputDirectory,
+        allowDownloadFallback: false
+      });
+      warmPreviewAudioCache(videoId, source);
+    })
+    .catch(() => {})
+    .finally(() => {
+      previewWarmups.delete(videoId);
+    });
+
+  previewWarmups.set(videoId, warmupPromise);
 }
 
 async function proxyRemoteMedia(req, res, sourceUrl, defaultMimeType = "application/octet-stream") {
@@ -1531,6 +1560,8 @@ app.post(
     if (!audioPreviewBlocked && audioPreviewProbe?.source) {
       warmPreviewAudioCache(videoId, audioPreviewProbe.source);
     }
+
+    queuePreviewWarmup(videoId);
 
     res.json({
       inputUrl: videoUrl,
