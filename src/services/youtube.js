@@ -931,7 +931,8 @@ async function getVideoInfo(videoId) {
   return {
     oembed,
     videoId,
-    watchHtml: watchHtml || embedHtml || ""
+    watchHtml: watchHtml || embedHtml || "",
+    watchUrl
   };
 }
 
@@ -964,9 +965,12 @@ async function getVideoMetadata(videoId, info) {
     apiItem?.snippet?.description ||
     decodeHtmlEntities(parseHtmlValue(html, /"shortDescription":"([^"]*)"/i)) ||
     "";
-  const durationSeconds =
+  const shortsDetected =
+    /WEB_PAGE_TYPE_SHORTS|\/shorts\//i.test(html) || /\/shorts\//i.test(info?.watchUrl || "");
+  const parsedDurationSeconds =
     parseIsoDuration(apiItem?.contentDetails?.duration || "") ||
     Number(parseHtmlValue(html, /"lengthSeconds":"(\d+)"/i) || 0);
+  const durationSeconds = parsedDurationSeconds || (videoId && shortsDetected ? 60 : 0);
   const thumbnails = normalizeThumbnails(
     videoId,
     apiItem?.snippet?.thumbnails?.high?.url || oembed.thumbnail_url || ""
