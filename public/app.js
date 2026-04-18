@@ -492,6 +492,21 @@ function applyAudioAccessState(result = currentResult) {
     return;
   }
 
+  if (!result?.inputUrl) {
+    audioStatusBadge.textContent = "Audio status";
+    audioAccessEyebrow.textContent = "Sound mode";
+    audioAccessTitle.textContent = "Checking the soundtrack path";
+    audioAccessText.textContent =
+      "The app will decide whether this link can use live YouTube audio, protected server recovery, or an uploaded soundtrack.";
+    audioAccessShell.classList.remove("is-live", "is-recovery", "is-upload");
+    if (audioAccessAction) {
+      audioAccessAction.hidden = true;
+      audioAccessAction.textContent = "Upload audio";
+    }
+    audioPlayer.hidden = false;
+    return;
+  }
+
   const audioAccess = getCurrentAudioAccessState(result);
   const mode = audioAccess.mode || "available";
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
@@ -1385,12 +1400,14 @@ async function handleAudioFallbackUpload() {
   try {
     uploadedAudioFallback = await readAudioFileMetadata(file);
     renderAudioFallbackMeta();
+    applyAudioAccessState();
     promptAudioFallbackRecovery(
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
         : `Audio fallback ${uploadedAudioFallback.name} is ready. The app will only use it if YouTube audio becomes unavailable.`,
       { scroll: false }
     );
+    syncIdleRenderCta();
     setStatus(
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ready: ${uploadedAudioFallback.name}. The next render will use it instead of blocked YouTube audio.`
@@ -1399,6 +1416,8 @@ async function handleAudioFallbackUpload() {
   } catch (error) {
     uploadedAudioFallback = null;
     renderAudioFallbackMeta();
+    applyAudioAccessState();
+    syncIdleRenderCta();
     setStatus(error.message || "Could not prepare the uploaded audio fallback.", true);
   }
 }
@@ -1408,6 +1427,8 @@ function clearAudioFallbackSelection() {
   audioFallbackInput.value = "";
   renderAudioFallbackMeta();
   hideAudioFallbackRecovery();
+  applyAudioAccessState();
+  syncIdleRenderCta();
 }
 
 function clearCustomBackgroundSelection() {
@@ -1454,8 +1475,7 @@ function markRenderOutputStale(message = "Style or font changed. Render again to
     resetRenderedVideo();
   }
 
-  renderButton.disabled = false;
-  renderButton.textContent = "Apply Style & Render";
+  syncIdleRenderCta();
   setRenderMessage(message);
   setStatus(message);
 }
