@@ -2966,13 +2966,8 @@ window.addEventListener("DOMContentLoaded", () => {
   scheduleLocalDebugRefresh();
   syncMobileAudioCards();
   syncMobileStageCard();
-  const params = new URLSearchParams(window.location.search);
-  const initialUrl = params.get("url");
-
-  if (initialUrl) {
-    urlInput.value = initialUrl;
-    form.requestSubmit();
-  }
+  urlInput.value = "";
+  updateQueryString("");
 });
 
 window.addEventListener("resize", () => {
