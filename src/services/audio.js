@@ -364,6 +364,7 @@ async function findDownloadedAudioFile(videoId, outputDirectory) {
 }
 
 async function transcodeRemoteAudioUrlToFile(audioUrl, outputDirectory, videoId, timeoutMs) {
+  await ensureDirectory(outputDirectory);
   const outputPath = path.join(outputDirectory, `${toSafeBaseName(videoId)}.wav`);
 
   await execFileWithRetry(
