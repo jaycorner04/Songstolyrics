@@ -37,24 +37,30 @@ function extractVideoId(input) {
 
   try {
     const url = new URL(value);
+    const hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    url.searchParams.delete("si");
 
-    if (url.hostname === "youtu.be") {
-      const shortId = url.pathname.replace(/\//g, "");
+    if (hostname === "youtu.be") {
+      const shortId = url.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
       if (/^[a-zA-Z0-9_-]{11}$/.test(shortId)) {
         return shortId;
       }
     }
 
-    if (url.searchParams.has("v")) {
+    if (
+      hostname === "youtube.com" ||
+      hostname === "m.youtube.com" ||
+      hostname === "music.youtube.com"
+    ) {
       const queryId = url.searchParams.get("v");
-      if (/^[a-zA-Z0-9_-]{11}$/.test(queryId)) {
+      if (/^[a-zA-Z0-9_-]{11}$/.test(queryId || "")) {
         return queryId;
       }
-    }
 
-    const pathMatch = url.pathname.match(/\/(shorts|embed)\/([a-zA-Z0-9_-]{11})/);
-    if (pathMatch) {
-      return pathMatch[2];
+      const pathMatch = url.pathname.match(/\/(?:shorts|embed|live)\/([a-zA-Z0-9_-]{11})(?:[/?]|$)/);
+      if (pathMatch) {
+        return pathMatch[1];
+      }
     }
   } catch (error) {
     throw createError("That does not look like a valid YouTube URL.", 400);
