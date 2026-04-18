@@ -520,6 +520,38 @@ function getUploadedAudioDisplayTitle(audioMeta = uploadedAudioFallback) {
   return cleanTitle || audioMeta?.name || "Uploaded audio";
 }
 
+function shortenInlineAudioLabel(value = "", maxLength = 24) {
+  const normalized = `${value || ""}`.trim();
+
+  if (!normalized) {
+    return "Add audio";
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(8, maxLength - 1)).trim()}...`;
+}
+
+function syncInlineAudioButtonLabel(audioMeta = uploadedAudioFallback) {
+  if (!uploadAudioInlineButton) {
+    return;
+  }
+
+  if (!audioMeta?.file) {
+    uploadAudioInlineButton.textContent = "Add audio";
+    uploadAudioInlineButton.title = "Add audio";
+    uploadAudioInlineButton.classList.remove("is-ready");
+    return;
+  }
+
+  const songTitle = getUploadedAudioDisplayTitle(audioMeta);
+  uploadAudioInlineButton.textContent = shortenInlineAudioLabel(songTitle);
+  uploadAudioInlineButton.title = `Uploaded audio: ${songTitle}`;
+  uploadAudioInlineButton.classList.add("is-ready");
+}
+
 function slugifyLocalProjectId(value = "") {
   return `${value || ""}`
     .toLowerCase()
@@ -1840,11 +1872,13 @@ function revokeUploadedAudioPreviewUrl() {
 function renderAudioFallbackMeta() {
   if (!uploadedAudioFallback) {
     audioFallbackMeta.textContent = "No audio fallback selected.";
+    syncInlineAudioButtonLabel(null);
     return;
   }
 
   audioFallbackMeta.textContent =
     `Uploaded song: ${getUploadedAudioDisplayTitle(uploadedAudioFallback)} • ${formatTime(uploadedAudioFallback.duration)} • ${formatFileSize(uploadedAudioFallback.size)}`;
+  syncInlineAudioButtonLabel(uploadedAudioFallback);
 }
 
 function showAudioFallbackRecovery(options = {}) {

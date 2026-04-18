@@ -943,6 +943,10 @@ button {
   color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .input-row button:hover,
@@ -953,6 +957,12 @@ button {
 
 .input-row .input-row-secondary-button:hover {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.input-row .input-row-secondary-button.is-ready {
+  background: rgba(127, 232, 255, 0.12);
+  border-color: rgba(127, 232, 255, 0.32);
+  color: #d7f8ff;
 }
 
 .input-row button:disabled,
