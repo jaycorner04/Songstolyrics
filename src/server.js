@@ -1796,6 +1796,25 @@ app.get(
 );
 
 app.post(
+  "/api/convert-audio",
+  renderUpload.fields([{ name: "audioFile", maxCount: 1 }]),
+  asyncHandler(async (req, res) => {
+    const audioFileUpload = Array.isArray(req.files?.audioFile) ? req.files.audioFile[0] : null;
+
+    if (!audioFileUpload) {
+      throw createError("Upload an audio file to start an audio-only project.", 400);
+    }
+
+    const payload = await buildUploadedAudioPreview(audioFileUpload, {
+      title: `${req.body?.title || ""}`.trim(),
+      durationSeconds: Number(req.body?.durationSeconds || 0)
+    });
+
+    res.json(payload);
+  })
+);
+
+app.post(
   "/api/convert",
   asyncHandler(async (req, res) => {
     const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
