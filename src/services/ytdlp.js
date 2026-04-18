@@ -14,6 +14,13 @@ function parseEnvList(value = "") {
     .filter(Boolean);
 }
 
+function parseSemicolonList(value = "") {
+  return `${value || ""}`
+    .split(";")
+    .map((entry) => normalizeWhitespace(entry))
+    .filter(Boolean);
+}
+
 function toEnvToken(value = "") {
   return `${value || ""}`
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -123,6 +130,24 @@ function buildYtDlpArgs(options = {}) {
     args.push("--proxy", proxyUrl);
   }
 
+  const remoteComponents = parseEnvList(process.env.YTDLP_REMOTE_COMPONENTS || "");
+
+  remoteComponents.forEach((component) => {
+    args.push("--remote-components", component);
+  });
+
+  const pluginDirs = parseEnvList(process.env.YTDLP_PLUGIN_DIRS || "");
+
+  pluginDirs.forEach((pluginDirectory) => {
+    args.push("--plugin-dirs", pluginDirectory);
+  });
+
+  const jsRuntimes = normalizeWhitespace(process.env.YTDLP_JS_RUNTIMES || "");
+
+  if (jsRuntimes) {
+    args.push("--js-runtimes", jsRuntimes);
+  }
+
   const extractorArgs = [];
   const playerClients = resolvePlayerClients(kind, fallbackClients);
 
@@ -151,6 +176,22 @@ function buildYtDlpArgs(options = {}) {
       "web";
     extractorArgs.push(`youtube:po_token=${poTokenClient}+${poToken}`);
   }
+
+  const bgutilBaseUrl = normalizeWhitespace(process.env.YTDLP_BGUTIL_BASE_URL || "");
+
+  if (bgutilBaseUrl) {
+    extractorArgs.push(`youtubepot-bgutilhttp:base_url=${bgutilBaseUrl}`);
+  }
+
+  const bgutilServerHome = normalizeWhitespace(process.env.YTDLP_BGUTIL_SERVER_HOME || "");
+
+  if (bgutilServerHome) {
+    extractorArgs.push(`youtubepot-bgutilscript:server_home=${bgutilServerHome}`);
+  }
+
+  const extraExtractorArgs = parseSemicolonList(process.env.YTDLP_EXTRACTOR_ARGS_EXTRA || "");
+
+  extractorArgs.push(...extraExtractorArgs);
 
   const youtubetabSkip = normalizeWhitespace(process.env.YTDLP_YOUTUBETAB_SKIP || "");
 
