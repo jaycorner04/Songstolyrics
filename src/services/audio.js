@@ -590,6 +590,31 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     }
 
     try {
+      const resolvedStreamUrl = await resolveAudioUrl(videoId);
+
+      if (resolvedStreamUrl) {
+        const transcodedPath = await transcodeRemoteAudioUrlToFile(
+          resolvedStreamUrl,
+          outputDirectory,
+          videoId,
+          Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+        );
+        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+        if (downloadedFilePath || transcodedPath) {
+          const usableFilePath = downloadedFilePath || transcodedPath;
+          downloadedAudioCache.set(cacheKey, {
+            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+            filePath: usableFilePath
+          });
+          return usableFilePath;
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
       const fallbackStreamUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
 
       if (fallbackStreamUrl) {
