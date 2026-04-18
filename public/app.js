@@ -69,14 +69,8 @@ const audioAccessText = document.getElementById("audio-access-text");
 const audioAccessAction = document.getElementById("audio-access-action");
 const desktopAudioAccessSlot = document.getElementById("desktop-audio-access-slot");
 const desktopAudioPreviewSlot = document.getElementById("desktop-audio-preview-slot");
-const mobileAudioAccessCard = document.getElementById("mobile-audio-access-card");
-const mobileAudioAccessSlot = document.getElementById("mobile-audio-access-slot");
-const mobileAudioAccessTitle = document.getElementById("mobile-audio-access-title");
-const mobileAudioAccessText = document.getElementById("mobile-audio-access-text");
-const mobileAudioPreviewCard = document.getElementById("mobile-audio-preview-card");
-const mobileAudioPreviewSlot = document.getElementById("mobile-audio-preview-slot");
-const mobileAudioPreviewTitle = document.getElementById("mobile-audio-preview-title");
-const mobileAudioPreviewText = document.getElementById("mobile-audio-preview-text");
+const mobileStageCard = document.getElementById("mobile-stage-card");
+const mobileStageSlot = document.getElementById("mobile-stage-slot");
 const warningsContainer = document.getElementById("warnings");
 const thumbnailStrip = document.getElementById("thumbnail-strip");
 const thumbnailCard = document.querySelector(".thumbnail-card");
@@ -860,65 +854,62 @@ function getActiveAudioPreviewNode() {
 
 function syncMobileAudioCards(result = currentResult) {
   if (
-    !audioAccessShell ||
-    !audioPlayer ||
     !desktopAudioAccessSlot ||
     !desktopAudioPreviewSlot ||
-    !mobileAudioAccessCard ||
-    !mobileAudioAccessSlot ||
-    !mobileAudioPreviewCard ||
-    !mobileAudioPreviewSlot
+    !audioAccessShell ||
+    !audioPlayer
   ) {
     return;
   }
 
-  const mobileLayout = isCompactMobileLayout();
-  const accessTarget = mobileLayout ? mobileAudioAccessSlot : desktopAudioAccessSlot;
-  const previewTarget = mobileLayout ? mobileAudioPreviewSlot : desktopAudioPreviewSlot;
+  if (audioAccessShell.parentNode !== desktopAudioAccessSlot) {
+    desktopAudioAccessSlot.appendChild(audioAccessShell);
+  }
+
   const previewNode = getActiveAudioPreviewNode();
-  const usingYoutubeEmbed = previewNode?.id === "yt-audio-embed";
-  const hasResult = Boolean(result?.inputUrl);
-  const previewVisible = Boolean(
-    usingYoutubeEmbed ||
-    (!audioPlayer.hidden && (audioPlayer.currentSrc || audioPlayer.getAttribute("src")))
-  );
-
-  if (audioAccessShell.parentNode !== accessTarget) {
-    accessTarget.appendChild(audioAccessShell);
+  if (previewNode && previewNode.parentNode !== desktopAudioPreviewSlot) {
+    desktopAudioPreviewSlot.appendChild(previewNode);
   }
 
-  if (previewNode && previewNode.parentNode !== previewTarget) {
-    previewTarget.appendChild(previewNode);
+  if (mobileStageCard) {
+    mobileStageCard.hidden = true;
   }
+}
 
-  if (!mobileLayout) {
-    mobileAudioAccessCard.hidden = true;
-    mobileAudioPreviewCard.hidden = true;
+function syncMobileStageCard() {
+  if (!renderStageCard || !mobileStageCard || !mobileStageSlot) {
     return;
   }
 
-  if (mobileAudioAccessTitle) {
-    mobileAudioAccessTitle.textContent = "Smart recovery";
+  const mobileLayout = isCompactMobileLayout();
+  const target = mobileLayout ? mobileStageSlot : renderStageCard.dataset.desktopParent
+    ? document.getElementById(renderStageCard.dataset.desktopParent)
+    : null;
+
+  if (!renderStageCard.dataset.desktopParent) {
+    const parentId = renderStageCard.parentElement?.id || "";
+    if (parentId) {
+      renderStageCard.dataset.desktopParent = parentId;
+    }
   }
 
-  if (mobileAudioAccessText) {
-    mobileAudioAccessText.textContent = hasResult
-      ? "Sound guidance stays on the left on mobile so the track card remains compact."
-      : "Add a song link to reveal the smart recovery card.";
+  if (mobileLayout) {
+    if (renderStageCard.parentNode !== mobileStageSlot) {
+      mobileStageSlot.appendChild(renderStageCard);
+    }
+    mobileStageCard.hidden = renderStageCard.hidden;
+    return;
   }
 
-  if (mobileAudioPreviewTitle) {
-    mobileAudioPreviewTitle.textContent = usingYoutubeEmbed ? "Watch YouTube" : "Audio preview";
+  const desktopParent = renderStageCard.dataset.desktopParent
+    ? document.getElementById(renderStageCard.dataset.desktopParent)
+    : null;
+
+  if (desktopParent && renderStageCard.parentNode !== desktopParent) {
+    desktopParent.appendChild(renderStageCard);
   }
 
-  if (mobileAudioPreviewText) {
-    mobileAudioPreviewText.textContent = usingYoutubeEmbed
-      ? "Use the YouTube watch panel here when direct server preview is unavailable."
-      : "Listen to the current soundtrack preview from the left column.";
-  }
-
-  mobileAudioAccessCard.hidden = !hasResult;
-  mobileAudioPreviewCard.hidden = !(hasResult && previewVisible);
+  mobileStageCard.hidden = true;
 }
 
 function formatDebugDateTime(value = "") {
@@ -1817,6 +1808,7 @@ function renderStageTimings(job = {}) {
     renderStageCard.hidden = true;
     renderStageList.innerHTML = "";
     renderStageTotalTime.textContent = "0s";
+    syncMobileStageCard();
     return;
   }
 
@@ -1845,6 +1837,8 @@ function renderStageTimings(job = {}) {
     row.append(label, meta);
     renderStageList.appendChild(row);
   });
+
+  syncMobileStageCard();
 }
 
 function setRenderMessage(message, isError = false) {
