@@ -2,12 +2,19 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $startScript = Join-Path $PSScriptRoot "start-live-debug-tunnel.ps1"
 $stopScript = Join-Path $PSScriptRoot "stop-live-debug-tunnel.ps1"
 $intervalSeconds = 6
-$healthUrl = "http://127.0.0.1:3000/api/health"
+$localPort = if ($env:LIVE_DEBUG_LOCAL_PORT) { [int]$env:LIVE_DEBUG_LOCAL_PORT } else { 3000 }
+$expectedRuntimeRoot = if ($env:LIVE_DEBUG_EXPECT_RUNTIME_ROOT) {
+  $env:LIVE_DEBUG_EXPECT_RUNTIME_ROOT
+} else {
+  "/data"
+}
+$healthUrl = "http://127.0.0.1:$localPort/api/health"
 
 function Test-LiveDebugHealth() {
   try {
     $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 4
-    return $response.Content -match '"runtimeRoot":"\/data"'
+    $escapedRuntimeRoot = [Regex]::Escape($expectedRuntimeRoot.Replace("\", "/"))
+    return $response.Content -match ('"runtimeRoot":"{0}"' -f $escapedRuntimeRoot)
   } catch {
     return $false
   }

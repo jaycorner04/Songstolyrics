@@ -2,9 +2,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $stateDir = Join-Path $repoRoot ".live-debug"
 $pidFile = Join-Path $stateDir "live-debug.pid"
 $watchdogPidFile = Join-Path $stateDir "live-debug-watchdog.pid"
-$localPort = 3000
-$tunnelSpec = "${localPort}:127.0.0.1:3000"
-$remoteHost = "ec2-user@3.110.128.0"
+$localPort = if ($env:LIVE_DEBUG_LOCAL_PORT) { [int]$env:LIVE_DEBUG_LOCAL_PORT } else { 3000 }
+$remotePort = if ($env:LIVE_DEBUG_REMOTE_PORT) { [int]$env:LIVE_DEBUG_REMOTE_PORT } else { 3000 }
+$remoteUser = if ($env:LIVE_DEBUG_REMOTE_USER) { $env:LIVE_DEBUG_REMOTE_USER } else { "ec2-user" }
+$remoteAddress = if ($env:LIVE_DEBUG_REMOTE_HOST) { $env:LIVE_DEBUG_REMOTE_HOST } else { "3.110.128.0" }
+$tunnelSpec = "${localPort}:127.0.0.1:${remotePort}"
+$remoteHost = "${remoteUser}@${remoteAddress}"
 
 function Get-ListeningProcessIds([int]$Port) {
   try {

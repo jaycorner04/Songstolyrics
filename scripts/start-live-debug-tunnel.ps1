@@ -4,10 +4,37 @@ $pidFile = Join-Path $stateDir "live-debug.pid"
 $stdoutLog = Join-Path $stateDir "live-debug.stdout.log"
 $stderrLog = Join-Path $stateDir "live-debug.stderr.log"
 $sshExe = Join-Path $env:WINDIR "System32\OpenSSH\ssh.exe"
-$sshKeyPath = Join-Path $env:USERPROFILE "Downloads\song-to-lyrics-key.pem"
-$remoteHost = "ec2-user@3.110.128.0"
-$localPort = 3000
-$tunnelSpec = "${localPort}:127.0.0.1:3000"
+$sshKeyPath = if ($env:LIVE_DEBUG_SSH_KEY_PATH) {
+  $env:LIVE_DEBUG_SSH_KEY_PATH
+} else {
+  Join-Path $env:USERPROFILE "Downloads\song-to-lyrics-key.pem"
+}
+$remoteUser = if ($env:LIVE_DEBUG_REMOTE_USER) { $env:LIVE_DEBUG_REMOTE_USER } else { "ec2-user" }
+$remoteAddress = if ($env:LIVE_DEBUG_REMOTE_HOST) { $env:LIVE_DEBUG_REMOTE_HOST } else { "3.110.128.0" }
+$remoteHost = "${remoteUser}@${remoteAddress}"
+$localPort = if ($env:LIVE_DEBUG_LOCAL_PORT) { [int]$env:LIVE_DEBUG_LOCAL_PORT } else { 3000 }
+$remotePort = if ($env:LIVE_DEBUG_REMOTE_PORT) { [int]$env:LIVE_DEBUG_REMOTE_PORT } else { 3000 }
+$expectedRuntimeRoot = if ($env:LIVE_DEBUG_EXPECT_RUNTIME_ROOT) {
+  $env:LIVE_DEBUG_EXPECT_RUNTIME_ROOT
+} else {
+  "/data"
+}
+$sshConnectTimeoutSeconds = if ($env:LIVE_DEBUG_CONNECT_TIMEOUT_SECONDS) {
+  [int]$env:LIVE_DEBUG_CONNECT_TIMEOUT_SECONDS
+} else {
+  8
+}
+$sshServerAliveIntervalSeconds = if ($env:LIVE_DEBUG_SERVER_ALIVE_INTERVAL_SECONDS) {
+  [int]$env:LIVE_DEBUG_SERVER_ALIVE_INTERVAL_SECONDS
+} else {
+  15
+}
+$sshServerAliveCountMax = if ($env:LIVE_DEBUG_SERVER_ALIVE_COUNT_MAX) {
+  [int]$env:LIVE_DEBUG_SERVER_ALIVE_COUNT_MAX
+} else {
+  3
+}
+$tunnelSpec = "${localPort}:127.0.0.1:${remotePort}"
 
 function Get-ListeningProcessIds([int]$Port) {
   try {
@@ -28,7 +55,8 @@ function Get-ProcessCommandLine([int]$ProcessId) {
 function Test-LiveDebugHealth() {
   try {
     $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$localPort/api/health" -TimeoutSec 4
-    return $response.Content -match '"runtimeRoot":"\/data"'
+    $escapedRuntimeRoot = [Regex]::Escape($expectedRuntimeRoot.Replace("\", "/"))
+    return $response.Content -match ('"runtimeRoot":"{0}"' -f $escapedRuntimeRoot)
   } catch {
     return $false
   }
@@ -89,6 +117,12 @@ $process = Start-Process `
     "StrictHostKeyChecking=no",
     "-o",
     "ExitOnForwardFailure=yes",
+    "-o",
+    "ConnectTimeout=$sshConnectTimeoutSeconds",
+    "-o",
+    "ServerAliveInterval=$sshServerAliveIntervalSeconds",
+    "-o",
+    "ServerAliveCountMax=$sshServerAliveCountMax",
     $remoteHost
   ) `
   -WorkingDirectory $repoRoot `
@@ -107,4 +141,23 @@ for ($attempt = 0; $attempt -lt 12; $attempt += 1) {
   }
 }
 
-throw "live debug tunnel started but the EC2 health check did not appear on localhost:$localPort yet. Check $stderrLog"
+$activeProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+if ($activeProcess) {
+  Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+}
+
+Remove-Item -Path $pidFile -Force -ErrorAction SilentlyContinue
+
+$stderrTail = ""
+if (Test-Path $stderrLog) {
+  $stderrTail = (Get-Content -Path $stderrLog -Tail 20 -ErrorAction SilentlyContinue) -join [Environment]::NewLine
+}
+
+throw ("live debug tunnel started but the remote health check did not appear on localhost:{0} yet. " +
+  "Target={1}, remote port={2}, expected runtime root={3}. Check {4}.{5}") -f `
+  $localPort, `
+  $remoteHost, `
+  $remotePort, `
+  $expectedRuntimeRoot, `
+  $stderrLog, `
+  $(if ($stderrTail) { [Environment]::NewLine + $stderrTail } else { "" })
