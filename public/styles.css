@@ -1255,6 +1255,8 @@ button {
     rgba(255, 255, 255, 0.045);
   display: grid;
   gap: 12px;
+  width: min(100%, 186px);
+  justify-self: start;
 }
 
 .audio-fallback-tip strong {
@@ -1269,8 +1271,8 @@ button {
 .audio-fallback-tip p {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.5;
+  font-size: 0.8rem;
+  line-height: 1.42;
 }
 
 .audio-fallback-tip.is-ready {
