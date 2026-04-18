@@ -118,6 +118,7 @@ let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
 let audioFallbackPopupKey = "";
 const dismissedAudioFallbackPopupKeys = new Set();
+const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const LOCAL_DEBUG_REFRESH_MS = 350;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const lyricPreviewSamples = {
@@ -524,6 +525,26 @@ function buildUploadedAudioProjectResult(audioMeta = uploadedAudioFallback) {
   };
 }
 
+function persistDismissedAudioPopupKeys() {
+  try {
+    window.sessionStorage.setItem(
+      AUDIO_POPUP_DISMISSED_STORAGE_KEY,
+      JSON.stringify([...dismissedAudioFallbackPopupKeys])
+    );
+  } catch {}
+}
+
+function restoreDismissedAudioPopupKeys() {
+  try {
+    const raw = window.sessionStorage.getItem(AUDIO_POPUP_DISMISSED_STORAGE_KEY);
+    const parsed = JSON.parse(raw || "[]");
+
+    if (Array.isArray(parsed)) {
+      parsed.filter(Boolean).forEach((key) => dismissedAudioFallbackPopupKeys.add(String(key)));
+    }
+  } catch {}
+}
+
 function formatTime(seconds) {
   const value = Math.max(0, Number(seconds || 0));
   const minutes = Math.floor(value / 60);
@@ -638,6 +659,7 @@ function syncAudioFallbackPopup(result = currentResult) {
   const isDismissed = Boolean(nextPopupKey) && dismissedAudioFallbackPopupKeys.has(nextPopupKey);
 
   audioFallbackPopup.hidden = !shouldShow || isDismissed;
+  audioFallbackPopup.style.display = !shouldShow || isDismissed ? "none" : "";
 
   if (!shouldShow) {
     if (!hasResult) {
@@ -2821,9 +2843,11 @@ audioFallbackPopupButton?.addEventListener("click", () => audioFallbackInput.cli
 audioFallbackPopupClose?.addEventListener("click", () => {
   if (audioFallbackPopupKey) {
     dismissedAudioFallbackPopupKeys.add(audioFallbackPopupKey);
+    persistDismissedAudioPopupKeys();
   }
   if (audioFallbackPopup) {
     audioFallbackPopup.hidden = true;
+    audioFallbackPopup.style.display = "none";
   }
 });
 changeAudioFallbackButton.addEventListener("click", () => audioFallbackInput.click());
@@ -2840,6 +2864,7 @@ updateLyricFontPreview();
 syncLyricZoomUi();
 updateStyleSpecificControls();
 updateLyricStylePreview();
+restoreDismissedAudioPopupKeys();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();
 syncMobileAudioCards();
