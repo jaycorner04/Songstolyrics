@@ -499,6 +499,9 @@ function applyAudioAccessState(result = currentResult) {
     return;
   }
 
+  audioStatusBadge.style.background = "";
+  audioStatusBadge.style.color = "";
+
   if (!result?.inputUrl) {
     audioStatusBadge.textContent = "Audio status";
     audioAccessEyebrow.textContent = "Sound mode";
