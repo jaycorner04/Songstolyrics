@@ -176,6 +176,29 @@
                 </div>
               </div>
 
+              <div class="upload-field">
+                <label class="input-label" for="audio-fallback">Audio fallback</label>
+                <input
+                  id="audio-fallback"
+                  type="file"
+                  accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/webm"
+                />
+                <p class="helper-text">
+                  Optional. If YouTube blocks server audio, upload the song audio here and the render will use it.
+                </p>
+                <div class="upload-preview-actions">
+                  <button id="change-audio-fallback-button" type="button" class="mini-action-button">
+                    Change audio
+                  </button>
+                  <button id="delete-audio-fallback-button" type="button" class="mini-action-button is-muted">
+                    Remove audio
+                  </button>
+                </div>
+                <div id="audio-fallback-meta" class="video-upload-meta" aria-live="polite">
+                  No audio fallback selected.
+                </div>
+              </div>
+
               <div class="format-field">
                 <label class="input-label" for="output-format">Output size</label>
                 <select id="output-format">
