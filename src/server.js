@@ -186,7 +186,7 @@ function queuePreviewWarmup(videoId) {
       const outputDirectory = path.join(previewAudioCacheRoot, videoId);
       const source = await resolveAudioInput(videoId, {
         outputDirectory,
-        allowDownloadFallback: false
+        allowDownloadFallback: true
       });
       warmPreviewAudioCache(videoId, source);
     })
