@@ -168,6 +168,13 @@ function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
     return true;
   }
 
+  if (
+    /^\/api\/render$/i.test(requestPath) &&
+    /request aborted/i.test(`${error?.message || ""}`)
+  ) {
+    return true;
+  }
+
   return false;
 }
 
@@ -344,6 +351,12 @@ function buildWarnings(result) {
 
 function buildApiErrorMessage(error, req = {}) {
   const requestPath = `${req.originalUrl || req.url || ""}`;
+
+  if (/request aborted/i.test(`${error?.message || ""}`)) {
+    return /^\/api\/render$/i.test(requestPath)
+      ? "The upload was interrupted before the render could start. Please try again on a stable connection."
+      : "The request was interrupted before the server could finish reading it.";
+  }
 
   if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
     if (/^\/api\/audio\//i.test(requestPath)) {
@@ -1896,7 +1909,8 @@ app.use((error, req, res, next) => {
     return;
   }
 
-  const statusCode = Number(error.statusCode || 500);
+  const requestWasAborted = /request aborted/i.test(`${error?.message || ""}`);
+  const statusCode = Number(error.statusCode || (requestWasAborted ? 499 : 500));
   const message = buildApiErrorMessage(error, req);
 
   if (!shouldSkipLocalDebugApiEvent(req, error, statusCode)) {

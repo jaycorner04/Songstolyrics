@@ -1001,6 +1001,25 @@ function simplifyUiMessage(message, fallback = "Something went wrong. Please try
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isTransientRenderStartError(error) {
+  const statusCode = Number(error?.statusCode || 0);
+  const message = `${error?.message || error || ""}`.toLowerCase();
+
+  if ([408, 425, 429, 499, 500, 502, 503, 504].includes(statusCode)) {
+    return true;
+  }
+
+  return /request aborted|failed to fetch|networkerror|network request failed|load failed|timeout|timed out|econnreset|socket hang up|fetch failed/.test(
+    message
+  );
+}
+
 function isCompactMobileLayout() {
   return window.matchMedia("(max-width: 760px)").matches;
 }
