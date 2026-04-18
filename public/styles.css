@@ -1202,15 +1202,34 @@ button {
   backdrop-filter: blur(18px);
 }
 
+.audio-fallback-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .audio-fallback-popup-label {
   display: inline-flex;
   align-items: center;
-  margin-bottom: 6px;
   color: #ffd7c8;
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.audio-fallback-popup-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .audio-fallback-popup-copy strong {
@@ -1593,6 +1612,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   gap: 12px;
   padding: 10px 12px;
   border-radius: 14px;
@@ -1608,6 +1628,8 @@ button {
   color: var(--text);
   font-size: 0.92rem;
   font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .render-stage-row-meta {
@@ -2364,7 +2386,6 @@ button {
     grid-template-areas:
       "poster track"
       "stage track"
-      "thumb track"
       "video video";
   }
 
@@ -2383,7 +2404,7 @@ button {
   }
 
   .thumbnail-card {
-    grid-area: thumb;
+    display: none !important;
   }
 
   .video-output-card {
@@ -2539,6 +2560,20 @@ button {
   .warning-item {
     padding: 10px 12px;
     border-radius: 14px;
+  }
+
+  .render-stage-row {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .render-stage-row-label {
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+
+  .render-stage-row-meta {
+    font-size: 0.72rem;
   }
 
   .card-head {
