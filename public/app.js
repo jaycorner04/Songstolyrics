@@ -8,6 +8,10 @@ const audioFallbackInput = document.getElementById("audio-fallback");
 const audioFallbackMeta = document.getElementById("audio-fallback-meta");
 const changeAudioFallbackButton = document.getElementById("change-audio-fallback-button");
 const deleteAudioFallbackButton = document.getElementById("delete-audio-fallback-button");
+const audioFallbackTip = document.getElementById("audio-fallback-tip");
+const audioFallbackTipTitle = document.getElementById("audio-fallback-tip-title");
+const audioFallbackTipText = document.getElementById("audio-fallback-tip-text");
+const audioFallbackTipButton = document.getElementById("audio-fallback-tip-button");
 const outputFormatInput = document.getElementById("output-format");
 const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
@@ -1121,6 +1125,53 @@ function renderAudioFallbackMeta() {
     `${uploadedAudioFallback.name} • ${formatTime(uploadedAudioFallback.duration)} • ${formatFileSize(uploadedAudioFallback.size)}`;
 }
 
+function showAudioFallbackRecovery(options = {}) {
+  if (!audioFallbackTip) {
+    return;
+  }
+
+  const {
+    title = "Upload audio if this link has no sound",
+    text = "The app already tried the normal YouTube audio path. If this song stays silent, add the audio file here and render again.",
+    ready = false
+  } = options;
+
+  audioFallbackTip.hidden = false;
+  audioFallbackTip.classList.toggle("is-ready", Boolean(ready));
+  audioFallbackTipTitle.textContent = title;
+  audioFallbackTipText.textContent = text;
+  audioFallbackTipButton.textContent = ready ? "Change uploaded audio" : "Upload audio now";
+}
+
+function hideAudioFallbackRecovery() {
+  if (!audioFallbackTip) {
+    return;
+  }
+
+  audioFallbackTip.hidden = true;
+  audioFallbackTip.classList.remove("is-ready");
+}
+
+function promptAudioFallbackRecovery(message = "", options = {}) {
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const defaultText = hasUploadedAudio
+    ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
+    : "The app already tried YouTube audio and alternate server recovery for this link. Add the song audio file once, then render again to keep sound.";
+
+  showAudioFallbackRecovery({
+    title: hasUploadedAudio ? "Audio fallback is ready" : "This link needs an uploaded audio file",
+    text: message || defaultText,
+    ready: hasUploadedAudio
+  });
+
+  if (options.scroll !== false) {
+    audioFallbackTip?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth"
+    });
+  }
+}
+
 async function handleBackgroundUpload() {
   const files = Array.from(backgroundImagesInput.files || []).slice(0, 5);
 
@@ -1202,6 +1253,12 @@ async function handleAudioFallbackUpload() {
   try {
     uploadedAudioFallback = await readAudioFileMetadata(file);
     renderAudioFallbackMeta();
+    promptAudioFallbackRecovery(
+      currentResult?.audioPreviewBlocked
+        ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
+        : `Audio fallback ${uploadedAudioFallback.name} is ready. The app will only use it if YouTube audio becomes unavailable.`,
+      { scroll: false }
+    );
     setStatus(
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ready: ${uploadedAudioFallback.name}. The next render will use it instead of blocked YouTube audio.`
@@ -1218,6 +1275,7 @@ function clearAudioFallbackSelection() {
   uploadedAudioFallback = null;
   audioFallbackInput.value = "";
   renderAudioFallbackMeta();
+  hideAudioFallbackRecovery();
 }
 
 function clearCustomBackgroundSelection() {
@@ -1613,6 +1671,19 @@ function renderResult(result) {
   updateArtworkVisibility();
 
   updateQueryString(result.inputUrl);
+  if (result.audioPreviewBlocked) {
+    promptAudioFallbackRecovery(
+      "This link is loading without server audio right now. The app already tried YouTube and alternate server recovery. Upload the song audio once if you want guaranteed sound in the final video.",
+      { scroll: false }
+    );
+  } else if (uploadedAudioFallback) {
+    promptAudioFallbackRecovery(
+      `Audio fallback ${uploadedAudioFallback.name} is ready and will only be used if the server loses the YouTube soundtrack.`,
+      { scroll: false }
+    );
+  } else {
+    hideAudioFallbackRecovery();
+  }
   setStatus(
     result.audioPreviewBlocked
       ? `Loaded ${result.title}. Audio preview is currently blocked on the server, but the lyric render can still continue when server-side audio access is available.`
@@ -1656,6 +1727,23 @@ function updateRenderJobUi(job) {
       rerenderBackgroundButton.disabled = false;
       rerenderBackgroundButton.textContent = "Rebuild final video";
     }
+    const usedUploadedAudio = Array.isArray(job.notes)
+      ? job.notes.some((note) => /uploaded audio fallback/i.test(`${note || ""}`))
+      : false;
+    const usedSilentFallback = Array.isArray(job.notes)
+      ? job.notes.some((note) => /silent fallback/i.test(`${note || ""}`))
+      : false;
+    if (usedUploadedAudio) {
+      promptAudioFallbackRecovery(
+        "This render used your uploaded audio fallback successfully, so the downloaded MP4 keeps sound even though the source link was blocked.",
+        { scroll: false }
+      );
+    } else if (usedSilentFallback) {
+      promptAudioFallbackRecovery(
+        "This render finished with a silent fallback track because the source audio was still blocked. Upload the song audio and render again to restore sound.",
+        { scroll: false }
+      );
+    }
     setStatus(userMessage || "The lyric video is ready to preview and download.");
     refreshLocalDebugPanel().catch(() => {});
     return;
@@ -1669,6 +1757,12 @@ function updateRenderJobUi(job) {
     rerenderBackgroundButton.disabled = !Boolean(uploadedBackgroundVideo || uploadedBackgrounds.length);
   }
   setRenderMessage(userMessage, true);
+  if (/blocked audio|cookie file|silent fallback|no stable transcription audio|could not reach the video audio/i.test(`${job.error || ""} ${job.userMessage || ""}`)) {
+    promptAudioFallbackRecovery(
+      "The server could not lock onto the song audio for this link. Upload the audio file and render again to keep sound.",
+      { scroll: true }
+    );
+  }
   setStatus(userMessage, true);
   refreshLocalDebugPanel().catch(() => {});
 }
@@ -1933,6 +2027,10 @@ audioPlayer.addEventListener("timeupdate", syncLyricsToPlayback);
 audioPlayer.addEventListener("seeked", syncLyricsToPlayback);
 audioPlayer.addEventListener("loadedmetadata", syncLyricsToPlayback);
 audioPlayer.addEventListener("error", () => {
+  promptAudioFallbackRecovery(
+    "Audio preview is blocked for this link. Upload the song audio file if you want the final video to keep sound.",
+    { scroll: false }
+  );
   setStatus(
     "Audio preview is blocked for this video on the server right now. The page still loaded, but playback could not start.",
     true
@@ -2036,6 +2134,7 @@ urlInput.addEventListener("paste", handleInputPaste);
 backgroundImagesInput.addEventListener("change", handleBackgroundUpload);
 backgroundVideoInput.addEventListener("change", handleBackgroundVideoUpload);
 audioFallbackInput.addEventListener("change", handleAudioFallbackUpload);
+audioFallbackTipButton.addEventListener("click", () => audioFallbackInput.click());
 changeAudioFallbackButton.addEventListener("click", () => audioFallbackInput.click());
 deleteAudioFallbackButton.addEventListener("click", () => {
   clearAudioFallbackSelection();
