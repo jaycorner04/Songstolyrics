@@ -83,6 +83,7 @@ async function getRuntimeDiagnostics() {
   const jsRuntimes = `${process.env.YTDLP_JS_RUNTIMES || ""}`.trim();
   const bgutilBaseUrl = `${process.env.YTDLP_BGUTIL_BASE_URL || ""}`.trim();
   const pluginDirs = `${process.env.YTDLP_PLUGIN_DIRS || ""}`.trim();
+  const profileChain = `${process.env.YTDLP_PROFILE_CHAIN || process.env.YTDLP_AUDIO_PROFILE_CHAIN || ""}`.trim();
 
   const checks = {
     node: buildCheck(true, nodeVersion, true),
@@ -126,6 +127,11 @@ async function getRuntimeDiagnostics() {
     ytDlpPluginDirs: buildCheck(
       Boolean(pluginDirs),
       pluginDirs || "not configured (set YTDLP_PLUGIN_DIRS if yt-dlp plugins live outside the default environment)",
+      false
+    ),
+    ytDlpProfileChain: buildCheck(
+      Boolean(profileChain),
+      profileChain || "not configured (set YTDLP_PROFILE_CHAIN to step through default/ejs/bgutil/aggressive recovery profiles)",
       false
     ),
     runtimeRoot: buildCheck(fs.existsSync(runtimeRoot), runtimeRoot, true)
