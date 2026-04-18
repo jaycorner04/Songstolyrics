@@ -160,7 +160,8 @@ button {
 }
 
 .hero-title-wrap {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   width: fit-content;
   max-width: min(100%, 46rem);
 }
@@ -175,15 +176,15 @@ button {
 }
 
 .hero-signature {
-  position: absolute;
-  right: -0.15rem;
-  bottom: 0.2rem;
-  margin: 0;
+  width: 100%;
+  margin: 12px 0 0;
+  padding-right: 0.3rem;
   color: rgba(255, 233, 220, 0.88);
   font-family: "Manrope", "Segoe UI", sans-serif;
-  font-size: clamp(0.8rem, 1.35vw, 1rem);
+  font-size: clamp(0.92rem, 1.4vw, 1.08rem);
   font-weight: 800;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.24em;
+  text-align: right;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -2186,10 +2187,10 @@ button {
   }
 
   .hero-signature {
-    right: 0;
-    bottom: -1.35rem;
     font-size: 0.82rem;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.18em;
+    margin-top: 10px;
+    padding-right: 0;
   }
 
   .hero-stats {
