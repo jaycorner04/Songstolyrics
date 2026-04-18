@@ -2304,6 +2304,53 @@ button {
     display: block;
   }
 
+  .mobile-support-card .audio-access-shell {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .mobile-support-card .audio-access-copy {
+    gap: 4px;
+  }
+
+  .mobile-support-card .audio-access-eyebrow {
+    font-size: 0.7rem;
+  }
+
+  .mobile-support-card .audio-access-copy strong {
+    font-size: 0.84rem;
+  }
+
+  .mobile-support-card .audio-access-copy p {
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  .track-card,
+  .render-tools,
+  .share-button,
+  .render-button {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .track-card {
+    overflow: hidden;
+  }
+
+  .share-button,
+  .render-button,
+  .download-link {
+    width: 100%;
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
+  }
+
   #audio-player,
   .youtube-audio-embed {
     margin-bottom: 10px;
