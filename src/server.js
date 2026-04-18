@@ -75,11 +75,20 @@ const renderUpload = multer({
     },
     filename(req, file, callback) {
       const originalExtension = path.extname(file.originalname || "");
-      const fallbackExtension = file.mimetype.includes("webm")
-        ? ".webm"
-        : file.mimetype.includes("quicktime")
-          ? ".mov"
-          : ".mp4";
+      const fallbackExtension =
+        file.fieldname === "audioFile"
+          ? file.mimetype.includes("wav")
+            ? ".wav"
+            : file.mimetype.includes("ogg")
+              ? ".ogg"
+              : file.mimetype.includes("aac")
+                ? ".aac"
+                : ".mp3"
+          : file.mimetype.includes("webm")
+            ? ".webm"
+            : file.mimetype.includes("quicktime")
+              ? ".mov"
+              : ".mp4";
       const extension = originalExtension || fallbackExtension;
       callback(
         null,
@@ -92,6 +101,16 @@ const renderUpload = multer({
     fieldSize: 80 * 1024 * 1024
   },
   fileFilter(req, file, callback) {
+    if (file.fieldname === "audioFile") {
+      if (!/^audio\//i.test(file.mimetype || "")) {
+        callback(createError("Only audio files can be uploaded as a sound fallback.", 400));
+        return;
+      }
+
+      callback(null, true);
+      return;
+    }
+
     if (!/^video\//i.test(file.mimetype || "")) {
       callback(createError("Only video files can be uploaded as a background video.", 400));
       return;
@@ -1374,10 +1393,15 @@ app.post(
 
 app.post(
   "/api/render",
-  renderUpload.single("backgroundVideo"),
+  renderUpload.fields([
+    { name: "backgroundVideo", maxCount: 1 },
+    { name: "audioFile", maxCount: 1 }
+  ]),
   asyncHandler(async (req, res) => {
     const body = parseRenderRequestBody(req);
     const inputUrl = `${body?.inputUrl || ""}`.trim();
+    const backgroundVideoUpload = Array.isArray(req.files?.backgroundVideo) ? req.files.backgroundVideo[0] : null;
+    const audioFileUpload = Array.isArray(req.files?.audioFile) ? req.files.audioFile[0] : null;
 
     if (!inputUrl) {
       throw createError("A YouTube link is required before rendering.", 400);
@@ -1416,15 +1440,24 @@ app.post(
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
-      customBackgroundVideo: req.file
+      customBackgroundVideo: backgroundVideoUpload
         ? {
-            tempPath: req.file.path,
-            originalName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
+            tempPath: backgroundVideoUpload.path,
+            originalName: backgroundVideoUpload.originalname,
+            mimeType: backgroundVideoUpload.mimetype,
+            size: backgroundVideoUpload.size,
             width: Number(body?.customBackgroundVideo?.width || 0),
             height: Number(body?.customBackgroundVideo?.height || 0),
             duration: Number(body?.customBackgroundVideo?.duration || 0)
+          }
+        : null,
+      customAudioUpload: audioFileUpload
+        ? {
+            tempPath: audioFileUpload.path,
+            originalName: audioFileUpload.originalname,
+            mimeType: audioFileUpload.mimetype,
+            size: audioFileUpload.size,
+            duration: Number(body?.customAudioUpload?.duration || 0)
           }
         : null,
       outputFormat: body?.outputFormat || "auto",
@@ -1527,7 +1560,7 @@ app.use((error, req, res, next) => {
       title: "Upload validation failed",
       userMessage:
         error.code === "LIMIT_FILE_SIZE"
-          ? "The background video is too large. Try a smaller file."
+          ? "The uploaded media is too large. Try a smaller file."
           : "The uploaded background media could not be processed.",
       errorMessage: error.message || error.code || "Multer error",
       cause: error.code || "",
@@ -1537,7 +1570,7 @@ app.use((error, req, res, next) => {
     res.status(400).json({
       error:
         error.code === "LIMIT_FILE_SIZE"
-          ? "The background video is too large. Try a smaller file."
+          ? "The uploaded media is too large. Try a smaller file."
           : "The uploaded background media could not be processed."
     });
     return;
