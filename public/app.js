@@ -1611,9 +1611,7 @@ function handleHardAudioBlock(result = currentResult) {
         allow="autoplay; encrypted-media"
         style="display:block;border:0;border-radius:16px;">
       </iframe>`;
-    const previewTarget = mobileAudioPreviewSlot && isCompactMobileLayout()
-      ? mobileAudioPreviewSlot
-      : desktopAudioPreviewSlot || audioPlayer.parentNode;
+    const previewTarget = desktopAudioPreviewSlot || audioPlayer.parentNode;
     previewTarget.appendChild(wrap);
   }
 
