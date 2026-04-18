@@ -21,6 +21,10 @@ function parseSemicolonList(value = "") {
     .filter(Boolean);
 }
 
+function uniqueList(values = []) {
+  return [...new Set((Array.isArray(values) ? values : []).filter(Boolean))];
+}
+
 function toEnvToken(value = "") {
   return `${value || ""}`
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -31,6 +35,11 @@ function toEnvToken(value = "") {
 
 function getScopedEnvName(kind = "") {
   return `YTDLP_${String(kind || "").toUpperCase()}_CLIENTS`;
+}
+
+function getScopedProfileEnvName(kind = "") {
+  const token = toEnvToken(kind || "");
+  return token ? `YTDLP_${token}_PROFILE_CHAIN` : "";
 }
 
 function resolvePlayerClients(kind = "", fallbackClients = "") {
@@ -100,11 +109,99 @@ function resolveProxyUrl(target = "") {
   return "";
 }
 
+function resolveProfileChain(kind = "") {
+  const scopedName = getScopedProfileEnvName(kind);
+  const scopedProfiles = scopedName ? parseEnvList(process.env[scopedName] || "") : [];
+
+  if (scopedProfiles.length) {
+    return uniqueList(scopedProfiles);
+  }
+
+  const genericProfiles = parseEnvList(process.env.YTDLP_PROFILE_CHAIN || "");
+
+  if (genericProfiles.length) {
+    return uniqueList(genericProfiles);
+  }
+
+  return ["default"];
+}
+
+function resolveProfileExtras(profile = "", kind = "") {
+  const normalizedProfile = normalizeWhitespace(profile || "").toLowerCase();
+  const args = [];
+  const extractorArgs = [];
+
+  if (normalizedProfile === "ejs" || normalizedProfile === "aggressive") {
+    const remoteComponents = parseEnvList(process.env.YTDLP_REMOTE_COMPONENTS || "ejs:github");
+
+    remoteComponents.forEach((component) => {
+      args.push("--remote-components", component);
+    });
+
+    const jsRuntimes = normalizeWhitespace(process.env.YTDLP_JS_RUNTIMES || "node");
+
+    if (jsRuntimes) {
+      args.push("--js-runtimes", jsRuntimes);
+    }
+  }
+
+  if (normalizedProfile === "bgutil" || normalizedProfile === "aggressive") {
+    const pluginDirs = parseEnvList(process.env.YTDLP_PLUGIN_DIRS || "");
+
+    pluginDirs.forEach((pluginDirectory) => {
+      args.push("--plugin-dirs", pluginDirectory);
+    });
+
+    const remoteComponents = parseEnvList(process.env.YTDLP_REMOTE_COMPONENTS || "ejs:github");
+
+    remoteComponents.forEach((component) => {
+      args.push("--remote-components", component);
+    });
+
+    const jsRuntimes = normalizeWhitespace(process.env.YTDLP_JS_RUNTIMES || "node");
+
+    if (jsRuntimes) {
+      args.push("--js-runtimes", jsRuntimes);
+    }
+
+    const bgutilBaseUrl = normalizeWhitespace(process.env.YTDLP_BGUTIL_BASE_URL || "");
+
+    if (bgutilBaseUrl) {
+      extractorArgs.push(`youtubepot-bgutilhttp:base_url=${bgutilBaseUrl}`);
+    }
+
+    const bgutilServerHome = normalizeWhitespace(process.env.YTDLP_BGUTIL_SERVER_HOME || "");
+
+    if (bgutilServerHome) {
+      extractorArgs.push(`youtubepot-bgutilscript:server_home=${bgutilServerHome}`);
+    }
+  }
+
+  if (normalizedProfile === "aggressive") {
+    const aggressiveClients = parseEnvList(
+      process.env.YTDLP_AGGRESSIVE_CLIENTS ||
+        process.env[getScopedEnvName(kind)] ||
+        process.env.YTDLP_YOUTUBE_CLIENTS ||
+        "android,web,ios,mweb,tv,tv_simply"
+    );
+
+    if (aggressiveClients.length) {
+      extractorArgs.push(`youtube:player_client=${aggressiveClients.join(",")}`);
+    }
+  }
+
+  return {
+    args,
+    extractorArgs
+  };
+}
+
 function buildYtDlpArgs(options = {}) {
   const {
     kind = "",
     fallbackClients = "",
-    includeCookieFile = true
+    includeCookieFile = true,
+    profile = ""
   } = options;
   const args = [];
   const configFile = normalizeWhitespace(process.env.YTDLP_CONFIG_FILE || "");
@@ -193,6 +290,11 @@ function buildYtDlpArgs(options = {}) {
 
   extractorArgs.push(...extraExtractorArgs);
 
+  const profileExtras = resolveProfileExtras(profile, kind);
+
+  args.push(...profileExtras.args);
+  extractorArgs.push(...profileExtras.extractorArgs);
+
   const youtubetabSkip = normalizeWhitespace(process.env.YTDLP_YOUTUBETAB_SKIP || "");
 
   if (youtubetabSkip) {
@@ -206,8 +308,43 @@ function buildYtDlpArgs(options = {}) {
   return args;
 }
 
+function buildYtDlpArgVariants(options = {}) {
+  const kind = options.kind || "";
+  const profiles = resolveProfileChain(kind);
+  const variants = [];
+  const seen = new Set();
+
+  profiles.forEach((profile) => {
+    const args = buildYtDlpArgs({
+      ...options,
+      profile
+    });
+    const signature = JSON.stringify(args);
+
+    if (!seen.has(signature)) {
+      seen.add(signature);
+      variants.push({
+        profile: profile || "default",
+        args
+      });
+    }
+  });
+
+  if (!variants.length) {
+    return [
+      {
+        profile: "default",
+        args: buildYtDlpArgs(options)
+      }
+    ];
+  }
+
+  return variants;
+}
+
 module.exports = {
   buildYtDlpArgs,
+  buildYtDlpArgVariants,
   resolveCookieFilePath,
   resolveProxyUrl
 };
