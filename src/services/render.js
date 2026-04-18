@@ -6154,7 +6154,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const videoSize = getRenderSize(payload);
     const renderProfile = buildRenderProfile(payload);
     const allowSilentAudioFallback = process.env.ALLOW_SILENT_AUDIO_FALLBACK === "true";
-    const continueRenderOnBlockedAudio = process.env.RENDER_CONTINUE_ON_AUDIO_BLOCK !== "false";
+    const continueRenderOnBlockedAudio = process.env.RENDER_CONTINUE_ON_AUDIO_BLOCK === "true";
     const metadataDurationSeconds = Number(payload.durationSeconds || 0);
     let durationSeconds = getRenderDurationSeconds(
       metadataDurationSeconds > 0
@@ -6256,7 +6256,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
         if (!allowSilentAudioFallback && !continueRenderOnBlockedAudio) {
           const blockedAudioError = createRenderError(
-            "YouTube blocked audio access for this video. Add a YouTube cookie file on the server or try another link.",
+            "YouTube blocked audio access for this video. Upload the song audio in the app, add a YouTube cookie file on the server, or try another link.",
             503
           );
           blockedAudioError.code = "YOUTUBE_BOT_BLOCK";
