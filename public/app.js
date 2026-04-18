@@ -4,6 +4,10 @@ const submitButton = document.getElementById("submit-button");
 const backgroundImagesInput = document.getElementById("background-images");
 const backgroundVideoInput = document.getElementById("background-video");
 const backgroundVideoMeta = document.getElementById("background-video-meta");
+const audioFallbackInput = document.getElementById("audio-fallback");
+const audioFallbackMeta = document.getElementById("audio-fallback-meta");
+const changeAudioFallbackButton = document.getElementById("change-audio-fallback-button");
+const deleteAudioFallbackButton = document.getElementById("delete-audio-fallback-button");
 const outputFormatInput = document.getElementById("output-format");
 const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
@@ -84,6 +88,7 @@ let localDebugLastRefreshedAt = "";
 let musicBulletinTimer = null;
 let uploadedBackgrounds = [];
 let uploadedBackgroundVideo = null;
+let uploadedAudioFallback = null;
 let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
 const LOCAL_DEBUG_REFRESH_MS = 350;
@@ -950,6 +955,30 @@ function readVideoFileMetadata(file) {
   });
 }
 
+function readAudioFileMetadata(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const audio = document.createElement("audio");
+
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      resolve({
+        file,
+        name: file.name,
+        duration: Number(audio.duration || 0),
+        size: Number(file.size || 0),
+        mimeType: file.type || ""
+      });
+      URL.revokeObjectURL(objectUrl);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error(`Could not read metadata from ${file.name}.`));
+    };
+    audio.src = objectUrl;
+  });
+}
+
 function renderUploadPreviews() {
   uploadPreviewStrip.innerHTML = "";
   if (changeUploadedImagesButton) {
@@ -1082,6 +1111,16 @@ function renderBackgroundVideoMeta() {
     `${formatTime(uploadedBackgroundVideo.duration)} • ${formatFileSize(uploadedBackgroundVideo.size)} • ${orientation}`;
 }
 
+function renderAudioFallbackMeta() {
+  if (!uploadedAudioFallback) {
+    audioFallbackMeta.textContent = "No audio fallback selected.";
+    return;
+  }
+
+  audioFallbackMeta.textContent =
+    `${uploadedAudioFallback.name} • ${formatTime(uploadedAudioFallback.duration)} • ${formatFileSize(uploadedAudioFallback.size)}`;
+}
+
 async function handleBackgroundUpload() {
   const files = Array.from(backgroundImagesInput.files || []).slice(0, 5);
 
@@ -1147,6 +1186,38 @@ async function handleBackgroundVideoUpload() {
     updatePostRenderBackgroundStatus();
     setStatus(error.message || "Could not prepare the background video.", true);
   }
+}
+
+async function handleAudioFallbackUpload() {
+  const [file] = Array.from(audioFallbackInput.files || []);
+  uploadedAudioFallback = null;
+  renderAudioFallbackMeta();
+
+  if (!file) {
+    return;
+  }
+
+  setStatus("Reading audio fallback details...");
+
+  try {
+    uploadedAudioFallback = await readAudioFileMetadata(file);
+    renderAudioFallbackMeta();
+    setStatus(
+      currentResult?.audioPreviewBlocked
+        ? `Audio fallback ready: ${uploadedAudioFallback.name}. The next render will use it instead of blocked YouTube audio.`
+        : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
+    );
+  } catch (error) {
+    uploadedAudioFallback = null;
+    renderAudioFallbackMeta();
+    setStatus(error.message || "Could not prepare the uploaded audio fallback.", true);
+  }
+}
+
+function clearAudioFallbackSelection() {
+  uploadedAudioFallback = null;
+  audioFallbackInput.value = "";
+  renderAudioFallbackMeta();
 }
 
 function clearCustomBackgroundSelection() {
@@ -1696,6 +1767,14 @@ async function handleRender() {
             size: uploadedBackgroundVideo.size
           }
         : null,
+      customAudioUpload: uploadedAudioFallback
+        ? {
+            name: uploadedAudioFallback.name,
+            duration: uploadedAudioFallback.duration,
+            size: uploadedAudioFallback.size,
+            mimeType: uploadedAudioFallback.mimeType
+          }
+        : null,
       outputFormat: outputFormatInput.value,
       renderMode: renderModeInput.value,
       lyricStyle: lyricStyleInput.value,
@@ -1711,6 +1790,10 @@ async function handleRender() {
 
     if (uploadedBackgroundVideo?.file) {
       formData.append("backgroundVideo", uploadedBackgroundVideo.file, uploadedBackgroundVideo.name);
+    }
+
+    if (uploadedAudioFallback?.file) {
+      formData.append("audioFile", uploadedAudioFallback.file, uploadedAudioFallback.name);
     }
 
     const response = await fetch("/api/render", {
@@ -1952,9 +2035,16 @@ rerenderBackgroundButton.addEventListener("click", () => {
 urlInput.addEventListener("paste", handleInputPaste);
 backgroundImagesInput.addEventListener("change", handleBackgroundUpload);
 backgroundVideoInput.addEventListener("change", handleBackgroundVideoUpload);
+audioFallbackInput.addEventListener("change", handleAudioFallbackUpload);
+changeAudioFallbackButton.addEventListener("click", () => audioFallbackInput.click());
+deleteAudioFallbackButton.addEventListener("click", () => {
+  clearAudioFallbackSelection();
+  setStatus("Uploaded audio fallback was removed.");
+});
 resetRenderState();
 renderUploadPreviews();
 renderBackgroundVideoMeta();
+renderAudioFallbackMeta();
 updatePostRenderBackgroundStatus();
 updateLyricFontPreview();
 syncLyricZoomUi();
