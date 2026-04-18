@@ -151,6 +151,24 @@ function asyncHandler(handler) {
   };
 }
 
+function warmPreviewAudioCache(videoId, audioSource) {
+  if (!videoId || !audioSource?.input) {
+    return;
+  }
+
+  const outputDirectory = path.join(previewAudioCacheRoot, videoId);
+
+  Promise.resolve()
+    .then(async () => {
+      if (audioSource.sourceType === "file") {
+        return;
+      }
+
+      await cacheRemoteAudioUrlToFile(audioSource.input, outputDirectory, videoId);
+    })
+    .catch(() => {});
+}
+
 async function proxyRemoteMedia(req, res, sourceUrl, defaultMimeType = "application/octet-stream") {
   const upstreamHeaders = new Headers();
   const requestedRange = `${req.headers.range || ""}`.trim();
@@ -1492,7 +1510,7 @@ app.post(
         outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
         allowDownloadFallback: false
       })
-        .then(() => ({ blocked: false, timedOut: false }))
+        .then((source) => ({ blocked: false, timedOut: false, source }))
         .catch((error) => ({
           blocked: true,
           timedOut: false,
@@ -1509,6 +1527,10 @@ app.post(
       audioPreviewBlocked,
       audioPreviewProbe
     });
+
+    if (!audioPreviewBlocked && audioPreviewProbe?.source) {
+      warmPreviewAudioCache(videoId, audioPreviewProbe.source);
+    }
 
     res.json({
       inputUrl: videoUrl,
