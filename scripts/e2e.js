@@ -172,6 +172,10 @@ async function discardResponseBody(response) {
 async function runSurfaceChecks(baseUrl) {
   const homepage = await fetchResponse(`${baseUrl}/`);
   const homepageHtml = await homepage.text();
+  const silentDebugHeaders = {
+    "Content-Type": "application/json",
+    "x-local-debug-silent": "1"
+  };
 
   assert(homepage.ok, "Homepage did not respond successfully.");
   assert(/text\/html/i.test(homepage.headers.get("content-type") || ""), "Homepage did not return HTML.");
@@ -179,7 +183,7 @@ async function runSurfaceChecks(baseUrl) {
 
   const invalidConvertResponse = await fetchResponse(`${baseUrl}/api/convert`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: silentDebugHeaders,
     body: JSON.stringify({ url: "" })
   });
   const invalidConvertPayload = await invalidConvertResponse.json();
@@ -189,7 +193,11 @@ async function runSurfaceChecks(baseUrl) {
     "Empty convert request did not return the expected validation message."
   );
 
-  const missingRenderResponse = await fetchResponse(`${baseUrl}/api/render/not-a-real-job`);
+  const missingRenderResponse = await fetchResponse(`${baseUrl}/api/render/not-a-real-job`, {
+    headers: {
+      "x-local-debug-silent": "1"
+    }
+  });
   const missingRenderPayload = await missingRenderResponse.json();
   assert(missingRenderResponse.status === 404, "Missing render job should return 404.");
   assert(/could not be found/i.test(`${missingRenderPayload.error || ""}`), "Missing render job returned an unexpected message.");

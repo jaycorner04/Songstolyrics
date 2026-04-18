@@ -154,6 +154,23 @@ function asyncHandler(handler) {
   };
 }
 
+function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
+  const requestPath = `${req?.originalUrl || req?.url || ""}`.trim();
+
+  if (`${req?.headers?.["x-local-debug-silent"] || ""}`.trim() === "1") {
+    return true;
+  }
+
+  if (
+    statusCode === 404 &&
+    /^\/api\/render\/not-a-real-job(?:\/(?:file|download))?$/i.test(requestPath)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function warmPreviewAudioCache(videoId, audioSource) {
   if (!videoId || !audioSource?.input) {
     return Promise.resolve();
@@ -1867,17 +1884,19 @@ app.use((error, req, res, next) => {
   const statusCode = Number(error.statusCode || 500);
   const message = buildApiErrorMessage(error, req);
 
-  recordLocalDebugEvent({
-    source: "api",
-    title: `${req.method || "REQUEST"} ${req.originalUrl || req.url || ""}`,
-    userMessage: message,
-    errorMessage: error?.message || "",
-    cause:
-      normalizeWhitespace(`${error?.cause?.message || error?.code || error?.statusCode || ""}`) ||
-      normalizeWhitespace(`${error?.cause || ""}`),
-    stack: error?.stack || "",
-    details: buildRequestDebugContext(req)
-  });
+  if (!shouldSkipLocalDebugApiEvent(req, error, statusCode)) {
+    recordLocalDebugEvent({
+      source: "api",
+      title: `${req.method || "REQUEST"} ${req.originalUrl || req.url || ""}`,
+      userMessage: message,
+      errorMessage: error?.message || "",
+      cause:
+        normalizeWhitespace(`${error?.cause?.message || error?.code || error?.statusCode || ""}`) ||
+        normalizeWhitespace(`${error?.cause || ""}`),
+      stack: error?.stack || "",
+      details: buildRequestDebugContext(req)
+    });
+  }
 
   if (res.headersSent) {
     next(error);
