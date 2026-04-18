@@ -457,6 +457,132 @@ function setStatus(message, isError = false) {
   statusText.classList.toggle("is-error", Boolean(isError));
 }
 
+function buildFallbackAudioAccessState(result = {}) {
+  if (!result?.audioPreviewBlocked) {
+    return {
+      mode: "available",
+      previewAvailable: true,
+      badgeLabel: "Audio live",
+      title: "Live soundtrack is reachable",
+      summary:
+        "YouTube preview audio is available for this link. The final render will still verify timing before export.",
+      primaryActionLabel: "Create lyric video",
+      recommendedAction: "render"
+    };
+  }
+
+  return {
+    mode: "upload-recommended",
+    previewAvailable: false,
+    badgeLabel: "Audio upload",
+    title: "This link needs a fallback soundtrack",
+    summary:
+      "Lyrics and artwork are ready, but the server could not open a trustworthy preview audio path for this song. Upload the audio file for guaranteed sound in the final video.",
+    primaryActionLabel: "Upload audio",
+    recommendedAction: "upload-audio"
+  };
+}
+
+function getCurrentAudioAccessState(result = currentResult) {
+  return result?.audioAccess || buildFallbackAudioAccessState(result || {});
+}
+
+function applyAudioAccessState(result = currentResult) {
+  if (!audioAccessShell || !audioStatusBadge || !audioAccessTitle || !audioAccessText) {
+    return;
+  }
+
+  const audioAccess = getCurrentAudioAccessState(result);
+  const mode = audioAccess.mode || "available";
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const uploadRecommended = mode === "upload-recommended";
+  const recoveryMode = mode === "recovery";
+  const showUploadAction = uploadRecommended || recoveryMode || hasUploadedAudio;
+
+  audioAccessShell.classList.remove("is-live", "is-recovery", "is-upload");
+  audioAccessShell.classList.add(
+    mode === "available" ? "is-live" : uploadRecommended ? "is-upload" : "is-recovery"
+  );
+  audioStatusBadge.textContent = audioAccess.badgeLabel || "Audio status";
+  audioAccessEyebrow.textContent = uploadRecommended
+    ? "Fallback soundtrack"
+    : recoveryMode
+      ? "Protected recovery"
+      : "Live soundtrack";
+  audioAccessTitle.textContent = hasUploadedAudio && mode !== "available"
+    ? "Uploaded audio is ready for the next render"
+    : audioAccess.title || "Checking the soundtrack path";
+  audioAccessText.textContent =
+    hasUploadedAudio && mode !== "available"
+      ? `The uploaded audio fallback ${uploadedAudioFallback.name} is queued. The next render will use it instead of the blocked YouTube soundtrack.`
+      : audioAccess.summary ||
+        "The app will decide whether this link can use live YouTube audio, protected server recovery, or an uploaded soundtrack.";
+
+  if (audioAccessAction) {
+    audioAccessAction.hidden = !showUploadAction;
+    audioAccessAction.textContent =
+      hasUploadedAudio && mode !== "available"
+        ? "Change audio"
+        : uploadRecommended
+          ? "Upload audio"
+          : "Keep audio ready";
+  }
+
+  audioPlayer.hidden = !Boolean(audioAccess.previewAvailable && result?.audioUrl);
+}
+
+function syncIdleRenderCta() {
+  if (!renderButton || activeRenderJobId) {
+    return;
+  }
+
+  if (!currentResult?.inputUrl) {
+    renderButton.disabled = true;
+    renderButton.textContent = "Create Downloadable Lyric Video";
+    setRenderMessage("Paste a song and the app will build a downloadable lyric video automatically.");
+    return;
+  }
+
+  const audioAccess = getCurrentAudioAccessState();
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+
+  renderButton.disabled = false;
+
+  if (renderSettingsDirty) {
+    renderButton.textContent =
+      audioAccess.mode === "available" ? "Apply Style & Render" : "Apply Changes & Render";
+    return;
+  }
+
+  if (audioAccess.mode === "available") {
+    renderButton.textContent = videoOutputCard.hidden
+      ? "Create Downloadable Lyric Video"
+      : "Create Another Render";
+    setRenderMessage(
+      hasUploadedAudio
+        ? `YouTube audio is live for this link. ${uploadedAudioFallback.name} will stay on standby in case recovery is needed later.`
+        : "YouTube audio preview is live. The final render will still verify timing before export."
+    );
+    return;
+  }
+
+  if (hasUploadedAudio) {
+    renderButton.textContent = "Render With Uploaded Audio";
+    setRenderMessage(
+      `This link is in ${audioAccess.mode === "recovery" ? "recovery" : "fallback"} mode. The next render will use ${uploadedAudioFallback.name} for guaranteed sound.`
+    );
+    return;
+  }
+
+  renderButton.textContent =
+    audioAccess.mode === "recovery" ? "Create Recovery Render" : "Upload Audio Or Render";
+  setRenderMessage(
+    audioAccess.mode === "recovery"
+      ? "This link opened in protected recovery mode. The server will try its stronger soundtrack path during render, and you can still add audio now for guaranteed sound."
+      : "This link opened without a playable server preview. Upload audio now for guaranteed sound, or render anyway and let the server try one last recovery pass."
+  );
+}
+
 function setLoadingState(isLoading) {
   submitButton.disabled = isLoading;
   submitButton.textContent = isLoading ? "Loading..." : "Create";
@@ -1426,21 +1552,18 @@ function resetRenderState() {
   setRenderProgress(0);
   renderStageTimings({});
   resetRenderedVideo();
+  applyAudioAccessState(null);
 }
 
 function primeRenderState() {
   renderSettingsDirty = false;
-  renderButton.disabled = false;
-  renderButton.textContent = "Create Downloadable Lyric Video";
+  syncIdleRenderCta();
 
-  if (currentResult?.lines?.length) {
-    setRenderMessage("The full lyric video can render from the source song and save as a final .mp4.");
-    return;
+  if (!currentResult?.lines?.length) {
+    setRenderMessage(
+      "Lyrics were not found for this track, so the renderer may fall back to title cards if needed."
+    );
   }
-
-  setRenderMessage(
-    "Lyrics were not found for this track, so the renderer may fall back to title cards if needed."
-  );
 }
 
 function renderWarnings(warnings = []) {
