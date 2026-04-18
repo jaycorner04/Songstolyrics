@@ -1922,7 +1922,8 @@ async function handleAudioFallbackUpload() {
     uploadedAudioFallback = await readAudioFileMetadata(file);
     renderAudioFallbackMeta();
     if (!urlInput.value.trim() && (!currentResult || isUploadedAudioProject(currentResult))) {
-      await renderResult(buildUploadedAudioProjectResult(uploadedAudioFallback));
+      setStatus("Listening to the uploaded audio and building lyrics...");
+      await renderResult(await prepareUploadedAudioProject(uploadedAudioFallback));
     } else {
       applyAudioAccessState();
     }
@@ -1930,7 +1931,7 @@ async function handleAudioFallbackUpload() {
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
         : isUploadedAudioProject(currentResult)
-          ? `Uploaded audio ${uploadedAudioFallback.name} is ready. Press create and the app will build the lyric video directly from this file.`
+          ? `Uploaded audio ${uploadedAudioFallback.name} is ready. Lyrics are loaded and the app can build the lyric video directly from this file.`
           : `Audio fallback ${uploadedAudioFallback.name} is ready. The app will only use it if YouTube audio becomes unavailable.`,
       { scroll: false }
     );
@@ -1939,7 +1940,7 @@ async function handleAudioFallbackUpload() {
       currentResult?.audioPreviewBlocked
         ? `Audio fallback ready: ${uploadedAudioFallback.name}. The next render will use it instead of blocked YouTube audio.`
         : isUploadedAudioProject(currentResult)
-          ? `Uploaded audio ready: ${uploadedAudioFallback.name}. You can create the lyric video without pasting a YouTube link.`
+          ? `Uploaded audio ready: ${uploadedAudioFallback.name}. Lyrics were generated from the file and the project can render without any YouTube link.`
           : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
     );
   } catch (error) {
@@ -2876,7 +2877,10 @@ async function handleSubmit(event) {
 
   try {
     if (!videoUrl && hasUploadedAudio) {
-      const uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+      const uploadedAudioProject =
+        isUploadedAudioProject(currentResult) && Array.isArray(currentResult?.lines)
+          ? currentResult
+          : await prepareUploadedAudioProject(uploadedAudioFallback);
 
       if (!uploadedAudioProject) {
         throw new Error("The uploaded audio could not be prepared.");
