@@ -22,6 +22,20 @@ function normalizeHost(value = "") {
     .toLowerCase();
 }
 
+function extractOriginHost(value = "") {
+  const raw = `${value || ""}`.trim();
+
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    return normalizeHost(new URL(raw).hostname || "");
+  } catch {
+    return normalizeHost(raw);
+  }
+}
+
 function isLoopbackHost(value = "") {
   const host = normalizeHost(value);
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
@@ -30,7 +44,14 @@ function isLoopbackHost(value = "") {
 function isLocalDebugRequest(req = {}) {
   const host = normalizeHost(req.hostname || req.headers?.host || "");
   const ip = normalizeHost(req.ip || req.socket?.remoteAddress || "");
-  return isLoopbackHost(host) || isLoopbackHost(ip);
+  const originHost = extractOriginHost(req.headers?.origin || "");
+  const refererHost = extractOriginHost(req.headers?.referer || "");
+  return (
+    isLoopbackHost(host) ||
+    isLoopbackHost(ip) ||
+    isLoopbackHost(originHost) ||
+    isLoopbackHost(refererHost)
+  );
 }
 
 function serializeDebugValue(value, depth = 0) {
