@@ -38,7 +38,7 @@ const MAX_LYRIC_HOLD_SECONDS = 4.2;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
 const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
-const LYRIC_AUDIO_OFFSET_SECONDS = 0.08;
+const LYRIC_AUDIO_OFFSET_SECONDS = -0.15;
 const LYRIC_FADE_MS = 180;
 const LYRIC_REVEAL_MS = 220;
 const LYRIC_ACCENT_COLORS = ["#d7d7d7", "#8fc8ff", "#f2f2f2", "#c6d0ff"];
@@ -2305,11 +2305,11 @@ function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
 
   return (
     candidateMetrics.reliableForSourcePacing &&
-    Number(candidateMetrics.meaningfulCount || 0) >= 5 &&
-    Number(candidateMetrics.coverageRatio || 0) >= 0.18 &&
+    Number(candidateMetrics.meaningfulCount || 0) >= 4 &&
+    Number(candidateMetrics.coverageRatio || 0) >= 0.12 &&
     transcriptMetrics.reliableForWindowFit &&
-    Number(transcriptMetrics.coverageRatio || 0) >= 0.08 &&
-    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 8
+    Number(transcriptMetrics.coverageRatio || 0) >= 0.06 &&
+    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 6
   );
 }
 

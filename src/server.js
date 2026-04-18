@@ -1337,12 +1337,16 @@ async function buildUploadedAudioPreview(audioFileUpload, options = {}) {
   }
 
   const requestedTitle = normalizeWhitespace(options.title || "");
+  const filenameGuess = inferSongFromFilename(audioFileUpload.originalname || "");
   const fallbackTitle = normalizeWhitespace(
     `${audioFileUpload.originalname || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "")
   );
-  const title = requestedTitle || fallbackTitle || "Uploaded audio";
+  const title = requestedTitle || filenameGuess.title || fallbackTitle || "Uploaded audio";
   const projectId = slugifyProjectId(title) || `uploaded-audio-${Date.now()}`;
-  const guessedSong = inferSongFromVideo(title, "Uploaded audio");
+  const guessedSong =
+    filenameGuess?.title || filenameGuess?.artist
+      ? filenameGuess
+      : inferSongFromVideo(title, "Uploaded audio");
   const warnings = [
     "This project started from uploaded audio, so the website is building lyrics directly from your file instead of from a YouTube link."
   ];
@@ -1359,74 +1363,118 @@ async function buildUploadedAudioPreview(audioFileUpload, options = {}) {
   };
 
   try {
-    const previewTranscription = await transcribeYouTubeAudio(
-      `upload-${projectId}`,
-      scratchDirectory,
-      effectiveDurationSeconds,
-      {
-        preview: true,
-        timeoutMs: 90000,
-        audioInputPath: audioFileUpload.path
+    const lrcMatches = await searchLrcLib(guessedSong, effectiveDurationSeconds);
+    const bestMatch = Array.isArray(lrcMatches) ? lrcMatches[0] : null;
+
+    if (bestMatch?.syncedLyrics) {
+      const syncedLines = parseSyncedLyrics(bestMatch.syncedLyrics, effectiveDurationSeconds);
+
+      if (syncedLines.length >= 6) {
+        lyricResult = {
+          song: {
+            title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
+            artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
+          },
+          source: "lrclib-synced",
+          syncMode: "synced-lyrics",
+          lines: syncedLines
+        };
+        warnings.push("The website found synced lyrics from the uploaded audio filename before falling back to transcription.");
       }
-    );
+    } else if (bestMatch?.plainLyrics) {
+      const plainLines = parseLyricsLines(bestMatch.plainLyrics);
 
-    effectiveDurationSeconds =
-      Number(previewTranscription?.audioDurationSeconds || 0) || effectiveDurationSeconds;
+      if (plainLines.length >= 6) {
+        const starts = estimateStartsFromDuration(plainLines, effectiveDurationSeconds);
+        lyricResult = {
+          song: {
+            title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
+            artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
+          },
+          source: "lrclib-plain",
+          syncMode: "estimated",
+          lines: buildTimedLines(
+            plainLines,
+            starts,
+            effectiveDurationSeconds || starts.at(-1) + 4
+          )
+        };
+        warnings.push("The website found lyric text from the uploaded audio filename and estimated timing before using transcription.");
+      }
+    }
+  } catch {}
 
-    const previewLines = Array.isArray(previewTranscription?.lines) ? previewTranscription.lines : [];
-    const previewAssessment = assessAudioFallbackLyrics(previewLines, effectiveDurationSeconds);
-    let effectiveLines = previewAssessment.lines.length ? previewAssessment.lines : previewLines;
-    let effectiveSource = previewTranscription?.source || "audio-transcription";
-
-    if (!previewAssessment.usable) {
-      const strongerTranscription = await transcribeYouTubeAudio(
+  try {
+    if (!lyricResult.lines.length) {
+      const previewTranscription = await transcribeYouTubeAudio(
         `upload-${projectId}`,
         scratchDirectory,
         effectiveDurationSeconds,
         {
-          timeoutMs: 180000,
-          modelName: process.env.WHISPER_MODEL || "base",
+          preview: true,
+          timeoutMs: 90000,
           audioInputPath: audioFileUpload.path
         }
       );
-      const strongerLines = Array.isArray(strongerTranscription?.lines)
-        ? strongerTranscription.lines
-        : [];
-      const strongerAssessment = assessAudioFallbackLyrics(strongerLines, effectiveDurationSeconds);
 
-      if (strongerAssessment.lines.length) {
-        effectiveLines = strongerAssessment.lines;
-        effectiveSource = strongerTranscription?.source || effectiveSource;
-      }
+      effectiveDurationSeconds =
+        Number(previewTranscription?.audioDurationSeconds || 0) || effectiveDurationSeconds;
 
-      if (strongerAssessment.usable) {
-        warnings.push(
-          "The first pass on the uploaded audio was light, so the website regenerated the lyrics with a deeper audio pass."
+      const previewLines = Array.isArray(previewTranscription?.lines) ? previewTranscription.lines : [];
+      const previewAssessment = assessAudioFallbackLyrics(previewLines, effectiveDurationSeconds);
+      let effectiveLines = previewAssessment.lines.length ? previewAssessment.lines : previewLines;
+      let effectiveSource = previewTranscription?.source || "audio-transcription";
+
+      if (!previewAssessment.usable) {
+        const strongerTranscription = await transcribeYouTubeAudio(
+          `upload-${projectId}`,
+          scratchDirectory,
+          effectiveDurationSeconds,
+          {
+            timeoutMs: 180000,
+            modelName: process.env.WHISPER_MODEL || "base",
+            audioInputPath: audioFileUpload.path
+          }
         );
-      } else if (effectiveLines.length) {
-        warnings.push(
-          "The uploaded audio transcript is still a rough draft, so the website is showing the best lines it could recover before the final render does a stricter sync pass."
-        );
+        const strongerLines = Array.isArray(strongerTranscription?.lines)
+          ? strongerTranscription.lines
+          : [];
+        const strongerAssessment = assessAudioFallbackLyrics(strongerLines, effectiveDurationSeconds);
+
+        if (strongerAssessment.lines.length) {
+          effectiveLines = strongerAssessment.lines;
+          effectiveSource = strongerTranscription?.source || effectiveSource;
+        }
+
+        if (strongerAssessment.usable) {
+          warnings.push(
+            "The first pass on the uploaded audio was light, so the website regenerated the lyrics with a deeper audio pass."
+          );
+        } else if (effectiveLines.length) {
+          warnings.push(
+            "The uploaded audio transcript is still a rough draft, so the website is showing the best lines it could recover before the final render does a stricter sync pass."
+          );
+        } else {
+          warnings.push(
+            "The uploaded audio is ready, but the preview transcript was too light to show yet. The final render will still try a deeper transcription from the same file."
+          );
+        }
       } else {
-        warnings.push(
-          "The uploaded audio is ready, but the preview transcript was too light to show yet. The final render will still try a deeper transcription from the same file."
-        );
+        warnings.push("Timed lyrics were generated directly from the uploaded audio.");
       }
-    } else {
-      warnings.push("Timed lyrics were generated directly from the uploaded audio.");
-    }
 
-    if (effectiveLines.length) {
-      const romanized = romanizeLyricLines(effectiveLines);
-      lyricResult = {
-        song: guessedSong,
-        source: "audio-transcription",
-        syncMode: "transcribed",
-        lines: romanized.lines
-      };
+      if (effectiveLines.length) {
+        const romanized = romanizeLyricLines(effectiveLines);
+        lyricResult = {
+          song: guessedSong,
+          source: "audio-transcription",
+          syncMode: "transcribed",
+          lines: romanized.lines
+        };
 
-      if (romanized.changed) {
-        warnings.push("Telugu lyrics were converted into English letters for the website preview.");
+        if (romanized.changed) {
+          warnings.push("Telugu lyrics were converted into English letters for the website preview.");
+        }
       }
     }
   } catch (error) {
