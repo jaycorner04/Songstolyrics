@@ -777,6 +777,113 @@ async function resolveAudioUrl(videoId) {
   );
 }
 
+function cacheResolvedStreamUrl(kind, videoId, streamUrl) {
+  const normalizedUrl = `${streamUrl || ""}`.trim();
+
+  if (!normalizedUrl) {
+    return "";
+  }
+
+  streamUrlCache.set(getCacheKey(kind, videoId), {
+    expiresAt: Date.now() + STREAM_URL_TTL_MS,
+    url: normalizedUrl
+  });
+
+  return normalizedUrl;
+}
+
+async function resolveAudioUrlDeep(videoId) {
+  let lastError = null;
+
+  try {
+    const resolvedUrl = await resolveAudioUrl(videoId);
+
+    if (resolvedUrl) {
+      return cacheResolvedStreamUrl("audio", videoId, resolvedUrl);
+    }
+  } catch (error) {
+    lastError = error;
+  }
+
+  try {
+    const ytdlCoreUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
+
+    if (ytdlCoreUrl) {
+      return cacheResolvedStreamUrl("audio", videoId, ytdlCoreUrl);
+    }
+  } catch (error) {
+    lastError = error;
+  }
+
+  const deepAttempts = [
+    {
+      fallbackClients: "tv_simply,mweb,web",
+      profile: "bgutil",
+      timeoutMs: 35000
+    },
+    {
+      fallbackClients: "tv_simply,mweb,web",
+      profile: "",
+      timeoutMs: 35000
+    },
+    {
+      fallbackClients: "web,android,ios",
+      profile: "aggressive",
+      timeoutMs: 45000
+    }
+  ];
+
+  for (const attempt of deepAttempts) {
+    const argVariants = buildYtDlpArgVariants({
+      kind: "audio",
+      fallbackClients: attempt.fallbackClients,
+      profile: attempt.profile
+    });
+
+    for (const variant of argVariants) {
+      try {
+        const { stdout } = await execFileWithRetry(
+          "python",
+          [
+            "-m",
+            "yt_dlp",
+            ...variant.args,
+            "--no-playlist",
+            "--no-warnings",
+            "--extractor-retries",
+            "3",
+            "--socket-timeout",
+            "25",
+            "--get-url",
+            "-f",
+            "bestaudio[acodec!=none]/bestaudio/best",
+            toVideoUrl(videoId)
+          ],
+          {
+            maxBuffer: 1024 * 1024 * 4,
+            timeout: attempt.timeoutMs
+          }
+        );
+
+        const streamUrl = stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find(Boolean);
+
+        if (streamUrl) {
+          return cacheResolvedStreamUrl("audio", videoId, streamUrl);
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+  }
+
+  throw createYouTubeBotBlockAudioError(
+    lastError || createAudioError("All audio recovery attempts failed for this video.", 503)
+  );
+}
+
 async function resolveAudioInput(videoId, options = {}) {
   const allowDownloadFallback = options.allowDownloadFallback !== false;
   const preferLocal = options.preferLocal === true;
@@ -849,5 +956,6 @@ module.exports = {
   isYouTubeBotBlockError,
   resolveAudioInput,
   resolveAudioUrl,
+  resolveAudioUrlDeep,
   resolveVideoUrl
 };

@@ -25,6 +25,7 @@ const {
   getAudioMimeType,
   resolveAudioInput,
   resolveAudioUrl,
+  resolveAudioUrlDeep,
   resolveVideoUrl
 } = require("./services/audio");
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
@@ -350,8 +351,9 @@ function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe 
   const cookieConfigured = Boolean(checks.ytDlpCookies?.ok);
   const ytDlpProxyConfigured = Boolean(checks.ytDlpProxy?.ok);
   const ytdlCoreProxyConfigured = Boolean(checks.ytdlCoreProxy?.ok);
+  const bgutilConfigured = Boolean(checks.ytDlpBgutilProvider?.ok);
   const proxyConfigured = ytDlpProxyConfigured || ytdlCoreProxyConfigured;
-  const recoveryConfigured = cookieConfigured || proxyConfigured;
+  const recoveryConfigured = cookieConfigured || proxyConfigured || bgutilConfigured;
   const probeReason = normalizeWhitespace(
     audioPreviewProbe?.reason || (audioPreviewProbe?.timedOut ? "probe-timeout" : "")
   );
@@ -366,6 +368,10 @@ function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe 
     recoveryParts.push("a dedicated recovery proxy");
   } else if (ytDlpProxyConfigured) {
     recoveryParts.push("a server proxy");
+  }
+
+  if (bgutilConfigured) {
+    recoveryParts.push("bgutil recovery");
   }
 
   const recoveryLabel = recoveryParts.length ? recoveryParts.join(" + ") : "server recovery";
@@ -1790,10 +1796,20 @@ app.get(
         preferLocal: true
       });
     } catch (localPreviewError) {
-      audioSource = await resolveAudioInput(videoId, {
-        outputDirectory,
-        allowDownloadFallback: false
-      });
+      try {
+        const recoveredAudioUrl = await resolveAudioUrlDeep(videoId);
+        audioSource = {
+          input: recoveredAudioUrl,
+          sourceType: "remote",
+          mimeType: "audio/mp4",
+          recovered: true
+        };
+      } catch {
+        audioSource = await resolveAudioInput(videoId, {
+          outputDirectory,
+          allowDownloadFallback: false
+        });
+      }
     }
     res.setHeader("Cache-Control", "no-store");
 

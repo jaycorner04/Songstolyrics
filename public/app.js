@@ -1431,6 +1431,81 @@ function clearAudioFallbackSelection() {
   syncIdleRenderCta();
 }
 
+function spotlightAudioFallbackInput(options = {}) {
+  if (!audioFallbackInput) {
+    return;
+  }
+
+  if (options.scroll !== false) {
+    audioFallbackInput.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }
+
+  audioFallbackInput.style.outline = "2px solid #f59e0b";
+  audioFallbackInput.style.borderRadius = "6px";
+  window.setTimeout(() => {
+    audioFallbackInput.style.outline = "";
+    audioFallbackInput.style.borderRadius = "";
+  }, 3000);
+}
+
+async function applyAudioPlayerWithRecovery(result = currentResult) {
+  const videoId = result?.videoId || extractVideoId(result?.inputUrl || "");
+  const audioAccess = getCurrentAudioAccessState(result);
+
+  audioPlayer.pause();
+  audioPlayer.preload = "none";
+
+  if (result?.audioUrl && audioAccess.mode === "available") {
+    audioPlayer.src = result.audioUrl;
+    audioPlayer.hidden = false;
+    return;
+  }
+
+  audioPlayer.removeAttribute("src");
+  audioPlayer.hidden = true;
+
+  if (!videoId || !result?.audioPreviewBlocked) {
+    return;
+  }
+
+  try {
+    const probeResponse = await Promise.race([
+      fetch(`/api/audio/${encodeURIComponent(videoId)}`, {
+        method: "HEAD",
+        cache: "no-store"
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))
+    ]);
+
+    if (probeResponse.ok || probeResponse.redirected) {
+      const recoveredUrl = `/api/audio/${encodeURIComponent(videoId)}`;
+      result.audioUrl = recoveredUrl;
+      result.audioPreviewBlocked = false;
+      result.audioAccess = {
+        ...audioAccess,
+        mode: "recovery",
+        previewAvailable: true,
+        badgeLabel: "Audio recovered",
+        title: "Recovered soundtrack preview is ready",
+        summary:
+          "The server recovered a playable preview path for this link. You can continue with the live preview, and uploaded audio still stays available as backup.",
+        primaryActionLabel: "Create lyric video",
+        recommendedAction: "render"
+      };
+      audioPlayer.src = recoveredUrl;
+      audioPlayer.hidden = false;
+      applyAudioAccessState(result);
+      syncIdleRenderCta();
+      return;
+    }
+  } catch {}
+
+  spotlightAudioFallbackInput({ scroll: false });
+}
+
 function clearCustomBackgroundSelection() {
   uploadedBackgrounds = [];
   revokeUploadedBackgroundVideoPreview();
@@ -1791,7 +1866,7 @@ async function copyShareLink() {
   }, 1800);
 }
 
-function renderResult(result) {
+async function renderResult(result) {
   currentResult = result;
   renderSettingsDirty = false;
   resultPanel.hidden = false;
@@ -1809,16 +1884,10 @@ function renderResult(result) {
   renderLyrics(result.lines || []);
   primeRenderState();
 
-  audioPlayer.pause();
-  audioPlayer.preload = "none";
-  if (result.audioUrl) {
-    audioPlayer.src = result.audioUrl;
-  } else {
-    audioPlayer.removeAttribute("src");
-  }
   updatePostRenderBackgroundStatus();
   updateArtworkVisibility();
   applyAudioAccessState(result);
+  await applyAudioPlayerWithRecovery(result);
 
   updateQueryString(result.inputUrl);
   if (getCurrentAudioAccessState(result).mode !== "available") {
@@ -1828,6 +1897,7 @@ function renderResult(result) {
         : "This link is loading without a playable server soundtrack right now. Upload the song audio once if you want guaranteed sound in the final video.",
       { scroll: false }
     );
+    spotlightAudioFallbackInput({ scroll: false });
   } else if (uploadedAudioFallback) {
     promptAudioFallbackRecovery(
       `Audio fallback ${uploadedAudioFallback.name} is ready and will only be used if the server loses the YouTube soundtrack.`,
@@ -2155,7 +2225,7 @@ async function handleSubmit(event) {
       payload.thumbnails = [];
     }
 
-    renderResult(payload);
+    await renderResult(payload);
     await handleRender();
   } catch (error) {
     reportLocalDebugError({
