@@ -1550,6 +1550,8 @@ function clearHardAudioBlockPreview() {
   if (existingEmbed) {
     existingEmbed.remove();
   }
+
+  syncMobileAudioCards();
 }
 
 function handleHardAudioBlock(result = currentResult) {
@@ -1561,7 +1563,7 @@ function handleHardAudioBlock(result = currentResult) {
 
   clearHardAudioBlockPreview();
 
-  if (videoId && audioPlayer.parentNode) {
+  if (videoId) {
     const wrap = document.createElement("div");
     wrap.id = "yt-audio-embed";
     wrap.className = "youtube-audio-embed";
@@ -1574,7 +1576,10 @@ function handleHardAudioBlock(result = currentResult) {
         allow="autoplay; encrypted-media"
         style="display:block;border:0;border-radius:16px;">
       </iframe>`;
-    audioPlayer.parentNode.insertBefore(wrap, audioPlayer.nextSibling);
+    const previewTarget = mobileAudioPreviewSlot && isCompactMobileLayout()
+      ? mobileAudioPreviewSlot
+      : desktopAudioPreviewSlot || audioPlayer.parentNode;
+    previewTarget.appendChild(wrap);
   }
 
   if (audioStatusBadge) {
@@ -1606,6 +1611,7 @@ function handleHardAudioBlock(result = currentResult) {
   }
 
   spotlightAudioFallbackInput();
+  syncMobileAudioCards(result);
 }
 
 async function applyAudioPlayerWithRecovery(result = currentResult) {
@@ -1621,6 +1627,7 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
     audioStatusBadge.style.color = "";
     audioPlayer.src = result.audioUrl;
     audioPlayer.hidden = false;
+    syncMobileAudioCards(result);
     return;
   }
 
@@ -1662,6 +1669,7 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
       audioStatusBadge.style.color = "";
       applyAudioAccessState(result);
       syncIdleRenderCta();
+      syncMobileAudioCards(result);
       return;
     }
   } catch {}
