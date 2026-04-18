@@ -6,6 +6,7 @@ const LOCAL_DEBUG_MAX_ENTRIES = Math.max(0, Number(process.env.LOCAL_DEBUG_MAX_E
 const LOCAL_DEBUG_PATH = path.join(logsRoot, "local-debug-events.json");
 
 const localDebugEvents = [];
+const localDebugListeners = new Set();
 let nextLocalDebugId = 1;
 let localDebugLoaded = false;
 
@@ -98,6 +99,10 @@ function recordLocalDebugEvent(payload = {}) {
   localDebugEvents.unshift(entry);
   trimLocalDebugEvents();
   persistLocalDebugEvents();
+  notifyLocalDebugListeners({
+    type: "recorded",
+    entry
+  });
   return entry;
 }
 
@@ -110,6 +115,9 @@ function clearLocalDebugEvents() {
   ensureLocalDebugLoaded();
   localDebugEvents.length = 0;
   persistLocalDebugEvents();
+  notifyLocalDebugListeners({
+    type: "cleared"
+  });
 }
 
 function deleteLocalDebugEvent(id) {
@@ -128,7 +136,34 @@ function deleteLocalDebugEvent(id) {
 
   localDebugEvents.splice(index, 1);
   persistLocalDebugEvents();
+  notifyLocalDebugListeners({
+    type: "deleted",
+    id: targetId
+  });
   return true;
+}
+
+function subscribeLocalDebugEvents(listener) {
+  if (typeof listener !== "function") {
+    return () => {};
+  }
+
+  localDebugListeners.add(listener);
+  return () => {
+    localDebugListeners.delete(listener);
+  };
+}
+
+function notifyLocalDebugListeners(payload = {}) {
+  for (const listener of localDebugListeners) {
+    try {
+      listener({
+        ...payload,
+        updatedAt: new Date().toISOString(),
+        entryCount: localDebugEvents.length
+      });
+    } catch {}
+  }
 }
 
 function createEmptyLocalDebugPayload() {
@@ -225,5 +260,6 @@ module.exports = {
   deleteLocalDebugEvent,
   getLocalDebugEvents,
   isLocalDebugRequest,
-  recordLocalDebugEvent
+  recordLocalDebugEvent,
+  subscribeLocalDebugEvents
 };
