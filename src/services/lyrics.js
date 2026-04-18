@@ -127,6 +127,40 @@ function inferSongFromVideo(rawTitle, channelTitle) {
   };
 }
 
+function inferSongFromFilename(filename = "") {
+  const cleanedFilename = normalizeWhitespace(
+    `${filename || ""}`
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\b(upload|uploaded|audio|song|music|official|lyrics?|lyrical|video|hd|4k)\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+  );
+
+  if (!cleanedFilename) {
+    return inferSongFromVideo("Uploaded audio", "Uploaded audio");
+  }
+
+  const byMatch = cleanedFilename.split(/\s+by\s+/i).map((part) => normalizeWhitespace(part));
+
+  if (byMatch.length === 2 && byMatch[0] && byMatch[1]) {
+    return {
+      artist: byMatch[1],
+      title: stripFeaturedArtists(byMatch[0]),
+      searchQuery: normalizeWhitespace(`${byMatch[1]} ${byMatch[0]}`),
+      cleanedVideoTitle: cleanedFilename
+    };
+  }
+
+  const guessedFromTitle = inferSongFromVideo(cleanedFilename, "Uploaded audio");
+
+  return {
+    ...guessedFromTitle,
+    searchQuery:
+      normalizeWhitespace(`${guessedFromTitle.artist} ${guessedFromTitle.title}`) || cleanedFilename,
+    cleanedVideoTitle: cleanedFilename
+  };
+}
+
 async function fetchJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LYRICS_TIMEOUT_MS);
@@ -623,5 +657,11 @@ async function buildLyricsPayload({ rawTitle, channelTitle, durationSeconds, cap
 
 module.exports = {
   buildLyricsPayload,
-  inferSongFromVideo
+  buildTimedLines,
+  estimateStartsFromDuration,
+  inferSongFromFilename,
+  inferSongFromVideo,
+  parseLyricsLines,
+  parseSyncedLyrics,
+  searchLrcLib
 };

@@ -30,7 +30,16 @@ const {
 } = require("./services/audio");
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
 const { getRuntimeDiagnostics } = require("./services/deployment");
-const { buildLyricsPayload, inferSongFromVideo } = require("./services/lyrics");
+const {
+  buildLyricsPayload,
+  buildTimedLines,
+  estimateStartsFromDuration,
+  inferSongFromFilename,
+  inferSongFromVideo,
+  parseLyricsLines,
+  parseSyncedLyrics,
+  searchLrcLib
+} = require("./services/lyrics");
 const {
   buildRequestDebugContext,
   clearLocalDebugEvents,
