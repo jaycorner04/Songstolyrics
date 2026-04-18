@@ -5,7 +5,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const ffmpegPath = require("ffmpeg-static");
 const { previewAudioCacheRoot } = require("../config/runtime");
-const { buildYtDlpArgs, resolveCookieFilePath, resolveProxyUrl } = require("./ytdlp");
+const { buildYtDlpArgVariants, buildYtDlpArgs, resolveCookieFilePath, resolveProxyUrl } = require("./ytdlp");
 
 let ytdl = null;
 
@@ -529,60 +529,63 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     }
 
     for (const attempt of AUDIO_DOWNLOAD_ATTEMPTS) {
-      try {
-        const ytDlpArgs = buildYtDlpArgs({
-          kind: "audio",
-          fallbackClients: attempt.fallbackClients || ""
-        });
-        await execFileWithRetry(
-          "python",
-          [
-            "-m",
-            "yt_dlp",
-            ...ytDlpArgs,
-            "--no-playlist",
-            "--no-warnings",
-            "--extract-audio",
-            "--audio-format",
-            "wav",
-            "--audio-quality",
-            "5",
-            "--ffmpeg-location",
-            path.dirname(ffmpegPath),
-            "--extractor-retries",
-            "2",
-            "--retries",
-            "2",
-            "--fragment-retries",
-            "2",
-            "--socket-timeout",
-            "20",
-            "--no-part",
-            "--force-overwrites",
-            "-f",
-            attempt.formatSelector,
-            ...(attempt.extraArgs || []),
-            "-o",
-            outputTemplate,
-            toVideoUrl(videoId)
-          ],
-          {
-            maxBuffer: 1024 * 1024 * 4,
-            timeout: Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+      const argVariants = buildYtDlpArgVariants({
+        kind: "audio",
+        fallbackClients: attempt.fallbackClients || ""
+      });
+
+      for (const variant of argVariants) {
+        try {
+          await execFileWithRetry(
+            "python",
+            [
+              "-m",
+              "yt_dlp",
+              ...variant.args,
+              "--no-playlist",
+              "--no-warnings",
+              "--extract-audio",
+              "--audio-format",
+              "wav",
+              "--audio-quality",
+              "5",
+              "--ffmpeg-location",
+              path.dirname(ffmpegPath),
+              "--extractor-retries",
+              "2",
+              "--retries",
+              "2",
+              "--fragment-retries",
+              "2",
+              "--socket-timeout",
+              "20",
+              "--no-part",
+              "--force-overwrites",
+              "-f",
+              attempt.formatSelector,
+              ...(attempt.extraArgs || []),
+              "-o",
+              outputTemplate,
+              toVideoUrl(videoId)
+            ],
+            {
+              maxBuffer: 1024 * 1024 * 4,
+              timeout: Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+            }
+          );
+
+          const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+
+          if (downloadedFilePath) {
+            downloadedAudioCache.set(cacheKey, {
+              expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+              filePath: downloadedFilePath
+            });
+            return downloadedFilePath;
           }
-        );
-
-        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
-
-        if (downloadedFilePath) {
-          downloadedAudioCache.set(cacheKey, {
-            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
-            filePath: downloadedFilePath
-          });
-          return downloadedFilePath;
+        } catch (error) {
+          lastError = error;
         }
-      } catch (error) {
-        lastError = error;
       }
     }
 
@@ -646,52 +649,55 @@ async function resolveStreamUrl(videoId, formatSelector, kind) {
     let lastError = null;
 
     for (const attempt of attempts) {
-      try {
-        const ytDlpArgs = buildYtDlpArgs({
-          kind,
-          fallbackClients: attempt.fallbackClients || ""
-        });
-        const { stdout } = await execFileWithRetry(
-          "python",
-          [
-            "-m",
-            "yt_dlp",
-            ...ytDlpArgs,
-            "--no-playlist",
-            "--no-warnings",
-            "--extractor-retries",
-            "2",
-            "--socket-timeout",
-            "15",
-            "--get-url",
-            "-f",
-            attempt.formatSelector || formatSelector,
-            toVideoUrl(videoId)
-          ],
-          {
-            maxBuffer: 1024 * 1024 * 4,
-            timeout: STREAM_RESOLVE_TIMEOUT_MS
+      const argVariants = buildYtDlpArgVariants({
+        kind,
+        fallbackClients: attempt.fallbackClients || ""
+      });
+
+      for (const variant of argVariants) {
+        try {
+          const { stdout } = await execFileWithRetry(
+            "python",
+            [
+              "-m",
+              "yt_dlp",
+              ...variant.args,
+              "--no-playlist",
+              "--no-warnings",
+              "--extractor-retries",
+              "2",
+              "--socket-timeout",
+              "15",
+              "--get-url",
+              "-f",
+              attempt.formatSelector || formatSelector,
+              toVideoUrl(videoId)
+            ],
+            {
+              maxBuffer: 1024 * 1024 * 4,
+              timeout: STREAM_RESOLVE_TIMEOUT_MS
+            }
+          );
+
+          const streamUrl = stdout
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find(Boolean);
+
+          if (!streamUrl) {
+            continue;
           }
-        );
 
-        const streamUrl = stdout
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .find(Boolean);
+          streamUrlCache.set(cacheKey, {
+            expiresAt: Date.now() + STREAM_URL_TTL_MS,
+            url: streamUrl
+          });
 
-        if (!streamUrl) {
-          continue;
+          return streamUrl;
+        } catch (error) {
+          lastError = error;
+          // Try the next format/client/profile combination.
         }
-
-        streamUrlCache.set(cacheKey, {
-          expiresAt: Date.now() + STREAM_URL_TTL_MS,
-          url: streamUrl
-        });
-
-        return streamUrl;
-      } catch (error) {
-        lastError = error;
-        // Try the next format/client combination.
       }
     }
 
