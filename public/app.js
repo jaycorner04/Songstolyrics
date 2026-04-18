@@ -1818,11 +1818,14 @@ function renderResult(result) {
   }
   updatePostRenderBackgroundStatus();
   updateArtworkVisibility();
+  applyAudioAccessState(result);
 
   updateQueryString(result.inputUrl);
-  if (result.audioPreviewBlocked) {
+  if (getCurrentAudioAccessState(result).mode !== "available") {
     promptAudioFallbackRecovery(
-      "This link is loading without server audio right now. The app already tried YouTube and alternate server recovery. Upload the song audio once if you want guaranteed sound in the final video.",
+      getCurrentAudioAccessState(result).mode === "recovery"
+        ? "This link is in protected recovery mode. The server will try its stronger soundtrack path during render, and you can still upload audio now for guaranteed sound."
+        : "This link is loading without a playable server soundtrack right now. Upload the song audio once if you want guaranteed sound in the final video.",
       { scroll: false }
     );
   } else if (uploadedAudioFallback) {
@@ -1833,10 +1836,14 @@ function renderResult(result) {
   } else {
     hideAudioFallbackRecovery();
   }
+  syncIdleRenderCta();
+  const audioAccess = getCurrentAudioAccessState(result);
   setStatus(
-    result.audioPreviewBlocked
-      ? `Loaded ${result.title}. Audio preview is currently blocked on the server, but the lyric render can still continue when server-side audio access is available.`
-      : `Loaded ${result.title}. Starting the lyric video render with your current style settings.`
+    audioAccess.mode === "available"
+      ? `Loaded ${result.title}. Live soundtrack preview is ready, and the render can continue with your current style settings.`
+      : audioAccess.mode === "recovery"
+        ? `Loaded ${result.title}. This link opened in protected recovery mode, so the final render will try the stronger soundtrack path before needing uploaded audio.`
+        : `Loaded ${result.title}. Lyrics and artwork are ready, but this song needs uploaded audio if you want guaranteed sound in the final video.`
   );
 }
 
