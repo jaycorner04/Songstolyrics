@@ -7563,7 +7563,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 }
 
 async function startRenderJob(payload) {
-  const videoId = extractVideoId(payload.videoId || payload.inputUrl);
+  const extractedVideoId = extractVideoId(payload.videoId || payload.inputUrl);
+  const fallbackVideoId =
+    slugify(
+      payload.videoId ||
+        payload.song?.title ||
+        payload.title ||
+        payload.customAudioUpload?.originalName ||
+        "uploaded-audio"
+    ) || "uploaded-audio";
+  const videoId = extractedVideoId || `upload-${fallbackVideoId}`;
   const titleSlug = slugify(payload.song?.title || payload.title || videoId) || videoId;
   const createdAt = new Date().toISOString();
 

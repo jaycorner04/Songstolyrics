@@ -1650,20 +1650,35 @@ app.post(
     const inputUrl = `${body?.inputUrl || ""}`.trim();
     const backgroundVideoUpload = Array.isArray(req.files?.backgroundVideo) ? req.files.backgroundVideo[0] : null;
     const audioFileUpload = Array.isArray(req.files?.audioFile) ? req.files.audioFile[0] : null;
+    const hasUploadedAudio = Boolean(audioFileUpload);
+    const uploadedAudioTitle = `${audioFileUpload?.originalname || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
 
-    if (!inputUrl) {
-      throw createError("A YouTube link is required before rendering.", 400);
+    if (!inputUrl && !hasUploadedAudio) {
+      throw createError("A YouTube link or uploaded audio file is required before rendering.", 400);
     }
 
     let renderSong = body?.song || null;
     let renderLines = Array.isArray(body?.lines) ? body.lines : [];
+    const renderTitle = `${body?.title || ""}`.trim() || uploadedAudioTitle || "Uploaded audio";
+    const renderChannelTitle = `${body?.channelTitle || ""}`.trim() || (hasUploadedAudio ? "Uploaded audio" : "");
+    const renderVideoId = `${body?.videoId || ""}`.trim() || (hasUploadedAudio ? `upload-${Date.now()}` : "");
+    const renderDurationSeconds = Number(
+      body?.durationSeconds || body?.customAudioUpload?.duration || 0
+    );
 
-    if (!renderLines.length && body?.title) {
+    if (!renderSong && hasUploadedAudio) {
+      renderSong = {
+        title: renderTitle,
+        artist: "Uploaded audio"
+      };
+    }
+
+    if (!renderLines.length && renderTitle) {
       const lyricRetry = await withTimeout(
         buildLyricsPayload({
-          rawTitle: body.title,
-          channelTitle: body?.channelTitle,
-          durationSeconds: body?.durationSeconds,
+          rawTitle: renderTitle,
+          channelTitle: renderChannelTitle,
+          durationSeconds: renderDurationSeconds,
           captionCues: []
         }),
         12000,
@@ -1678,13 +1693,13 @@ app.post(
 
     const renderJob = await startRenderJob({
       inputUrl,
-      videoId: body?.videoId,
-      title: body?.title,
-      channelTitle: body?.channelTitle,
-      durationSeconds: body?.durationSeconds,
+      videoId: renderVideoId,
+      title: renderTitle,
+      channelTitle: renderChannelTitle,
+      durationSeconds: renderDurationSeconds,
       lines: renderLines,
       song: renderSong,
-      syncMode: body?.syncMode || "none",
+      syncMode: body?.syncMode || (hasUploadedAudio ? "transcribed" : "none"),
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
