@@ -121,6 +121,7 @@ let renderSettingsDirty = false;
 let audioFallbackPopupKey = "";
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
+const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const LOCAL_DEBUG_REFRESH_MS = 350;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const lyricPreviewSamples = {
@@ -1103,6 +1104,53 @@ function formatDebugDetails(value) {
   }
 }
 
+function persistLocalDebugCache({
+  entries = [],
+  runtimeRoot = "",
+  lastRefreshedAt = "",
+  connected = false
+} = {}) {
+  if (!isLocalDebugMode) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      LOCAL_DEBUG_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        entries: Array.isArray(entries) ? entries : [],
+        runtimeRoot: `${runtimeRoot || ""}`,
+        lastRefreshedAt: `${lastRefreshedAt || ""}`,
+        connected: Boolean(connected)
+      })
+    );
+  } catch {}
+}
+
+function restoreLocalDebugCache() {
+  if (!isLocalDebugMode) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DEBUG_CACHE_STORAGE_KEY);
+    const parsed = JSON.parse(raw || "null");
+
+    if (!parsed || !Array.isArray(parsed.entries)) {
+      return null;
+    }
+
+    return {
+      entries: parsed.entries,
+      runtimeRoot: `${parsed.runtimeRoot || ""}`,
+      lastRefreshedAt: `${parsed.lastRefreshedAt || ""}`,
+      connected: parsed.connected !== false
+    };
+  } catch {
+    return null;
+  }
+}
+
 function renderLocalDebugPanel(entries = []) {
   if (!localDebugCard || !localDebugList) {
     return;
@@ -1250,6 +1298,12 @@ async function refreshLocalDebugPanel(options = {}) {
     const payload = await response.json();
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     localDebugLastRefreshedAt = new Date().toLocaleTimeString();
+    persistLocalDebugCache({
+      entries,
+      runtimeRoot: `${healthPayload?.runtimeRoot || ""}`,
+      lastRefreshedAt: localDebugLastRefreshedAt,
+      connected: true
+    });
     renderLocalDebugPanel(entries);
     renderLocalDebugStatus({
       connected: true,
@@ -1357,6 +1411,12 @@ async function clearLocalDebugPanel() {
   }
 
   renderLocalDebugPanel([]);
+  persistLocalDebugCache({
+    entries: [],
+    runtimeRoot: "",
+    lastRefreshedAt: localDebugLastRefreshedAt,
+    connected: true
+  });
 
   try {
     await fetch("/api/local-debug/errors", {
@@ -1394,6 +1454,12 @@ async function deleteLocalDebugEntry(id) {
 
   if (!remainingEntries.length) {
     renderLocalDebugPanel([]);
+    persistLocalDebugCache({
+      entries: [],
+      runtimeRoot: "",
+      lastRefreshedAt: localDebugLastRefreshedAt,
+      connected: true
+    });
   }
 
   refreshLocalDebugPanel().catch(() => {});
@@ -3065,6 +3131,17 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  const cachedLocalDebug = restoreLocalDebugCache();
+  if (cachedLocalDebug) {
+    localDebugLastRefreshedAt = cachedLocalDebug.lastRefreshedAt || "";
+    renderLocalDebugPanel(cachedLocalDebug.entries);
+    renderLocalDebugStatus({
+      connected: cachedLocalDebug.connected,
+      entryCount: cachedLocalDebug.entries.length,
+      runtimeRoot: cachedLocalDebug.runtimeRoot,
+      lastRefreshedAt: cachedLocalDebug.lastRefreshedAt
+    });
+  }
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
   connectLocalDebugStream();
