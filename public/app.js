@@ -2575,26 +2575,65 @@ async function handleRender() {
       neonGlow: getSelectedStyleColorSettings().glowPercent,
       ...getClientRenderProfile()
     };
-    const formData = new FormData();
-    formData.append("renderPayload", JSON.stringify(renderPayload));
+    const buildRenderFormData = () => {
+      const formData = new FormData();
+      formData.append("renderPayload", JSON.stringify(renderPayload));
 
-    if (uploadedBackgroundVideo?.file) {
-      formData.append("backgroundVideo", uploadedBackgroundVideo.file, uploadedBackgroundVideo.name);
+      if (uploadedBackgroundVideo?.file) {
+        formData.append("backgroundVideo", uploadedBackgroundVideo.file, uploadedBackgroundVideo.name);
+      }
+
+      if (uploadedAudioFallback?.file) {
+        formData.append("audioFile", uploadedAudioFallback.file, uploadedAudioFallback.name);
+      }
+
+      return formData;
+    };
+
+    let payload = null;
+    let lastRenderStartError = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        if (attempt > 0) {
+          setRenderMessage("The upload connection was interrupted, so the app is retrying the render start...");
+          setStatus("Retrying the render start after an interrupted upload...");
+          await wait(700);
+        }
+
+        const response = await fetch("/api/render", {
+          method: "POST",
+          body: buildRenderFormData()
+        });
+
+        let responsePayload = {};
+
+        try {
+          responsePayload = await response.json();
+        } catch {}
+
+        if (!response.ok) {
+          const renderStartError = new Error(
+            responsePayload.error || "The lyric video could not be started."
+          );
+          renderStartError.statusCode = response.status;
+          throw renderStartError;
+        }
+
+        payload = responsePayload;
+        lastRenderStartError = null;
+        break;
+      } catch (error) {
+        lastRenderStartError = error;
+
+        if (attempt === 1 || !isTransientRenderStartError(error)) {
+          throw error;
+        }
+      }
     }
 
-    if (uploadedAudioFallback?.file) {
-      formData.append("audioFile", uploadedAudioFallback.file, uploadedAudioFallback.name);
-    }
-
-    const response = await fetch("/api/render", {
-      method: "POST",
-      body: formData
-    });
-
-    const payload = await response.json();
-
-    if (!response.ok) {
-      throw new Error(payload.error || "The lyric video could not be started.");
+    if (!payload && lastRenderStartError) {
+      throw lastRenderStartError;
     }
 
     activeRenderJobId = payload.id;
