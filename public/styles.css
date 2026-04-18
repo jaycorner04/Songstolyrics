@@ -2374,41 +2374,62 @@ button {
   .mobile-topbar {
     display: flex;
     align-items: center;
+    gap: 10px;
     width: 100%;
-    margin-bottom: 10px;
-    padding: 12px 14px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 8px;
+    padding: 9px 12px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03)),
-      rgba(8, 18, 33, 0.58);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+      rgba(8, 18, 33, 0.5);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+  }
+
+  .mobile-topbar-mark {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    background:
+      radial-gradient(circle at top left, rgba(127, 232, 255, 0.24), transparent 58%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+      rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #f6ede6;
+    font-family: "Syne", "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
   }
 
   .mobile-topbar-copy {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
+    align-items: flex-start;
   }
 
   .mobile-topbar-title {
     margin: 0;
     color: var(--text);
     font-family: "Syne", "Segoe UI", sans-serif;
-    font-size: 1.28rem;
-    line-height: 0.96;
-    letter-spacing: -0.03em;
+    font-size: 1rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
     text-transform: none;
   }
 
   .mobile-topbar-signature {
     margin: 0;
-    color: rgba(255, 233, 220, 0.88);
+    color: rgba(255, 233, 220, 0.76);
     font-family: "Manrope", "Segoe UI", sans-serif;
-    font-size: 0.68rem;
+    font-size: 0.58rem;
     font-weight: 800;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
   }
 
