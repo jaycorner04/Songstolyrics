@@ -2199,18 +2199,18 @@ audioPlayer.addEventListener("seeked", syncLyricsToPlayback);
 audioPlayer.addEventListener("loadedmetadata", syncLyricsToPlayback);
 audioPlayer.addEventListener("error", () => {
   promptAudioFallbackRecovery(
-    "Audio preview is blocked for this link. Upload the song audio file if you want the final video to keep sound.",
+    "Live preview audio is not available for this link right now. Add the song audio file if you want guaranteed sound in the final video.",
     { scroll: false }
   );
   setStatus(
-    "Audio preview is blocked for this video on the server right now. The page still loaded, but playback could not start.",
+    "This song loaded, but live preview audio is not available from the server right now. You can still continue or add the song audio for guaranteed sound.",
     true
   );
   reportLocalDebugError({
     source: "client-audio",
     title: "Audio playback error",
     userMessage:
-      "Audio preview is blocked for this video on the server right now. The page still loaded, but playback could not start.",
+      "This song loaded, but live preview audio is not available from the server right now. You can still continue or add the song audio for guaranteed sound.",
     errorMessage: audioPlayer.error?.message || `HTMLMediaElement error code ${audioPlayer.error?.code || "unknown"}`,
     cause: audioPlayer.currentSrc || currentResult?.audioUrl || "",
     details: {
