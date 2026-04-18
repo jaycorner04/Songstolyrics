@@ -1250,8 +1250,9 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
   const shouldUseAudioFallback = shouldUseAudioFallbackForPreview(metadata, lyricResult, {
     hasFastDescriptionLyrics: Boolean(descriptionLyrics)
   });
+  const hasNoLyrics = !lyricResult?.lines?.length || lyricResult?.syncMode === "none";
 
-  if (!shouldUseAudioFallback) {
+  if (!shouldUseAudioFallback && !hasNoLyrics) {
     return { lyricResult, warnings };
   }
 
@@ -1960,11 +1961,66 @@ app.post(
             durationSeconds: metadataDurationSeconds
           }
         : rawMetadata;
-    const { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
+    let { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
       metadata,
       videoId,
       captionCues
     );
+
+    if (
+      (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
+      startupDiagnostics.transcriptionReady
+    ) {
+      const scratchDir = path.join(
+        convertCacheRoot,
+        `${videoId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      );
+
+      try {
+        const fallbackSong = lyricResult?.song || inferSongFromVideo(metadata.title, metadata.channelTitle);
+        const shouldRomanize = shouldRomanizeTeluguLyrics(metadata, lyricResult);
+        const transcription = await transcribeYouTubeAudio(
+          videoId,
+          scratchDir,
+          metadata.durationSeconds || 60,
+          {
+            preview: true,
+            timeoutMs: 45000,
+            downloadTimeoutMs: 60000,
+            ...(shouldRomanize
+              ? {
+                  task: "transcribe",
+                  language: "te"
+                }
+              : {})
+          }
+        );
+
+        const transcriptionLines = Array.isArray(transcription?.lines) ? transcription.lines : [];
+
+        if (transcriptionLines.length >= 3) {
+          const romanizedTranscription = shouldRomanize
+            ? romanizeLyricLines(transcriptionLines).lines
+            : transcriptionLines;
+          lyricResult = {
+            song: fallbackSong,
+            source: shouldRomanize ? "audio-romanized" : "audio-transcription",
+            syncMode: "transcribed",
+            lines: romanizedTranscription
+          };
+          previewWarnings = [
+            ...previewWarnings,
+            shouldRomanize
+              ? "Preview lyrics were recovered from the song audio and shown in English letters."
+              : "No lyric sheet was found at first, so the website recovered timed lyrics from the audio."
+          ];
+        }
+      } catch {}
+      finally {
+        await safeRemoveDirectory(scratchDir);
+      }
+    }
+
     const audioPreviewProbe = await withTimeout(
       resolveAudioInput(videoId, {
         outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
