@@ -124,6 +124,11 @@ const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed"
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const LOCAL_DEBUG_REFRESH_MS = 350;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
+const configuredLocalDebugBaseUrl = (
+  document.querySelector('meta[name="local-debug-base-url"]')?.getAttribute("content") || ""
+).trim();
+const effectiveLocalDebugBaseUrl =
+  isLocalDebugMode && configuredLocalDebugBaseUrl ? configuredLocalDebugBaseUrl.replace(/\/+$/g, "") : "";
 const lyricPreviewSamples = {
   default: ["City lights in stereo", "You keep running through my mind", "Tonight the echo feels alive"],
   aa: ["MOST", "PEOPLE LOOKED", "AT HIM WITH TERROR"],
@@ -1104,6 +1109,11 @@ function formatDebugDetails(value) {
   }
 }
 
+function buildLocalDebugUrl(pathname = "") {
+  const safePath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${effectiveLocalDebugBaseUrl}${safePath}`;
+}
+
 function persistLocalDebugCache({
   entries = [],
   runtimeRoot = "",
@@ -1280,14 +1290,11 @@ async function refreshLocalDebugPanel(options = {}) {
   try {
     const requestTs = Date.now();
     const fetchOptions = {
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache"
-      }
+      cache: "no-store"
     };
     const [healthResponse, response] = await Promise.all([
-      fetch(`/api/health?ts=${requestTs}`, fetchOptions),
-      fetch(`/api/local-debug/errors?ts=${requestTs}`, fetchOptions)
+      fetch(buildLocalDebugUrl(`/api/health?ts=${requestTs}`), fetchOptions),
+      fetch(buildLocalDebugUrl(`/api/local-debug/errors?ts=${requestTs}`), fetchOptions)
     ]);
 
     if (!response.ok) {
@@ -1364,6 +1371,7 @@ function connectLocalDebugStream() {
 
   try {
     const stream = new window.EventSource(`/api/local-debug/stream?ts=${Date.now()}`);
+    const stream = new window.EventSource(buildLocalDebugUrl(`/api/local-debug/stream?ts=${Date.now()}`));
     localDebugEventSource = stream;
 
     const handleUpdate = () => {
@@ -1392,6 +1400,7 @@ async function reportLocalDebugError(payload = {}) {
 
   try {
     await fetch("/api/local-debug/errors", {
+    await fetch(buildLocalDebugUrl("/api/local-debug/errors"), {
       method: "POST",
       cache: "no-store",
       headers: {
@@ -1420,11 +1429,10 @@ async function clearLocalDebugPanel() {
 
   try {
     await fetch("/api/local-debug/errors", {
+    await fetch(buildLocalDebugUrl("/api/local-debug/errors"), {
       method: "DELETE",
       cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache"
-      }
+      headers: {}
     });
   } catch {}
 
@@ -1444,11 +1452,10 @@ async function deleteLocalDebugEntry(id) {
 
   try {
     await fetch(`/api/local-debug/errors/${encodeURIComponent(id)}`, {
+    await fetch(buildLocalDebugUrl(`/api/local-debug/errors/${encodeURIComponent(id)}`), {
       method: "DELETE",
       cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache"
-      }
+      headers: {}
     });
   } catch {}
 
