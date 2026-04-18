@@ -524,6 +524,7 @@ function applyAudioAccessState(result = currentResult) {
       audioAccessAction.textContent = "Upload audio";
     }
     audioPlayer.hidden = false;
+    syncMobileAudioCards(result);
     return;
   }
 
@@ -564,6 +565,7 @@ function applyAudioAccessState(result = currentResult) {
   }
 
   audioPlayer.hidden = !Boolean(audioAccess.previewAvailable && result?.audioUrl);
+  syncMobileAudioCards(result);
 }
 
 function syncIdleRenderCta() {
