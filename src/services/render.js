@@ -2312,6 +2312,39 @@ function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
   );
 }
 
+function canApproveShortCaptionReferenceReport({
+  report = {},
+  syncMode = "none",
+  durationSeconds = 0,
+  referenceLines = []
+} = {}) {
+  if (!report || report.approved) {
+    return false;
+  }
+
+  if (!["captions", "caption-aligned"].includes(syncMode)) {
+    return false;
+  }
+
+  if (Number(durationSeconds || 0) <= 0 || Number(durationSeconds || 0) > 70) {
+    return false;
+  }
+
+  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
+
+  if (!/no usable lyric lines|too sparse|too few|covered too little|stable enough timing/.test(reason)) {
+    return false;
+  }
+
+  const sourceMetrics = getSourceTimingMetrics(referenceLines, durationSeconds);
+
+  return (
+    Number(sourceMetrics.meaningfulCount || 0) >= 3 &&
+    Number(sourceMetrics.coverageRatio || 0) >= 0.1 &&
+    Number(sourceMetrics.lastEnd || 0) > Number(sourceMetrics.firstStart || 0) + 4
+  );
+}
+
 function buildIntroPreservedTranscriptCandidate({
   sourceLines = [],
   transcriptLines = [],
@@ -3574,6 +3607,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
 
   if (report.approvalMode === "uploaded-audio-sparse-transcript-fallback") {
     return "Strict sync verification approved the render using the uploaded audio transcript, even though the final transcript was too sparse for the normal full-song bar.";
+  }
+
+  if (report.approvalMode === "short-caption-reference-fallback") {
+    return "Strict sync verification kept the caption-timed lyric sheet for this short-form video because the validation transcript was too sparse to replace it safely.";
   }
 
   return report.transcriptDerived
@@ -7206,6 +7243,38 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               category: "sparse_validation_preview",
               message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
             });
+            } else if (
+              canApproveShortCaptionReferenceReport({
+                report: strictSyncReport,
+                syncMode: renderLineSyncSource,
+                durationSeconds,
+                referenceLines: sourceLyricReferenceLines
+              })
+            ) {
+              const shortCaptionReferenceLines = limitLyricLines(
+                applyLyricOffset(sourceLyricReferenceLines, lyricOffsetSeconds, durationSeconds),
+                durationSeconds
+              );
+
+              if (shortCaptionReferenceLines.length) {
+                renderLines = shortCaptionReferenceLines;
+                renderLineSyncSource = payload.syncMode;
+                renderLinesAreTranscriptDerived = false;
+                strictSyncReport = {
+                  ...strictSyncReport,
+                  approved: true,
+                  reason: "",
+                  approvalMode: "short-caption-reference-fallback",
+                  transcriptDerived: false,
+                  candidateMetrics: getSourceTimingMetrics(shortCaptionReferenceLines, durationSeconds),
+                  referenceMetrics: getSourceTimingMetrics(shortCaptionReferenceLines, durationSeconds)
+                };
+                renderNotes.push(
+                  "Strict sync verification kept the original caption timing for this short-form video because the validation transcript was too sparse to replace it safely."
+                );
+              } else {
+                throw createStrictSyncValidationError(strictSyncReport);
+              }
             } else if (
               hasUploadedAudioOnlySource &&
               (
