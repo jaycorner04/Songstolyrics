@@ -971,6 +971,65 @@ button {
   min-width: 0;
 }
 
+.audio-fallback-field {
+  position: relative;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.audio-fallback-state {
+  margin: -4px 0 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.audio-fallback-field.is-supported {
+  border-color: rgba(144, 246, 179, 0.26);
+  background:
+    radial-gradient(circle at top right, rgba(144, 246, 179, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(144, 246, 179, 0.08);
+}
+
+.audio-fallback-field.is-supported .audio-fallback-state {
+  background: rgba(144, 246, 179, 0.12);
+  color: #c8ffe0;
+}
+
+.audio-fallback-field.is-needed {
+  border-color: rgba(255, 147, 80, 0.32);
+  background:
+    radial-gradient(circle at top right, rgba(255, 147, 80, 0.1), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 147, 80, 0.08);
+}
+
+.audio-fallback-field.is-needed .audio-fallback-state {
+  background: rgba(255, 147, 80, 0.14);
+  color: #ffe0c8;
+}
+
+.audio-fallback-field.is-ready {
+  border-color: rgba(127, 232, 255, 0.3);
+  background:
+    radial-gradient(circle at top right, rgba(127, 232, 255, 0.1), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(127, 232, 255, 0.08);
+}
+
+.audio-fallback-field.is-ready .audio-fallback-state {
+  background: rgba(127, 232, 255, 0.14);
+  color: #d7f8ff;
+}
+
 .background-controls .input-label {
   display: block;
   min-height: 2.8em;
@@ -1273,6 +1332,21 @@ button {
   font-size: 0.84rem;
   font-weight: 700;
   text-transform: capitalize;
+}
+
+.badge.is-audio-live {
+  background: rgba(144, 246, 179, 0.16);
+  color: #c8ffe0;
+}
+
+.badge.is-audio-recovery {
+  background: rgba(127, 232, 255, 0.16);
+  color: #d4f7ff;
+}
+
+.badge.is-audio-upload {
+  background: rgba(255, 147, 80, 0.2);
+  color: #ffe0c8;
 }
 
 #audio-player {
@@ -2100,6 +2174,17 @@ button {
   .video-upload-meta {
     font-size: 0.74rem;
     line-height: 1.35;
+  }
+
+  .audio-fallback-field {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .audio-fallback-state {
+    font-size: 0.74rem;
+    padding: 8px 9px;
+    margin-bottom: 10px;
   }
 
   .input-row {
