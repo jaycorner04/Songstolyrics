@@ -1995,6 +1995,42 @@ app.post(
       };
     }
 
+    if (!renderLines.length && hasUploadedAudio) {
+      const guessedSong = inferSongFromFilename(audioFileUpload.originalname || renderTitle);
+
+      try {
+        const lrcMatches = await searchLrcLib(guessedSong, renderDurationSeconds);
+        const bestMatch = Array.isArray(lrcMatches) ? lrcMatches[0] : null;
+
+        if (bestMatch?.syncedLyrics) {
+          const syncedLines = parseSyncedLyrics(bestMatch.syncedLyrics, renderDurationSeconds);
+
+          if (syncedLines.length >= 6) {
+            renderLines = syncedLines;
+            renderSong = {
+              title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
+              artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
+            };
+          }
+        } else if (bestMatch?.plainLyrics) {
+          const plainLines = parseLyricsLines(bestMatch.plainLyrics);
+
+          if (plainLines.length >= 6) {
+            const starts = estimateStartsFromDuration(plainLines, renderDurationSeconds);
+            renderLines = buildTimedLines(
+              plainLines,
+              starts,
+              renderDurationSeconds || starts.at(-1) + 4
+            );
+            renderSong = {
+              title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
+              artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
+            };
+          }
+        }
+      } catch {}
+    }
+
     if (!renderLines.length && renderTitle) {
       const lyricRetry = await withTimeout(
         buildLyricsPayload({
