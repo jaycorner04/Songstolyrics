@@ -470,6 +470,7 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
 async function downloadAudioFile(videoId, outputDirectory, options = {}) {
   const cacheKey = getDownloadedAudioCacheKey(videoId, outputDirectory);
   const cachedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+  const preferLocal = options.preferLocal === true;
 
   if (cachedFilePath) {
     return cachedFilePath;
@@ -486,7 +487,7 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
     const baseName = toSafeBaseName(videoId);
     const outputTemplate = path.join(outputDirectory, `${baseName}.%(ext)s`);
     let lastError = null;
-    const cachedRemoteAudioUrl = getCachedStreamUrl("audio", videoId);
+    const cachedRemoteAudioUrl = preferLocal ? "" : getCachedStreamUrl("audio", videoId);
 
     if (cachedRemoteAudioUrl) {
       try {
@@ -512,7 +513,7 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
       }
     }
 
-    if (options.preferKnownBlockRecovery) {
+    if (!preferLocal && options.preferKnownBlockRecovery) {
       try {
         const rememberedRecoveryUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
 
@@ -601,54 +602,56 @@ async function downloadAudioFile(videoId, outputDirectory, options = {}) {
       }
     }
 
-    try {
-      const resolvedStreamUrl = await resolveAudioUrl(videoId);
+    if (!preferLocal) {
+      try {
+        const resolvedStreamUrl = await resolveAudioUrl(videoId);
 
-      if (resolvedStreamUrl) {
-        const transcodedPath = await transcodeRemoteAudioUrlToFile(
-          resolvedStreamUrl,
-          outputDirectory,
-          videoId,
-          Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
-        );
-        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+        if (resolvedStreamUrl) {
+          const transcodedPath = await transcodeRemoteAudioUrlToFile(
+            resolvedStreamUrl,
+            outputDirectory,
+            videoId,
+            Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+          );
+          const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
 
-        if (downloadedFilePath || transcodedPath) {
-          const usableFilePath = downloadedFilePath || transcodedPath;
-          downloadedAudioCache.set(cacheKey, {
-            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
-            filePath: usableFilePath
-          });
-          return usableFilePath;
+          if (downloadedFilePath || transcodedPath) {
+            const usableFilePath = downloadedFilePath || transcodedPath;
+            downloadedAudioCache.set(cacheKey, {
+              expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+              filePath: usableFilePath
+            });
+            return usableFilePath;
+          }
         }
+      } catch (error) {
+        lastError = error;
       }
-    } catch (error) {
-      lastError = error;
-    }
 
-    try {
-      const fallbackStreamUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
+      try {
+        const fallbackStreamUrl = await resolveStreamUrlWithYtdlCore(videoId, "audio");
 
-      if (fallbackStreamUrl) {
-        const transcodedPath = await transcodeRemoteAudioUrlToFile(
-          fallbackStreamUrl,
-          outputDirectory,
-          videoId,
-          Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
-        );
-        const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
+        if (fallbackStreamUrl) {
+          const transcodedPath = await transcodeRemoteAudioUrlToFile(
+            fallbackStreamUrl,
+            outputDirectory,
+            videoId,
+            Number(options.downloadTimeoutMs || AUDIO_DOWNLOAD_TIMEOUT_MS)
+          );
+          const downloadedFilePath = await findDownloadedAudioFile(videoId, outputDirectory);
 
-        if (downloadedFilePath || transcodedPath) {
-          const usableFilePath = downloadedFilePath || transcodedPath;
-          downloadedAudioCache.set(cacheKey, {
-            expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
-            filePath: usableFilePath
-          });
-          return usableFilePath;
+          if (downloadedFilePath || transcodedPath) {
+            const usableFilePath = downloadedFilePath || transcodedPath;
+            downloadedAudioCache.set(cacheKey, {
+              expiresAt: Date.now() + DOWNLOADED_AUDIO_TTL_MS,
+              filePath: usableFilePath
+            });
+            return usableFilePath;
+          }
         }
+      } catch (error) {
+        lastError = error;
       }
-    } catch (error) {
-      lastError = error;
     }
 
     if (isYouTubeBotBlockError(lastError)) {
