@@ -1023,6 +1023,15 @@ function syncIdleRenderCta() {
     return;
   }
 
+  if (audioAccess.mode === "upload-recommended") {
+    renderButton.disabled = true;
+    renderButton.textContent = "Add Audio To Render";
+    setRenderMessage(
+      "This link needs uploaded audio before rendering so the final video does not come out without sound."
+    );
+    return;
+  }
+
   renderButton.textContent =
     audioAccess.mode === "recovery" ? "Create Smart Recovery Render" : "Add Audio Or Render";
   setRenderMessage(
@@ -2900,6 +2909,25 @@ async function handleRender() {
   }
 
   const audioAccess = getCurrentAudioAccessState();
+  const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+
+  if (!isUploadedAudioProject() && audioAccess.mode === "upload-recommended" && !hasUploadedAudio) {
+    setStatus("This link needs uploaded audio before rendering. Add the song audio file and try again.", true);
+    setRenderMessage(
+      "Rendering is paused because this link needs uploaded audio for the final video to keep sound.",
+      true
+    );
+    promptAudioFallbackRecovery(
+      "This link needs uploaded audio before rendering. Add the song audio file and then the render will start with sound.",
+      { scroll: true }
+    );
+    scrollToUiTarget(audioFallbackField || audioFallbackTip || "audio-fallback-field", {
+      block: "center"
+    });
+    syncIdleRenderCta();
+    return;
+  }
+
   clearRenderPolling();
   resetRenderedVideo();
   renderSettingsDirty = false;
@@ -3089,12 +3117,6 @@ async function handleSubmit(event) {
       }
 
       await renderResult(uploadedAudioProject);
-      if (mobileSafeMode) {
-        setStatus(
-          "Song loaded. Tap Create Downloadable Lyric Video when you are ready. Mobile safe mode keeps the page lighter while you review the lyrics."
-        );
-        return;
-      }
       await handleRender();
       return;
     }
@@ -3163,14 +3185,6 @@ async function handleSubmit(event) {
     }
 
     await renderResult(payload);
-
-    if (mobileSafeMode) {
-      setStatus(
-        "Song loaded. Tap Create Downloadable Lyric Video when you are ready. Mobile safe mode avoids auto-starting the heavy render on phones."
-      );
-      return;
-    }
-
     await handleRender();
   } catch (error) {
     reportLocalDebugError({
