@@ -35,6 +35,7 @@ const MIN_RENDER_DURATION_SECONDS = 12;
 const MAX_UPLOADED_BACKGROUNDS = 5;
 const MIN_LYRIC_DURATION_SECONDS = 0.8;
 const MAX_LYRIC_HOLD_SECONDS = 4.2;
+const MAX_SMART_LYRIC_DISPLAY_SECONDS = 6.2;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
 const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
@@ -4082,11 +4083,38 @@ function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
   return lyricStylePreset.key;
 }
 
+function resolveSmartLyricDisplayDuration(line = {}, availableSeconds = 0) {
+  const baseDuration = Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0));
+  const safeAvailableSeconds = Math.max(MIN_LYRIC_DURATION_SECONDS, Number(availableSeconds || 0));
+  const text = normalizeWhitespace(line?.text || "");
+  const words = tokenizeLyricWords(text);
+  const wordCount = words.length;
+  const characterCount = text.replace(/\s+/g, "").length;
+  const punctuationPause = /[,.!?]$/.test(text) ? 0.28 : /[,;:]$/.test(text) ? 0.18 : 0;
+
+  if (!wordCount) {
+    return Math.min(baseDuration, safeAvailableSeconds);
+  }
+
+  const pacingTargetSeconds = clamp(
+    wordCount <= 2
+      ? wordCount * 0.95 + punctuationPause
+      : wordCount * 0.62 + Math.min(1.1, characterCount / 22) + punctuationPause,
+    1.2,
+    MAX_SMART_LYRIC_DISPLAY_SECONDS
+  );
+
+  return Math.min(
+    safeAvailableSeconds,
+    Math.max(baseDuration, pacingTargetSeconds)
+  );
+}
+
 function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   const start = Math.max(0, Number(line?.start || 0));
   const cappedDuration = Math.min(
     Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0)),
-    MAX_LYRIC_HOLD_SECONDS
+    MAX_SMART_LYRIC_DISPLAY_SECONDS
   );
   const timelineLimit = durationSeconds
     ? Math.max(start + 0.12, Number(durationSeconds))
@@ -4099,10 +4127,12 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
 
   const nextStart = Math.max(start + 0.12, Number(nextLine?.start || start + MIN_LYRIC_DURATION_SECONDS));
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
+  const smartDisplayDuration = resolveSmartLyricDisplayDuration(line, safeUpperBound - start);
+  const preferredEnd = Math.min(start + smartDisplayDuration, safeUpperBound);
   const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.92, 0.12, 0.72);
   const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.12, safeUpperBound - start));
 
-  return clamp(Math.min(naturalEnd, safeUpperBound), minimumEnd, safeUpperBound);
+  return clamp(Math.max(Math.min(naturalEnd, safeUpperBound), preferredEnd), minimumEnd, safeUpperBound);
 }
 
 function createAssSubtitleContent(
