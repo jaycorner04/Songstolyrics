@@ -1942,153 +1942,192 @@ app.post(
   asyncHandler(async (req, res) => {
     req.socket.setTimeout(55000);
     res.setTimeout(55000);
+    const CONVERT_HARD_TIMEOUT_MS = 25000;
+    let convertTimedOut = false;
+    const convertTimeout = setTimeout(() => {
+      convertTimedOut = true;
+      if (!res.headersSent) {
+        res.json({
+          error: "timeout",
+          inputUrl: req.body?.url || "",
+          videoId: "",
+          title: "",
+          lines: [],
+          syncMode: "none",
+          lyricsSource: "unavailable",
+          audioPreviewBlocked: true,
+          warnings: ["This video took too long to process. Try another link or upload audio directly."]
+        });
+      }
+    }, CONVERT_HARD_TIMEOUT_MS);
+    const shouldAbortConvert = () => convertTimedOut || res.headersSent;
 
-    const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
+    try {
+      const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
 
-    if (!videoUrl) {
-      throw createError("Enter a YouTube video link to begin.", 400);
-    }
+      if (!videoUrl) {
+        throw createError("Enter a YouTube video link to begin.", 400);
+      }
 
-    const videoId = extractVideoId(videoUrl);
-    const info = await getVideoInfo(videoId);
-    const rawMetadata = await getVideoMetadata(videoId, info);
-    const captionCues = await getCaptionCues(info);
-    const metadataDurationSeconds = Math.max(
-      Number(rawMetadata?.durationSeconds || 0),
-      getLatestTimedItemEnd(captionCues)
-    );
-    let metadata =
-      metadataDurationSeconds > Number(rawMetadata?.durationSeconds || 0)
-        ? {
-            ...rawMetadata,
-            durationSeconds: metadataDurationSeconds
-          }
-        : rawMetadata;
-    if (!metadata.durationSeconds || metadata.durationSeconds === 0) {
-      metadata = {
-        ...metadata,
-        durationSeconds: 60
-      };
-    }
-    let { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
-      metadata,
-      videoId,
-      captionCues
-    );
-
-    if (
-      (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
-      startupDiagnostics.transcriptionReady &&
-      videoId &&
-      !String(videoId).startsWith("upload-")
-    ) {
-      const fallbackSong = lyricResult?.song || inferSongFromVideo(metadata.title, metadata.channelTitle);
-      const effectiveDuration = Number(metadata?.durationSeconds || 0) || 60;
-      const scratchDir = path.join(
-        convertCacheRoot,
-        `${videoId}-force-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const videoId = extractVideoId(videoUrl);
+      const info = await getVideoInfo(videoId);
+      if (shouldAbortConvert()) {
+        return;
+      }
+      const rawMetadata = await getVideoMetadata(videoId, info);
+      const captionCues = await getCaptionCues(info);
+      if (shouldAbortConvert()) {
+        return;
+      }
+      const metadataDurationSeconds = Math.max(
+        Number(rawMetadata?.durationSeconds || 0),
+        getLatestTimedItemEnd(captionCues)
+      );
+      let metadata =
+        metadataDurationSeconds > Number(rawMetadata?.durationSeconds || 0)
+          ? {
+              ...rawMetadata,
+              durationSeconds: metadataDurationSeconds
+            }
+          : rawMetadata;
+      if (!metadata.durationSeconds || metadata.durationSeconds === 0) {
+        metadata = {
+          ...metadata,
+          durationSeconds: 60
+        };
+      }
+      let { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
+        metadata,
+        videoId,
+        captionCues
       );
 
-      try {
-        const quickAudioSource = await withTimeout(resolveAudioUrl(videoId), 3000, null);
+      if (
+        !shouldAbortConvert() &&
+        (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
+        startupDiagnostics.transcriptionReady &&
+        videoId &&
+        !String(videoId).startsWith("upload-")
+      ) {
+        const fallbackSong = lyricResult?.song || inferSongFromVideo(metadata.title, metadata.channelTitle);
+        const effectiveDuration = Number(metadata?.durationSeconds || 0) || 60;
+        const scratchDir = path.join(
+          convertCacheRoot,
+          `${videoId}-force-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        );
 
-        if (quickAudioSource) {
-          try {
-            const forcedTranscription = await withTimeout(
-              transcribeYouTubeAudio(videoId, scratchDir, effectiveDuration, {
-                preview: true,
-                timeoutMs: 12000,
-                downloadTimeoutMs: 15000
-              }),
-              16000,
-              { song: null, source: "unavailable", syncMode: "none", lines: [] }
-            );
+        try {
+          const quickAudioSource = await withTimeout(resolveAudioUrl(videoId), 3000, null);
 
-            if (Array.isArray(forcedTranscription?.lines) && forcedTranscription.lines.length >= 3) {
-              lyricResult = {
-                song: fallbackSong,
-                source: "audio-transcription",
-                syncMode: "transcribed",
-                lines: forcedTranscription.lines
-              };
-              previewWarnings = [
-                ...previewWarnings,
-                "Lyrics were generated by listening to the audio directly."
-              ];
-            }
-          } catch {}
+          if (quickAudioSource) {
+            try {
+              const forcedTranscription = await withTimeout(
+                transcribeYouTubeAudio(videoId, scratchDir, effectiveDuration, {
+                  preview: true,
+                  timeoutMs: 12000,
+                  downloadTimeoutMs: 15000
+                }),
+                16000,
+                { song: null, source: "unavailable", syncMode: "none", lines: [] }
+              );
+
+              if (Array.isArray(forcedTranscription?.lines) && forcedTranscription.lines.length >= 3) {
+                lyricResult = {
+                  song: fallbackSong,
+                  source: "audio-transcription",
+                  syncMode: "transcribed",
+                  lines: forcedTranscription.lines
+                };
+                previewWarnings = [
+                  ...previewWarnings,
+                  "Lyrics were generated by listening to the audio directly."
+                ];
+              }
+            } catch {}
+          }
+        } catch {}
+        finally {
+          await safeRemoveDirectory(scratchDir);
         }
-      } catch {}
-      finally {
-        await safeRemoveDirectory(scratchDir);
       }
-    }
 
-    const audioPreviewProbe = await withTimeout(
-      resolveAudioInput(videoId, {
-        outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
-        allowDownloadFallback: false
-      })
-        .then((source) => ({ blocked: false, timedOut: false, source }))
-        .catch((error) => ({
-          blocked: true,
-          timedOut: false,
-          reason:
-            error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)
-              ? "youtube-blocked"
-              : "preview-unavailable"
-        })),
-      5000,
-      { blocked: true, timedOut: true, reason: "probe-timeout" }
-    );
-    const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
-    const audioAccess = buildAudioAccessState({
-      audioPreviewBlocked,
-      audioPreviewProbe
-    });
+      if (shouldAbortConvert()) {
+        return;
+      }
 
-    if (!audioPreviewBlocked && audioPreviewProbe?.source) {
-      warmPreviewAudioCache(videoId, audioPreviewProbe.source);
-    }
+      const audioPreviewProbe = await withTimeout(
+        resolveAudioInput(videoId, {
+          outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
+          allowDownloadFallback: false
+        })
+          .then((source) => ({ blocked: false, timedOut: false, source }))
+          .catch((error) => ({
+            blocked: true,
+            timedOut: false,
+            reason:
+              error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)
+                ? "youtube-blocked"
+                : "preview-unavailable"
+          })),
+        5000,
+        { blocked: true, timedOut: true, reason: "probe-timeout" }
+      );
+      const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
+      const audioAccess = buildAudioAccessState({
+        audioPreviewBlocked,
+        audioPreviewProbe
+      });
 
-    queuePreviewWarmup(videoId);
+      if (!audioPreviewBlocked && audioPreviewProbe?.source) {
+        warmPreviewAudioCache(videoId, audioPreviewProbe.source);
+      }
 
-    res.json({
-      inputUrl: videoUrl,
-      videoId,
-      title: metadata.title,
-      channelTitle: metadata.channelTitle,
-      description: metadata.description,
-      durationSeconds: metadata.durationSeconds,
-      thumbnails: metadata.thumbnails,
-      poster: metadata.poster,
-      audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
-      audioPreviewBlocked,
-      audioAccess,
-      audioMimeType: "audio/mp4",
-      song: lyricResult.song,
-      lyricsSource: lyricResult.source,
-      syncMode: lyricResult.syncMode,
-      lines: lyricResult.lines,
-      warnings: [
-        ...buildWarnings(lyricResult),
-        ...previewWarnings,
-        ...(audioAccess.mode === "recovery"
-          ? [audioAccess.summary]
-          : audioAccess.mode === "upload-recommended"
+      queuePreviewWarmup(videoId);
+
+      if (shouldAbortConvert()) {
+        return;
+      }
+
+      clearTimeout(convertTimeout);
+      res.json({
+        inputUrl: videoUrl,
+        videoId,
+        title: metadata.title,
+        channelTitle: metadata.channelTitle,
+        description: metadata.description,
+        durationSeconds: metadata.durationSeconds,
+        thumbnails: metadata.thumbnails,
+        poster: metadata.poster,
+        audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
+        audioPreviewBlocked,
+        audioAccess,
+        audioMimeType: "audio/mp4",
+        song: lyricResult.song,
+        lyricsSource: lyricResult.source,
+        syncMode: lyricResult.syncMode,
+        lines: lyricResult.lines,
+        warnings: [
+          ...buildWarnings(lyricResult),
+          ...previewWarnings,
+          ...(audioAccess.mode === "recovery"
             ? [audioAccess.summary]
+            : audioAccess.mode === "upload-recommended"
+              ? [audioAccess.summary]
+              : []),
+          ...(audioPreviewProbe?.timedOut
+            ? [
+                "Audio preview safety check timed out, so the website is staying conservative and not auto-loading the player for this link."
+              ]
             : []),
-        ...(audioPreviewProbe?.timedOut
-          ? [
-              "Audio preview safety check timed out, so the website is staying conservative and not auto-loading the player for this link."
-            ]
-          : []),
-        "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
-        ...(shouldRomanizeTeluguLyrics(metadata, lyricResult)
-          ? ["Telugu lyrics were detected. The render step will keep Telugu audio and show the lyrics in English letters when needed."]
-          : [])
-      ]
-    });
+          "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
+          ...(shouldRomanizeTeluguLyrics(metadata, lyricResult)
+            ? ["Telugu lyrics were detected. The render step will keep Telugu audio and show the lyrics in English letters when needed."]
+            : [])
+        ]
+      });
+    } finally {
+      clearTimeout(convertTimeout);
+    }
   })
 );
 
