@@ -686,7 +686,7 @@ async function prepareUploadedAudioProject(audioMeta = uploadedAudioFallback) {
     method: "POST",
     body: formData
   });
-  const payload = await response.json().catch(() => ({}));
+  const payload = await readJsonResponseSafely(response, {});
 
   if (!response.ok) {
     throw new Error(payload.error || "The uploaded audio could not be analyzed.");
@@ -1252,6 +1252,33 @@ function simplifyUiMessage(message, fallback = "Something went wrong. Please try
   return text.length > 140 ? `${text.slice(0, 137)}...` : text;
 }
 
+async function readJsonResponseSafely(response, fallback = {}) {
+  const rawText = await response.text().catch(() => "");
+  const safeText = `${rawText || ""}`.trim();
+
+  if (!safeText) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(safeText);
+  } catch {
+    const normalizedError = safeText
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return {
+      ...fallback,
+      error:
+        normalizedError ||
+        `The server returned an unexpected ${response.headers.get("content-type") || "response"}.`
+    };
+  }
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -1675,8 +1702,8 @@ async function refreshLocalDebugPanel(options = {}) {
       return;
     }
 
-    const healthPayload = healthResponse.ok ? await healthResponse.json() : {};
-    const payload = await response.json();
+    const healthPayload = healthResponse.ok ? await readJsonResponseSafely(healthResponse, {}) : {};
+    const payload = await readJsonResponseSafely(response, {});
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     localDebugLastRefreshedAt = new Date().toLocaleTimeString();
     persistLocalDebugCache({
@@ -2415,7 +2442,10 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
     const probeResponse = await Promise.race([
       fetch(`/api/audio/${encodeURIComponent(videoId)}`, {
         method: "HEAD",
-        cache: "no-store"
+        cache: "no-store",
+        headers: {
+          "X-Local-Debug-Silent": "1"
+        }
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))
     ]);
@@ -3004,7 +3034,7 @@ async function pollRenderJob(jobId) {
 
   try {
     const response = await fetch(`/api/render/${jobId}`);
-    const payload = await response.json();
+    const payload = await readJsonResponseSafely(response, {});
 
     if (!response.ok) {
       throw new Error(payload.error || "Could not read render progress.");
@@ -3187,7 +3217,7 @@ async function handleRender() {
         let responsePayload = {};
 
         try {
-          responsePayload = await response.json();
+          responsePayload = await readJsonResponseSafely(response, {});
         } catch {}
 
         if (!response.ok) {
@@ -3297,7 +3327,7 @@ async function handleSubmit(event) {
       body: JSON.stringify({ url: videoUrl })
     });
 
-    const payload = await response.json();
+    const payload = await readJsonResponseSafely(response, {});
 
     if (!response.ok) {
       autoRenderPending = false;
@@ -3315,7 +3345,7 @@ async function handleSubmit(event) {
         const frameResponse = await fetch(
           `/api/video-frames/${payload.videoId}?duration=${encodeURIComponent(payload.durationSeconds || 0)}`
         );
-        const framePayload = await frameResponse.json();
+        const framePayload = await readJsonResponseSafely(frameResponse, {});
 
         if (frameResponse.ok && Array.isArray(framePayload.frames) && framePayload.frames.length) {
           payload.thumbnails = framePayload.frames.map((url, index) => ({

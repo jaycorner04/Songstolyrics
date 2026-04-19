@@ -190,7 +190,11 @@ function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
   if (
     requestMethod === "HEAD" &&
     /^\/api\/audio\//i.test(requestPath) &&
-    (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error))
+    (
+      error?.code === "YOUTUBE_BOT_BLOCK" ||
+      isYouTubeBotBlockError(error) ||
+      statusCode >= 400
+    )
   ) {
     return true;
   }
