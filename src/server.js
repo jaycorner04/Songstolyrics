@@ -1286,6 +1286,8 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   const lateOpeningPreviewDetected =
     lyricResult?.syncMode === "synced-lyrics"
     && hasSuspiciousLateOpeningPreviewTiming(previewMetrics, metadata?.durationSeconds);
+  const skipDeepAudioPreviewRecovery =
+    lateOpeningPreviewDetected && Number(captionSummary?.readableCount || 0) < 4;
 
   if (lateOpeningPreviewDetected) {
     lyricResult = {
@@ -1307,11 +1309,17 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
     );
   }
 
+  if (skipDeepAudioPreviewRecovery) {
+    warnings.push(
+      "This link does not have a quick caption fallback, so the website is skipping slow preview regeneration. Add the song audio in the app if you want tight lyric sync for this video."
+    );
+  }
+
   if (!shouldUseAudioFallback && Array.isArray(lyricResult?.lines) && lyricResult.lines.length >= 4) {
     return { lyricResult, warnings };
   }
 
-  if (options.skipAudioTranscription === true) {
+  if (options.skipAudioTranscription === true || skipDeepAudioPreviewRecovery) {
     if (hasNoLyrics) {
       warnings.push(
         "Website preview skipped deep audio lyric generation so the project can open faster. If you render this link, the app will still try to build lyrics from the audio automatically."
