@@ -227,12 +227,6 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
     // Fall back to the legacy transcription downloader below.
   }
 
-  if (preferKnownAudioBlockRecovery) {
-    throw new Error(
-      "Known YouTube audio block recovery was already attempted for this source, and no stable transcription audio could be prepared."
-    );
-  }
-
   const outputTemplate = path.join(outputDirectory, "audio.%(ext)s");
   const ytDlpArgs = buildYtDlpArgs({
     kind: "audio",
