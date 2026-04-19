@@ -1181,6 +1181,11 @@ function scheduleMusicBulletinRotation() {
     window.clearInterval(musicBulletinTimer);
   }
 
+  if (isCompactMobileLayout()) {
+    musicBulletinTimer = null;
+    return;
+  }
+
   musicBulletinTimer = window.setInterval(() => {
     renderMusicBulletin(activeMusicBulletinIndex + 1);
   }, 6500);
@@ -3039,6 +3044,7 @@ async function handleSubmit(event) {
 
   const videoUrl = urlInput.value.trim();
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
+  const mobileSafeMode = isCompactMobileLayout();
 
   if (!videoUrl && !hasUploadedAudio) {
     setStatus("Paste a YouTube link or upload audio before continuing.", true);
@@ -3065,6 +3071,12 @@ async function handleSubmit(event) {
       }
 
       await renderResult(uploadedAudioProject);
+      if (mobileSafeMode) {
+        setStatus(
+          "Song loaded. Tap Create Downloadable Lyric Video when you are ready. Mobile safe mode keeps the page lighter while you review the lyrics."
+        );
+        return;
+      }
       await handleRender();
       return;
     }
@@ -3083,7 +3095,13 @@ async function handleSubmit(event) {
       throw new Error(payload.error || "The video could not be processed.");
     }
 
-    if (payload.inputUrl && payload.videoId && !uploadedBackgrounds.length && !uploadedBackgroundVideo) {
+    if (
+      !mobileSafeMode &&
+      payload.inputUrl &&
+      payload.videoId &&
+      !uploadedBackgrounds.length &&
+      !uploadedBackgroundVideo
+    ) {
       try {
         const frameResponse = await fetch(
           `/api/video-frames/${payload.videoId}?duration=${encodeURIComponent(payload.durationSeconds || 0)}`
@@ -3127,6 +3145,13 @@ async function handleSubmit(event) {
     }
 
     await renderResult(payload);
+
+    if (mobileSafeMode) {
+      setStatus(
+        "Song loaded. Tap Create Downloadable Lyric Video when you are ready. Mobile safe mode avoids auto-starting the heavy render on phones."
+      );
+      return;
+    }
 
     await handleRender();
   } catch (error) {
@@ -3436,4 +3461,5 @@ window.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("resize", () => {
   syncMobileAudioCards();
   syncMobileStageCard();
+  scheduleMusicBulletinRotation();
 });
