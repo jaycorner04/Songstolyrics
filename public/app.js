@@ -741,6 +741,29 @@ function setStatus(message, isError = false) {
   statusText.classList.toggle("is-error", Boolean(isError));
 }
 
+function scrollToUiTarget(target, options = {}) {
+  const resolvedTarget =
+    typeof target === "string"
+      ? document.getElementById(target.replace(/^#/, ""))
+      : target;
+
+  if (!resolvedTarget) {
+    return;
+  }
+
+  const behavior = options.behavior || "smooth";
+  const block = options.block || "start";
+
+  window.setTimeout(() => {
+    try {
+      resolvedTarget.scrollIntoView({
+        behavior,
+        block
+      });
+    } catch {}
+  }, Number(options.delayMs || 40));
+}
+
 function buildFallbackAudioAccessState(result = {}) {
   if (!result?.audioPreviewBlocked) {
     return {
@@ -1979,9 +2002,8 @@ function promptAudioFallbackRecovery(message = "", options = {}) {
   });
 
   if (options.scroll !== false) {
-    audioFallbackTip?.scrollIntoView({
-      block: "nearest",
-      behavior: "smooth"
+    scrollToUiTarget(audioFallbackField || audioFallbackTip, {
+      block: "center"
     });
   }
 }
@@ -2757,6 +2779,9 @@ function updateRenderJobUi(job) {
     }
     setRenderMessage(userMessage);
     setStatus(userMessage);
+    scrollToUiTarget(renderStageCard || resultPanel, {
+      block: "start"
+    });
     return;
   }
 
@@ -2808,6 +2833,9 @@ function updateRenderJobUi(job) {
   applyAudioAccessState();
   syncIdleRenderCta();
   setRenderMessage(userMessage, true);
+  scrollToUiTarget(statusCard || "status-card", {
+    block: "center"
+  });
   if (/blocked audio|cookie file|silent fallback|no stable transcription audio|could not reach the video audio/i.test(`${job.error || ""} ${job.userMessage || ""}`)) {
     promptAudioFallbackRecovery(
       "The server could not lock onto the song audio for this link. Upload the audio file and render again to keep sound.",
