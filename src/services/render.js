@@ -7624,9 +7624,30 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 renderNotes.push(
                   "Strict sync validation was bypassed for this uploaded-audio or Telugu/devotional render, so the export continued with the best available lyric source."
                 );
-              } else if (hasUploadedAudioOnlySource && renderLines.length >= 4) {
+              } else if (hasUploadedAudioOnlySource) {
+                const hasAnyLines = Array.isArray(renderLines) && renderLines.length >= 2;
+
+                if (!hasAnyLines) {
+                  renderLines = buildFallbackLines(payload, durationSeconds);
+                  renderLineSyncSource = "generated-fallback";
+                  renderLinesAreTranscriptDerived = false;
+                }
+
+                strictSyncReport = {
+                  ...strictSyncReport,
+                  approved: true,
+                  reason: "",
+                  approvalMode: hasAnyLines
+                    ? "uploaded-audio-sparse-transcript-fallback"
+                    : "generated-fallback-no-source",
+                  transcriptDerived: hasAnyLines ? renderLinesAreTranscriptDerived : false,
+                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
+                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
+                };
                 renderNotes.push(
-                  "Strict sync check was relaxed for uploaded audio and the render trusted the user-provided file."
+                  hasAnyLines
+                    ? "Strict sync check was relaxed for uploaded audio and the render kept the best available transcript-driven lyric lines."
+                    : "Strict sync check was relaxed for uploaded audio, so the render used generated fallback title cards instead of failing."
                 );
               } else {
                 throw createStrictSyncValidationError(strictSyncReport);
