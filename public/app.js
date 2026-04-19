@@ -123,6 +123,7 @@ let audioFallbackPopupKey = "";
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
+const ACTIVE_RENDER_STORAGE_KEY = "song-to-lyrics-active-render";
 const LOCAL_DEBUG_REFRESH_MS = 350;
 const LOCAL_DEBUG_REQUEST_TIMEOUT_MS = 4500;
 const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
@@ -1402,6 +1403,123 @@ function restoreLocalDebugCache() {
   } catch {
     return null;
   }
+}
+
+function persistActiveRenderJob(job = {}) {
+  try {
+    const nextJobId = `${job?.id || activeRenderJobId || ""}`.trim();
+
+    if (!nextJobId) {
+      window.localStorage.removeItem(ACTIVE_RENDER_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      ACTIVE_RENDER_STORAGE_KEY,
+      JSON.stringify({
+        id: nextJobId,
+        title: `${job?.title || currentResult?.title || ""}`.trim(),
+        videoId: `${job?.videoId || currentResult?.videoId || ""}`.trim(),
+        startedAt: job?.startedAt || new Date().toISOString()
+      })
+    );
+  } catch {}
+}
+
+function restoreActiveRenderJob() {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_RENDER_STORAGE_KEY);
+    const parsed = JSON.parse(raw || "null");
+
+    if (!parsed?.id) {
+      return null;
+    }
+
+    return {
+      id: `${parsed.id || ""}`.trim(),
+      title: `${parsed.title || ""}`.trim(),
+      videoId: `${parsed.videoId || ""}`.trim(),
+      startedAt: `${parsed.startedAt || ""}`.trim()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedActiveRenderJob() {
+  try {
+    window.localStorage.removeItem(ACTIVE_RENDER_STORAGE_KEY);
+  } catch {}
+}
+
+function maybeRequestRenderNotificationPermission() {
+  if (!("Notification" in window) || !window.isSecureContext) {
+    return;
+  }
+
+  if (Notification.permission !== "default") {
+    return;
+  }
+
+  try {
+    const permissionRequest = Notification.requestPermission();
+    if (permissionRequest?.catch) {
+      permissionRequest.catch(() => {});
+    }
+  } catch {}
+}
+
+function showRenderReadyNotification(job = {}) {
+  if (!("Notification" in window) || !window.isSecureContext || Notification.permission !== "granted") {
+    return;
+  }
+
+  const trackTitle = `${job?.title || currentResult?.title || "Your lyric video"}`.trim();
+
+  try {
+    const notification = new Notification("Lyric video ready", {
+      body: `${trackTitle} finished rendering. Tap to come back and download it.`,
+      tag: `song-to-lyrics-render-${job?.id || ""}`,
+      renotify: true
+    });
+
+    notification.onclick = () => {
+      try {
+        window.focus();
+      } catch {}
+      scrollToUiTarget(videoOutputCard || "video-output-card", {
+        block: "start"
+      });
+      notification.close();
+    };
+
+    window.setTimeout(() => {
+      notification.close();
+    }, 12000);
+  } catch {}
+}
+
+function resumeRenderPollingIfNeeded() {
+  if (document.hidden) {
+    return;
+  }
+
+  const persistedJob = restoreActiveRenderJob();
+  const jobId = `${activeRenderJobId || persistedJob?.id || ""}`.trim();
+
+  if (!jobId) {
+    return;
+  }
+
+  activeRenderJobId = jobId;
+  clearRenderPolling();
+  renderButton.disabled = true;
+  renderButton.textContent = "Rendering...";
+
+  const trackedTitle = `${currentResult?.title || persistedJob?.title || "your lyric video"}`.trim();
+  setRenderMessage(`Reconnecting to the active render for ${trackedTitle}...`);
+  setStatus(`Reconnecting to the active render for ${trackedTitle} so you can keep tracking progress...`);
+  pollRenderJob(jobId);
 }
 
 function renderLocalDebugPanel(entries = []) {
@@ -2768,8 +2886,16 @@ function updateRenderJobUi(job) {
     job.userMessage || job.error || job.stage || "",
     "Building your lyric video."
   );
+  const persistedJob = restoreActiveRenderJob();
 
   if (job.status === "queued" || job.status === "running") {
+    persistActiveRenderJob({
+      ...persistedJob,
+      ...job,
+      id: job.id || activeRenderJobId,
+      title: job.title || currentResult?.title || persistedJob?.title || "",
+      videoId: job.videoId || currentResult?.videoId || persistedJob?.videoId || ""
+    });
     renderButton.disabled = true;
     renderButton.textContent = job.retrying ? "Fixing..." : "Rendering...";
     if (rerenderBackgroundButton) {
@@ -2786,13 +2912,14 @@ function updateRenderJobUi(job) {
 
   if (job.status === "completed") {
     activeRenderJobId = "";
+    clearPersistedActiveRenderJob();
     renderButton.disabled = false;
     setRenderProgress(1);
     videoOutputCard.hidden = false;
     renderedVideo.src = job.videoUrl;
     renderedVideo.load();
     downloadVideoLink.href = job.downloadUrl;
-    downloadVideoLink.download = `${currentResult?.videoId || "lyric-video"}.mp4`;
+    downloadVideoLink.download = `${currentResult?.videoId || persistedJob?.videoId || job.videoId || "lyric-video"}.mp4`;
     setPostRenderActionsVisible(true);
     if (rerenderBackgroundButton) {
       rerenderBackgroundButton.disabled = false;
@@ -2819,11 +2946,22 @@ function updateRenderJobUi(job) {
     syncIdleRenderCta();
     setRenderMessage(userMessage || (job.notes?.[0] ? `Done. ${job.notes[0]}` : "Lyric video ready."));
     setStatus(userMessage || "The lyric video is ready to preview and download.");
+    scrollToUiTarget(videoOutputCard || "video-output-card", {
+      block: "start"
+    });
+    if (document.hidden || (typeof document.hasFocus === "function" && !document.hasFocus())) {
+      showRenderReadyNotification({
+        ...persistedJob,
+        ...job,
+        title: job.title || currentResult?.title || persistedJob?.title || ""
+      });
+    }
     refreshLocalDebugPanel().catch(() => {});
     return;
   }
 
   activeRenderJobId = "";
+  clearPersistedActiveRenderJob();
   renderButton.disabled = false;
   if (rerenderBackgroundButton) {
     rerenderBackgroundButton.textContent = "Rebuild final video";
@@ -2883,6 +3021,11 @@ async function pollRenderJob(jobId) {
     );
     const expiredSession = /render job could not be found/i.test(message);
 
+    if (expiredSession) {
+      activeRenderJobId = "";
+      clearPersistedActiveRenderJob();
+    }
+
     renderButton.disabled = false;
     renderButton.textContent = expiredSession
       ? "Create Downloadable Lyric Video"
@@ -2931,6 +3074,7 @@ async function handleRender() {
   clearRenderPolling();
   resetRenderedVideo();
   renderSettingsDirty = false;
+  maybeRequestRenderNotificationPermission();
   renderButton.disabled = true;
   renderButton.textContent = "Starting...";
   setRenderMessage(
@@ -3097,6 +3241,8 @@ async function handleSubmit(event) {
     return;
   }
 
+  activeRenderJobId = "";
+  clearPersistedActiveRenderJob();
   setLoadingState(true);
   resetRenderState();
   setStatus(
@@ -3450,6 +3596,8 @@ window.addEventListener("beforeunload", () => {
 });
 
 window.addEventListener("focus", () => {
+  resumeRenderPollingIfNeeded();
+
   if (!isLocalDebugMode) {
     return;
   }
@@ -3460,6 +3608,10 @@ window.addEventListener("focus", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    resumeRenderPollingIfNeeded();
+  }
+
   if (!isLocalDebugMode || document.hidden) {
     return;
   }
@@ -3470,6 +3622,19 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  const activeRenderJob = restoreActiveRenderJob();
+  if (activeRenderJob?.id) {
+    activeRenderJobId = activeRenderJob.id;
+    renderButton.disabled = true;
+    renderButton.textContent = "Rendering...";
+    setRenderMessage(
+      `The mobile render for ${activeRenderJob.title || "your lyric video"} is still running on the server. Reconnecting now...`
+    );
+    setStatus(
+      `The mobile render for ${activeRenderJob.title || "your lyric video"} is still running on the server. Reconnecting now...`
+    );
+  }
+
   const cachedLocalDebug = restoreLocalDebugCache();
   if (cachedLocalDebug) {
     localDebugLastRefreshedAt = cachedLocalDebug.lastRefreshedAt || "";
@@ -3488,6 +3653,7 @@ window.addEventListener("DOMContentLoaded", () => {
   syncMobileStageCard();
   urlInput.value = "";
   updateQueryString("");
+  resumeRenderPollingIfNeeded();
 });
 
 window.addEventListener("resize", () => {
