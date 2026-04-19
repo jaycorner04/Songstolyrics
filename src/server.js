@@ -1265,6 +1265,7 @@ app.post(
   "/api/convert",
   asyncHandler(async (req, res) => {
     const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
+    const shortUrlDetected = /\/shorts\//i.test(videoUrl);
 
     if (!videoUrl) {
       throw createError("Enter a YouTube video link to begin.", 400);
@@ -1274,10 +1275,22 @@ app.post(
     const info = await getVideoInfo(videoId);
     const metadata = await getVideoMetadata(videoId, info);
     const captionCues = await getCaptionCues(info);
-    const { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
-      metadata,
-      videoId,
-      captionCues
+    const { lyricResult, warnings: previewWarnings } = await withTimeout(
+      buildPreviewLyrics(
+        metadata,
+        videoId,
+        captionCues
+      ),
+      shortUrlDetected ? 45000 : 35000,
+      {
+        lyricResult: {
+          song: inferSongFromVideo(metadata.title, metadata.channelTitle),
+          source: "unavailable",
+          syncMode: "none",
+          lines: []
+        },
+        warnings: ["Preview assembly took too long, so the app returned a faster fallback response."]
+      }
     );
     const audioPreviewProbe = await withTimeout(
       resolveAudioUrl(videoId)

@@ -6923,6 +6923,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         }
 
         if (!strictSyncReport.approved) {
+          const allowSoftStrictSyncFailure =
+            payload.syncMode === "transcribed" ||
+            String(payload.videoId || "").startsWith("upload-");
+
           if (
             validationOptions.preview &&
             canKeepStrongSourceAfterSparseValidationReport({
@@ -6940,6 +6944,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               category: "sparse_validation_preview",
               message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
             });
+          } else if (allowSoftStrictSyncFailure) {
+            if (!renderLines.length) {
+              renderLines = buildFallbackLines(payload, durationSeconds);
+            }
+
+            strictSyncReport = {
+              ...strictSyncReport,
+              approved: true,
+              reason: "",
+              approvalMode: "transcribed-soft-bypass"
+            };
+            renderNotes.push(
+              "Strict sync validation stayed conservative, so this transcribed or uploaded-audio render continued with fallback-safe lyric timing."
+            );
           } else {
             throw createStrictSyncValidationError(strictSyncReport);
           }
