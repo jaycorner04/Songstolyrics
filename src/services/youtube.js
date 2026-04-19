@@ -995,6 +995,11 @@ async function getCaptionCues(info) {
   const durationSeconds =
     Number(info?.durationSeconds || 0) ||
     Number(parseHtmlValue(info?.watchHtml || "", /"lengthSeconds":"(\d+)"/i) || 0);
+  const shortFormDetected =
+    durationSeconds > 0 && durationSeconds <= 70
+      ? true
+      : /\/shorts\//i.test(`${info?.watchUrl || ""}`) || /WEB_PAGE_TYPE_SHORTS|\/shorts\//i.test(`${info?.watchHtml || ""}`);
+  const effectiveDurationSeconds = durationSeconds || (shortFormDetected ? 60 : 0);
 
   if (!videoId) {
     return [];
@@ -1007,8 +1012,22 @@ async function getCaptionCues(info) {
   let bestTranscriptCues = [];
   let bestTranscriptScore = -Infinity;
 
+  if (shortFormDetected) {
+    const ytdlpShortCues = await withTimeout(
+      getCaptionCuesFromYtDlp(videoId, effectiveDurationSeconds),
+      5000,
+      []
+    );
+    const ytdlpShortScore = getCaptionCuePreferenceScore(ytdlpShortCues, effectiveDurationSeconds);
+
+    if (hasUsableCaptionTiming(ytdlpShortCues, effectiveDurationSeconds) || ytdlpShortScore >= 1.5) {
+      captionCueCache.set(videoId, ytdlpShortCues);
+      return ytdlpShortCues;
+    }
+  }
+
   if (YoutubeTranscript?.fetchTranscript) {
-    const attemptQueue = ["en", "en-US", "en-GB", "en-IN", ""];
+    const attemptQueue = shortFormDetected ? ["", "en"] : ["en", "en-US", "en-GB", "en-IN", ""];
     const attemptedLanguages = new Set();
 
     while (attemptQueue.length) {
@@ -1026,13 +1045,13 @@ async function getCaptionCues(info) {
           lang
             ? YoutubeTranscript.fetchTranscript(videoId, { lang })
             : YoutubeTranscript.fetchTranscript(videoId),
-          CAPTION_TIMEOUT_MS,
+          shortFormDetected ? 3500 : CAPTION_TIMEOUT_MS,
           []
         );
         const cues = markCaptionCuesReadable(compactCaptionRows(transcriptRows));
-        const score = getCaptionCuePreferenceScore(cues, durationSeconds);
+        const score = getCaptionCuePreferenceScore(cues, effectiveDurationSeconds);
 
-        if (hasUsableCaptionTiming(cues, durationSeconds)) {
+        if (hasUsableCaptionTiming(cues, effectiveDurationSeconds)) {
           captionCueCache.set(videoId, cues);
           return cues;
         }
@@ -1054,11 +1073,11 @@ async function getCaptionCues(info) {
     }
   }
 
-  const ytdlpCues = await getCaptionCuesFromYtDlp(videoId, durationSeconds);
-  const ytdlpScore = getCaptionCuePreferenceScore(ytdlpCues, durationSeconds);
-  const transcriptScore = getCaptionCuePreferenceScore(bestTranscriptCues, durationSeconds);
+  const ytdlpCues = await withTimeout(getCaptionCuesFromYtDlp(videoId, effectiveDurationSeconds), 7000, []);
+  const ytdlpScore = getCaptionCuePreferenceScore(ytdlpCues, effectiveDurationSeconds);
+  const transcriptScore = getCaptionCuePreferenceScore(bestTranscriptCues, effectiveDurationSeconds);
   const finalCues =
-    hasUsableCaptionTiming(ytdlpCues, durationSeconds) || ytdlpScore > transcriptScore
+    hasUsableCaptionTiming(ytdlpCues, effectiveDurationSeconds) || ytdlpScore > transcriptScore
       ? ytdlpCues
       : bestTranscriptCues;
 
