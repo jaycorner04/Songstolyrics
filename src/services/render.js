@@ -6872,6 +6872,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const finalTranscribedRenderLines = wordTimedTranscribedLines.applied
             ? wordTimedTranscribedLines.lines
             : transcribedRenderLines;
+          const canPreferNoSourceAudioTranscript =
+            !sourceLyricReferenceLines.length &&
+            hasUsableAudioBuiltLyrics(finalTranscribedRenderLines, durationSeconds, {
+              minimumMeaningfulCount: durationSeconds <= 70 ? 2 : 3,
+              minimumCoverageRatio: durationSeconds <= 70 ? 0.025 : 0.03,
+              minimumSpanSeconds: durationSeconds <= 70 ? 2.4 : 3.6
+            });
           let alignedLyrics = {
             lines: [],
             anchorCount: 0
@@ -6890,7 +6897,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           if (
             (prefersTranscribedLyrics || shouldReplaceEarlyDriftingSource) &&
             finalTranscribedRenderLines.length &&
-            transcriptTimingMetrics.reliableForFullAlignment
+            (
+              transcriptTimingMetrics.reliableForFullAlignment ||
+              canPreferNoSourceAudioTranscript
+            )
           ) {
             renderLines = applyLyricOffset(
               finalTranscribedRenderLines,
@@ -6906,7 +6916,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                   : "The original lyric timing started drifting away from the detected vocals, so the render switched to audio-transcribed lyric lines."
                 : wordTimedTranscribedLines.applied
                   ? `The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines paced across ${wordTimedTranscribedLines.wordCount} sung words.`
-                  : "The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines."
+                  : canPreferNoSourceAudioTranscript
+                    ? "No trusted lyric sheet was available, so the video kept the usable Whisper transcript instead of dropping to fallback title cards."
+                    : "The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines."
             );
           } else if (syncQualityCheck.rejectUnsafeTranscriptAlignment) {
             await recordAdaptiveSignalSafely({
@@ -7552,7 +7564,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             } else if (
               !sourceLyricReferenceLines.length &&
               renderLineSyncSource === "transcribed" &&
-              renderLines.length >= 3
+              hasUsableAudioBuiltLyrics(renderLines, durationSeconds, {
+                minimumMeaningfulCount: durationSeconds <= 70 ? 2 : 3,
+                minimumCoverageRatio: durationSeconds <= 70 ? 0.025 : 0.03,
+                minimumSpanSeconds: durationSeconds <= 70 ? 2.4 : 3.6
+              })
             ) {
               strictSyncReport = {
                 ...strictSyncReport,
@@ -7660,6 +7676,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     } else {
       renderNotes.push("Lyrics animate in bold kinetic title cards with fast entry and exit motion.");
     }
+
+    renderNotes.push(describeFinalLyricSource(renderLineSyncSource, renderLinesAreTranscriptDerived));
 
     const uploadedImageTimelineProfile = uploadedBackgroundPaths.length && !uploadedBackgroundVideo
       ? {
