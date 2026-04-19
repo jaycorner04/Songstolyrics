@@ -771,6 +771,31 @@ function getCurrentAudioAccessState(result = currentResult) {
   return result?.audioAccess || buildFallbackAudioAccessState(result || {});
 }
 
+function canAutoBuildLyricsFromAudio(result = {}) {
+  if (!result || isUploadedAudioProject(result)) {
+    return false;
+  }
+
+  const noLyricsAvailable = !result.lines?.length || String(result.syncMode || "").toLowerCase() === "none";
+
+  if (!noLyricsAvailable) {
+    return false;
+  }
+
+  const audioAccess = getCurrentAudioAccessState(result);
+  const looksLikeShortProject =
+    Number(result.durationSeconds || 0) > 0 && Number(result.durationSeconds || 0) <= 70
+      || /\/shorts\//i.test(String(result.inputUrl || ""));
+
+  return (
+    looksLikeShortProject ||
+    audioAccess.mode === "available" ||
+    audioAccess.mode === "recovery" ||
+    audioAccess.recommendedAction === "render" ||
+    audioAccess.recommendedAction === "render-or-upload"
+  );
+}
+
 function updateAudioFallbackStateUi(result = currentResult) {
   if (!audioFallbackField || !audioFallbackState) {
     return;
@@ -2697,7 +2722,9 @@ async function renderResult(result) {
     String(result.lyricsSource || "").toLowerCase() === "unavailable";
   setStatus(
     noLyricsAvailable
-      ? `No lyrics were found for ${result.title}. Try another song link or upload the track audio directly.`
+      ? canAutoBuildLyricsFromAudio(result)
+        ? `No web lyrics were found for ${result.title}, so the render will build lyric timing from the audio automatically.`
+        : `No lyrics were found for ${result.title}. Try another song link or upload the track audio directly.`
       : isUploadedAudioProject(result)
       ? `Uploaded audio loaded. The app can now create the lyric video directly from ${result.title}.`
       : audioAccess.mode === "available"
@@ -3079,8 +3106,9 @@ async function handleSubmit(event) {
     const noLyricsAvailable =
       !isUploadedAudioProject(payload) &&
       (!payload.lines?.length || payload.syncMode === "none");
+    const allowAudioBuiltLyricsProject = canAutoBuildLyricsFromAudio(payload);
 
-    if (noLyricsAvailable) {
+    if (noLyricsAvailable && !allowAudioBuiltLyricsProject) {
       currentResult = null;
       resultPanel.hidden = true;
       setStatus(
@@ -3089,6 +3117,13 @@ async function handleSubmit(event) {
       );
       setLoadingState(false);
       return;
+    }
+
+    if (allowAudioBuiltLyricsProject) {
+      payload.warnings = [
+        ...(Array.isArray(payload.warnings) ? payload.warnings : []),
+        "No web lyrics were found, so the render will generate lyric timing directly from the audio."
+      ];
     }
 
     await renderResult(payload);
