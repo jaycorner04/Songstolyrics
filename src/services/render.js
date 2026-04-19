@@ -2170,9 +2170,29 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
   const options = {
     ...baseOptions
   };
+  const hasExplicitPreviewFlag = typeof options.preview === "boolean";
+  const shouldPreferFastRenderTranscription = options.preview !== false;
+  const preferredRenderModel =
+    process.env.WHISPER_RENDER_MODEL ||
+    process.env.WHISPER_PREVIEW_MODEL ||
+    process.env.WHISPER_MODEL ||
+    "tiny";
 
   if (adaptiveProfile?.preferKnownAudioBlockRecovery) {
     options.preferKnownAudioBlockRecovery = true;
+  }
+
+  if (!hasExplicitPreviewFlag) {
+    options.preview = true;
+  }
+
+  if (!options.modelName && shouldPreferFastRenderTranscription) {
+    options.modelName = preferredRenderModel;
+  }
+
+  if (shouldPreferFastRenderTranscription) {
+    options.timeoutMs = Math.max(Number(options.timeoutMs || 0), 3 * 60 * 1000);
+    options.downloadTimeoutMs = Math.max(Number(options.downloadTimeoutMs || 0), 2 * 60 * 1000);
   }
 
   if (!adaptiveProfile?.preferStrongerFinalTranscription || options.preview) {
@@ -2183,7 +2203,13 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
     ...options,
     timeoutMs: Math.max(Number(options.timeoutMs || 0), 10 * 60 * 1000),
     downloadTimeoutMs: Math.max(Number(options.downloadTimeoutMs || 0), 6 * 60 * 1000),
-    modelName: options.modelName || process.env.WHISPER_ADAPTIVE_MODEL || "small",
+    modelName:
+      options.modelName ||
+      process.env.WHISPER_ADAPTIVE_MODEL ||
+      process.env.WHISPER_RENDER_MODEL ||
+      process.env.WHISPER_PREVIEW_MODEL ||
+      process.env.WHISPER_MODEL ||
+      "tiny",
     beamSize: Math.max(Number(options.beamSize || 0), 6),
     conditionOnPreviousText: options.conditionOnPreviousText !== false
   };
