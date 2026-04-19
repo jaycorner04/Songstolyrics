@@ -2836,6 +2836,8 @@ function calibrateLyricTimingAgainstTranscript(
   const sanitizedCandidate = sanitizeLyricLines(candidateLines, durationSeconds);
   const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds);
   const minimumAnchorScore = Number(options.minimumAnchorScore || 0.42);
+  const candidateMetrics = getSourceTimingMetrics(sanitizedCandidate, durationSeconds);
+  const transcriptMetrics = getTranscriptTimingMetrics(sanitizedTranscript, [], durationSeconds);
 
   if (!sanitizedCandidate.length || !sanitizedTranscript.length) {
     return {
@@ -2889,8 +2891,35 @@ function calibrateLyricTimingAgainstTranscript(
   const minInlierDrift = inlierDrifts.reduce((smallest, value) => Math.min(smallest, value), inlierDrifts[0]);
   const maxInlierDrift = inlierDrifts.reduce((largest, value) => Math.max(largest, value), inlierDrifts[0]);
   const inlierSpread = Math.abs(maxInlierDrift - minInlierDrift);
+  const earliestInlierAnchor = inlierAnchors.reduce((earliest, anchor) => {
+    if (!earliest) {
+      return anchor;
+    }
+
+    return Number(anchor?.sourceStart || 0) < Number(earliest?.sourceStart || 0) ? anchor : earliest;
+  }, null);
+  const hasOpeningAnchor =
+    Number(earliestInlierAnchor?.sourceStart || Infinity) <= Math.max(4.5, Number(durationSeconds || 0) * 0.08);
+  const transcriptLeadDelta = roundTimeValue(
+    Math.max(0, Number(transcriptMetrics.firstStart || 0) - Number(candidateMetrics.firstStart || 0))
+  );
 
   if (Math.abs(finalMedianShift) < 0.12 || Math.abs(finalMedianShift) > 2.6 || inlierSpread > 0.85) {
+    return {
+      lines: sanitizedCandidate,
+      changed: false,
+      appliedShift: 0,
+      anchorCount: anchors.length,
+      inlierAnchorCount: inlierAnchors.length
+    };
+  }
+
+  if (
+    candidateMetrics.reliableForSourcePacing &&
+    !hasOpeningAnchor &&
+    finalMedianShift > 0.55 &&
+    transcriptLeadDelta > Math.max(1.1, Math.min(3.6, Number(durationSeconds || 0) * 0.07))
+  ) {
     return {
       lines: sanitizedCandidate,
       changed: false,
@@ -3343,10 +3372,39 @@ function fitLyricLinesToTranscriptWindow(lines = [], transcriptLines = [], durat
   );
   const sourceSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, sourceEnd - sourceStart);
   const transcriptSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, transcriptEnd - transcriptStart);
+  const sourceMetrics = getSourceTimingMetrics(sanitizedSource, durationSeconds);
+  const transcriptMetrics = getTranscriptTimingMetrics(sanitizedTranscript, [], durationSeconds);
+  const openingAnchors = findLyricAlignmentAnchors(
+    sanitizedSource.slice(0, Math.min(8, sanitizedSource.length)),
+    sanitizedTranscript.slice(0, Math.min(8, sanitizedTranscript.length))
+  ).filter((anchor) => Number(anchor?.score || 0) >= 0.42);
+  const hasEarlyOpeningAnchor = openingAnchors.some(
+    (anchor) =>
+      Number(anchor?.sourceIndex || 0) <= 2 &&
+      Number(anchor?.transcriptIndex || 0) <= 2 &&
+      Math.abs(Number(anchor?.transcriptStart || 0) - Number(anchor?.sourceStart || 0)) <= 1.35
+  );
+  const lateTranscriptLeadSeconds = roundTimeValue(Math.max(0, transcriptStart - sourceStart));
   const appliedShift = roundTimeValue(Math.max(0, transcriptStart - sourceStart));
   const appliedScale = roundTimeValue(transcriptSpan / sourceSpan);
 
   if (appliedShift < 0.22 && Math.abs(appliedScale - 1) < 0.04) {
+    return {
+      lines: sanitizedSource,
+      appliedShift: 0,
+      appliedScale: 1
+    };
+  }
+
+  if (
+    sourceMetrics.reliableForSourcePacing &&
+    !hasEarlyOpeningAnchor &&
+    lateTranscriptLeadSeconds > Math.max(1.4, Math.min(4.5, sourceSpan * 0.12)) &&
+    (
+      !transcriptMetrics.reliableForFullAlignment ||
+      Number(transcriptMetrics.coverageRatio || 0) < 0.24
+    )
+  ) {
     return {
       lines: sanitizedSource,
       appliedShift: 0,
