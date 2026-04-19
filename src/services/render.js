@@ -4036,7 +4036,18 @@ function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_P
   const normalizedText = normalizeWhitespace(text);
 
   if (!normalizedText) {
-  return "";
+    return "";
+  }
+
+  if (["comic", "aa", "bounce", "spotlight", "neon", "glitch", "karaoke"].includes(lyricStylePreset?.key)) {
+    return normalizedText.toUpperCase();
+  }
+
+  if (lyricStylePreset?.key === "fulllength") {
+    return normalizedText.toUpperCase();
+  }
+
+  return normalizedText;
 }
 
 function describeFinalLyricSource(syncSource = "none", transcriptDerived = false) {
@@ -4061,17 +4072,6 @@ function describeFinalLyricSource(syncSource = "none", transcriptDerived = false
   }
 
   return "Final lyric source: automatic fallback timing.";
-}
-
-  if (["comic", "aa", "bounce", "spotlight", "neon", "glitch", "karaoke"].includes(lyricStylePreset?.key)) {
-    return normalizedText.toUpperCase();
-  }
-
-  if (lyricStylePreset?.key === "fulllength") {
-    return normalizedText.toUpperCase();
-  }
-
-  return normalizedText;
 }
 
 function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
