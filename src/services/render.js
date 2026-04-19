@@ -7325,6 +7325,15 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             emergencyTranscriptCandidateMetrics.coverageRatio >= 0.05 &&
             emergencyTranscriptCandidateMetrics.lastEnd >
               emergencyTranscriptCandidateMetrics.firstStart + 4;
+          const canUseNoSourceTranscriptFallback =
+            !sourceLyricReferenceLines.length &&
+            !transcriptCandidateReport.approved &&
+            validationTranscriptMetrics.reliableForWindowFit &&
+            transcriptCandidateLines.length >= 3 &&
+            emergencyTranscriptCandidateMetrics.meaningfulCount >= 3 &&
+            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.05 &&
+            emergencyTranscriptCandidateMetrics.lastEnd >
+              emergencyTranscriptCandidateMetrics.firstStart + 4;
 
           if (
             transcriptCandidateReport.approved &&
@@ -7373,6 +7382,23 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             };
             renderNotes.push(
               "Strict sync verification recovered this uploaded-audio render with the best available transcript after the sync pass produced no safe lyric lines."
+            );
+          } else if (canUseNoSourceTranscriptFallback) {
+            renderLines = transcriptCandidateLines;
+            renderLineSyncSource = "transcribed";
+            renderLinesAreTranscriptDerived = true;
+            strictSyncReport = {
+              ...transcriptCandidateReport,
+              approved: true,
+              reason: "",
+              approvalMode: "best-effort-audio-transcript",
+              transcriptDerived: true,
+              candidateMetrics: emergencyTranscriptCandidateMetrics,
+              transcriptMetrics: validationTranscriptMetrics,
+              referenceMetrics: emergencyTranscriptCandidateMetrics
+            };
+            renderNotes.push(
+              "Strict sync verification recovered this no-lyrics YouTube render with the best available audio-built transcript after the sync pass produced no stronger lyric source."
             );
           }
         }
