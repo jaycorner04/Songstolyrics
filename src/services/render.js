@@ -6280,6 +6280,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const hasUploadedAudioOnlySource = Boolean(uploadedAudio?.filePath) && !`${payload.inputUrl || ""}`.trim();
     const preferCookieBackedAudioRecovery =
       adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
+    const hasCaptionBackedLyrics =
+      payload.syncMode === "captions" && Array.isArray(payload.lines) && payload.lines.length >= 3;
+    const allowBlockedShortRecovery =
+      !hasUploadedAudioOnlySource && hasCaptionBackedLyrics && durationSeconds > 0 && durationSeconds <= 70;
+    const shouldContinueOnBlockedAudio = continueRenderOnBlockedAudio || allowBlockedShortRecovery;
 
     if (uploadedBackgroundPaths.length) {
       renderNotes.push(
@@ -6346,7 +6351,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           message: audioResolution.error.message || ""
         });
 
-        if (!allowSilentAudioFallback && !continueRenderOnBlockedAudio) {
+        if (!allowSilentAudioFallback && !shouldContinueOnBlockedAudio) {
           const blockedAudioError = createRenderError(
             "YouTube blocked audio access for this video. Upload the song audio in the app, add a YouTube cookie file on the server, or try another link.",
             503
@@ -6370,9 +6375,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         renderNotes.push(
           "Final timing stays based on the video metadata and the lyric source that was already available."
         );
-        if (!allowSilentAudioFallback && continueRenderOnBlockedAudio) {
+        if (!allowSilentAudioFallback && shouldContinueOnBlockedAudio) {
           renderNotes.push(
             "Render recovery mode kept the export alive even though silent fallback was not explicitly enabled in the environment."
+          );
+        }
+        if (allowBlockedShortRecovery) {
+          renderNotes.push(
+            "This short-form link already had usable caption timing, so the app finished the visual draft even though YouTube blocked the soundtrack on the server."
           );
         }
       } else {

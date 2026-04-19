@@ -132,13 +132,19 @@ deploy_with_docker_container() {
   mkdir -p runtime
   ensure_app_network
   run_bgutil_provider
+  local env_file=".env"
+
+  if [[ -f .env.remote.live ]]; then
+    env_file=".env.remote.live"
+  fi
+
   docker_cmd build -t song-to-lyrics .
   docker_cmd rm -f song-to-lyrics >/dev/null 2>&1 || true
   docker_cmd run -d \
     --name song-to-lyrics \
     --restart unless-stopped \
     --network "$APP_NETWORK" \
-    --env-file .env \
+    --env-file "$env_file" \
     -e RUNTIME_ROOT=/data \
     -e BUILD_MARKER="$BUILD_MARKER" \
     -p 80:3000 \
