@@ -1059,7 +1059,7 @@ function shouldPreferCaptionPreviewForShortVideo(metadata = {}, captionSummary =
   const readableRatio = totalCount > 0 ? readableCount / totalCount : 0;
   const shortTagDetected = /(^|[\s#])shorts?\b/.test(title) || /(^|[\s#])shorts?\b/.test(description);
 
-  if (!durationSeconds || durationSeconds > 70) {
+  if (durationSeconds > 70) {
     return false;
   }
 
@@ -1975,7 +1975,14 @@ app.post(
         return;
       }
       const rawMetadata = await getVideoMetadata(videoId, info);
-      const captionCues = await getCaptionCues(info);
+      const captionCues = await withTimeout(
+        getCaptionCues({
+          ...info,
+          durationSeconds: Number(rawMetadata?.durationSeconds || 0)
+        }),
+        7000,
+        []
+      );
       if (shouldAbortConvert()) {
         return;
       }
