@@ -2198,8 +2198,18 @@ function isRecoverableRenderError(error) {
   }
 
   const message = `${error?.message || error || ""}`.toLowerCase();
+  const code = `${error?.code || ""}`.toUpperCase();
 
   if (!message) {
+    return false;
+  }
+
+  if (
+    code === "YOUTUBE_BOT_BLOCK" ||
+    /youtube blocked audio access|temporarily blocked audio access|not a bot|cookies-from-browser/.test(
+      message
+    )
+  ) {
     return false;
   }
 
