@@ -6421,6 +6421,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
     const uploadedAudio = await saveUploadedAudio(payload, renderDirectory);
+    const uploadedAudioDurationSeconds = Number(
+      uploadedAudio?.duration || payload?.customAudioUpload?.duration || 0
+    );
     const hasUploadedAudioOnlySource = Boolean(uploadedAudio?.filePath) && !`${payload.inputUrl || ""}`.trim();
     const preferCookieBackedAudioRecovery =
       adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
@@ -6444,6 +6447,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     if (uploadedBackgroundVideo) {
       renderNotes.push("An uploaded background video will be sampled to build the lyric scenes.");
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
+    }
+
+    if (uploadedAudioDurationSeconds > 0 && Math.abs(uploadedAudioDurationSeconds - durationSeconds) > 0.5) {
+      durationSeconds = getRenderDurationSeconds(uploadedAudioDurationSeconds);
+      renderNotes.push(
+        `Render duration was matched to the uploaded audio length (${roundTimeValue(uploadedAudioDurationSeconds)}s).`
+      );
     }
 
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
@@ -6568,7 +6578,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const canUseAudioTranscription = !usingSilentAudioFallback;
     const audioDurationSeconds = usingSilentAudioFallback ? 0 : await probeAudioDurationSeconds(audioUrl);
 
-    if (audioDurationSeconds > 0 && audioDurationSeconds < durationSeconds - 1) {
+    if (audioDurationSeconds > 0 && Math.abs(audioDurationSeconds - durationSeconds) > 1) {
       durationSeconds = getRenderDurationSeconds(audioDurationSeconds);
       renderNotes.push(
         `Render duration was matched to the actual audio stream (${Math.round(audioDurationSeconds)}s).`
@@ -6627,7 +6637,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
       if (
         transcription.audioDurationSeconds > 0 &&
-        transcription.audioDurationSeconds < durationSeconds - 1
+        Math.abs(transcription.audioDurationSeconds - durationSeconds) > 1
       ) {
         durationSeconds = getRenderDurationSeconds(transcription.audioDurationSeconds);
         renderNotes.push(
