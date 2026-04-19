@@ -1286,6 +1286,16 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   const lateOpeningPreviewDetected =
     lyricResult?.syncMode === "synced-lyrics"
     && hasSuspiciousLateOpeningPreviewTiming(previewMetrics, metadata?.durationSeconds);
+
+  if (lateOpeningPreviewDetected) {
+    lyricResult = {
+      song: lyricResult?.song || descriptionSong || fallbackSong,
+      source: "unavailable",
+      syncMode: "none",
+      lines: []
+    };
+  }
+
   const shouldUseAudioFallback = shouldUseAudioFallbackForPreview(metadata, lyricResult, {
     hasFastDescriptionLyrics: Boolean(descriptionLyrics)
   });
