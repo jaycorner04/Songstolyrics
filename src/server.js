@@ -2024,16 +2024,25 @@ app.post(
           durationSeconds: 60
         };
       }
-      let { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
-        metadata,
-        videoId,
-        captionCues
+      let { lyricResult, warnings: previewWarnings } = await withTimeout(
+        buildPreviewLyrics(metadata, videoId, captionCues),
+        shortUrlDetected ? 8000 : 12000,
+        {
+          lyricResult: {
+            song: inferSongFromVideo(metadata.title, metadata.channelTitle),
+            source: "unavailable",
+            syncMode: "none",
+            lines: []
+          },
+          warnings: ["Preview assembly took too long, so the app returned a faster fallback response."]
+        }
       );
 
       if (
         !shouldAbortConvert() &&
         (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
         startupDiagnostics.transcriptionReady &&
+        !(shortUrlDetected && !captionCues.length) &&
         videoId &&
         !String(videoId).startsWith("upload-")
       ) {
