@@ -6780,6 +6780,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const cachedTranscriptions = new Map();
+    let latestTranscription = null;
 
     async function getTranscription(stageLabel, progressValue, options = {}) {
       if (!canUseAudioTranscription) {
@@ -6833,6 +6834,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         audioUrl = transcription.audioPath;
       }
 
+      latestTranscription = transcription;
       cachedTranscriptions.set(cacheKey, transcription);
       return transcription;
     }
