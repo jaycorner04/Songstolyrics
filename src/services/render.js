@@ -2322,6 +2322,44 @@ function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
   );
 }
 
+function canApproveNoSourceTranscriptFallbackReport({
+  report = {},
+  syncMode = "none",
+  durationSeconds = 0,
+  referenceLines = []
+} = {}) {
+  if (!report || report.approved || !report.transcriptDerived) {
+    return false;
+  }
+
+  if (Array.isArray(referenceLines) && referenceLines.length) {
+    return false;
+  }
+
+  if (!["none", "transcribed", "estimated"].includes(syncMode)) {
+    return false;
+  }
+
+  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
+
+  if (!/no usable lyric lines|too sparse|too few|covered too little|did not detect enough words|stable enough timing/.test(reason)) {
+    return false;
+  }
+
+  const candidateMetrics = report.candidateMetrics || {};
+  const transcriptMetrics = report.transcriptMetrics || {};
+  const effectiveDuration = Math.max(Number(durationSeconds || 0), Number(candidateMetrics.lastEnd || 0), 18);
+
+  return (
+    Number(candidateMetrics.meaningfulCount || 0) >= 3 &&
+    Number(candidateMetrics.coverageRatio || 0) >= 0.05 &&
+    Number(candidateMetrics.lastEnd || 0) > Number(candidateMetrics.firstStart || 0) + 4 &&
+    Number(candidateMetrics.lastEnd || 0) >= effectiveDuration * 0.18 &&
+    transcriptMetrics.reliableForWindowFit &&
+    Number(transcriptMetrics.coverageRatio || 0) >= 0.03
+  );
+}
+
 function canApproveShortCaptionReferenceReport({
   report = {},
   syncMode = "none",
@@ -3629,6 +3667,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
 
   if (report.approvalMode === "uploaded-audio-sparse-transcript-fallback") {
     return "Strict sync verification approved the render using the uploaded audio transcript, even though the final transcript was too sparse for the normal full-song bar.";
+  }
+
+  if (report.approvalMode === "no-source-transcript-fallback") {
+    return "Strict sync verification approved the best available audio-built lyric sheet because no stronger web lyric source existed for this video.";
   }
 
   if (report.approvalMode === "short-caption-reference-fallback") {
@@ -7399,6 +7441,24 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             renderNotes.push(
               "Strict sync verification approved this uploaded-audio render with the best available transcript even though the final transcript was sparse."
             );
+            } else if (
+              canApproveNoSourceTranscriptFallbackReport({
+                report: strictSyncReport,
+                syncMode: renderLineSyncSource,
+                durationSeconds,
+                referenceLines: sourceLyricReferenceLines
+              })
+            ) {
+              strictSyncReport = {
+                ...strictSyncReport,
+                approved: true,
+                reason: "",
+                approvalMode: "no-source-transcript-fallback",
+                transcriptDerived: true
+              };
+              renderNotes.push(
+                "Strict sync verification approved the best available audio-built lyric timing because no trusted web lyric sheet existed for this video."
+              );
             } else {
               if (shouldBypassStrictSyncFailure(payload)) {
                 if (renderLines.length < 2) {
