@@ -48,6 +48,7 @@ const deleteUploadedImagesButton = document.getElementById("delete-uploaded-imag
 const shareButton = document.getElementById("share-button");
 const renderButton = document.getElementById("render-button");
 const renderText = document.getElementById("render-text");
+const renderTools = renderButton?.closest(".render-tools") || null;
 const renderProgressBar = document.getElementById("render-progress-bar");
 const renderProgressPercent = document.getElementById("render-progress-percent");
 const renderStageCard = document.getElementById("render-stage-card");
@@ -2904,7 +2905,7 @@ function updateRenderJobUi(job) {
     }
     setRenderMessage(userMessage);
     setStatus(userMessage);
-    scrollToUiTarget(renderStageCard || resultPanel, {
+    scrollToUiTarget(renderTools || renderButton || resultPanel, {
       block: "start"
     });
     return;
@@ -3090,8 +3091,11 @@ async function handleRender() {
       ? "Starting the lyric video render after the sync check passes..."
       : audioAccess.mode === "recovery"
         ? "Starting a protected recovery render for this link..."
-        : "Starting the render without a trusted preview soundtrack. Upload audio any time if you need guaranteed sound."
+      : "Starting the render without a trusted preview soundtrack. Upload audio any time if you need guaranteed sound."
   );
+  scrollToUiTarget(renderTools || renderButton || resultPanel, {
+    block: "start"
+  });
 
   try {
     const renderPayload = {
