@@ -3898,6 +3898,64 @@ function buildTranscriptWordTimeline(transcriptLines = [], transcriptWords = [],
   return sanitizeTranscriptWords(approximatedWords, durationSeconds);
 }
 
+function buildBestEffortTranscriptLines(transcriptLines = [], transcriptWords = [], durationSeconds = 0) {
+  const wordTimeline = buildTranscriptWordTimeline(transcriptLines, transcriptWords, durationSeconds);
+
+  if (!wordTimeline.length) {
+    return sanitizeLyricLines(transcriptLines, durationSeconds);
+  }
+
+  const fallbackLines = [];
+  let chunk = [];
+  let chunkStart = Number(wordTimeline[0]?.start || 0);
+
+  const flushChunk = () => {
+    if (!chunk.length) {
+      return;
+    }
+
+    const start = Number(chunk[0]?.start || chunkStart || 0);
+    const end = Math.max(start + MIN_LYRIC_DURATION_SECONDS, Number(chunk.at(-1)?.end || start + 1));
+    const text = normalizeWhitespace(chunk.map((word) => word.text).join(" "));
+
+    if (text) {
+      fallbackLines.push({
+        text,
+        start,
+        duration: Math.max(MIN_LYRIC_DURATION_SECONDS, end - start)
+      });
+    }
+
+    chunk = [];
+    chunkStart = end;
+  };
+
+  wordTimeline.forEach((word, index) => {
+    if (!chunk.length) {
+      chunkStart = Number(word.start || 0);
+    }
+
+    chunk.push(word);
+
+    const nextWord = wordTimeline[index + 1];
+    const chunkSpan = Math.max(0, Number(word.end || 0) - chunkStart);
+    const text = normalizeWhitespace(chunk.map((entry) => entry.text).join(" "));
+    const endsSentence = /[.!?,:;]$/.test(String(word.text || ""));
+    const nextGap = nextWord ? Number(nextWord.start || 0) - Number(word.end || 0) : Infinity;
+    const longEnough = chunkSpan >= 3.2;
+    const tooManyWords = tokenizeLyricWords(text).length >= (durationSeconds > 0 && durationSeconds <= 70 ? 5 : 7);
+    const naturalBreak = nextGap >= 0.45;
+
+    if (endsSentence || longEnough || tooManyWords || naturalBreak || !nextWord) {
+      flushChunk();
+    }
+  });
+
+  flushChunk();
+
+  return sanitizeLyricLines(fallbackLines, durationSeconds);
+}
+
 function getLyricTimingWeight(line = {}) {
   const wordCount = Math.max(1, tokenizeLyricWords(line.text).length);
   const durationHint = clamp(

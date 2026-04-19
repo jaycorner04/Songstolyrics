@@ -806,18 +806,7 @@ function canAutoBuildLyricsFromAudio(result = {}) {
     return false;
   }
 
-  const audioAccess = getCurrentAudioAccessState(result);
-  const looksLikeShortProject =
-    Number(result.durationSeconds || 0) > 0 && Number(result.durationSeconds || 0) <= 70
-      || /\/shorts\//i.test(String(result.inputUrl || ""));
-
-  return (
-    looksLikeShortProject ||
-    audioAccess.mode === "available" ||
-    audioAccess.mode === "recovery" ||
-    audioAccess.recommendedAction === "render" ||
-    audioAccess.recommendedAction === "render-or-upload"
-  );
+  return true;
 }
 
 function updateAudioFallbackStateUi(result = currentResult) {
