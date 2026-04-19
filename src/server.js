@@ -2039,7 +2039,7 @@ app.post(
         buildPreviewLyrics(metadata, videoId, captionCues, {
           skipAudioTranscription: deferAudioBuiltLyricsToRender
         }),
-        shortUrlDetected ? 8000 : 12000,
+        shortUrlDetected ? 25000 : 20000,
         {
           lyricResult: {
             song: inferSongFromVideo(metadata.title, metadata.channelTitle),
