@@ -56,6 +56,7 @@ const renderStageTotalTime = document.getElementById("render-stage-total-time");
 const audioPlayer = document.getElementById("audio-player");
 const resultPanel = document.getElementById("result-panel");
 const mediaColumn = document.querySelector(".media-column");
+const statusCard = document.getElementById("status-card");
 const statusText = document.getElementById("status-text");
 const localDebugShell = document.getElementById("local-debug-shell");
 const musicBulletinStamp = document.getElementById("music-bulletin-stamp");
