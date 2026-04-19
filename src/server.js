@@ -1272,19 +1272,25 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   );
 
   try {
+    const previewWhisperModel =
+      process.env.WHISPER_PREVIEW_MODEL ||
+      process.env.WHISPER_RENDER_MODEL ||
+      process.env.WHISPER_MODEL ||
+      "tiny";
     const previewTranscription = await transcribeYouTubeAudio(
       videoId,
       scratchDirectory,
       metadata.durationSeconds,
       {
-        preview: !adaptiveProfile.preferStrongerPreviewTranscription,
-        timeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 120000 : 30000,
-        downloadTimeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 90000 : 45000,
+        preview: true,
+        timeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 35000 : 20000,
+        downloadTimeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 30000 : 18000,
         ...(adaptiveProfile.preferStrongerPreviewTranscription
           ? {
-              modelName: process.env.WHISPER_ADAPTIVE_MODEL || process.env.WHISPER_MODEL || "base",
-              beamSize: 6,
-              conditionOnPreviousText: true
+              modelName: previewWhisperModel,
+              beamSize: 1,
+              conditionOnPreviousText: false,
+              vadFilter: false
             }
           : {}),
         ...(shouldRomanize
@@ -1307,9 +1313,13 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
         scratchDirectory,
         metadata.durationSeconds,
         {
-          timeoutMs: 120000,
-          downloadTimeoutMs: 90000,
-          modelName: process.env.WHISPER_MODEL || "base",
+          preview: true,
+          timeoutMs: 22000,
+          downloadTimeoutMs: 18000,
+          modelName: previewWhisperModel,
+          beamSize: 1,
+          conditionOnPreviousText: false,
+          vadFilter: false,
           ...(shouldRomanize
             ? {
                 task: "transcribe",
