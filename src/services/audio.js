@@ -402,65 +402,69 @@ async function resolveStreamUrlWithYtdlCore(videoId, kind = "audio") {
     return "";
   }
 
-  const info = await withTimeout(
-    () =>
-      ytdl.getInfo(toVideoUrl(videoId), {
-        agent: getYtdlCookieAgent() || undefined,
-        playerClients: YTDL_CORE_PLAYER_CLIENTS
-      }),
-    YTDL_CORE_TIMEOUT_MS,
-    "ytdl-core info lookup"
-  );
-  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  try {
+    const info = await withTimeout(
+      () =>
+        ytdl.getInfo(toVideoUrl(videoId), {
+          agent: getYtdlCookieAgent() || undefined,
+          playerClients: YTDL_CORE_PLAYER_CLIENTS
+        }),
+      YTDL_CORE_TIMEOUT_MS,
+      "ytdl-core info lookup"
+    );
+    const formats = Array.isArray(info?.formats) ? info.formats : [];
 
-  if (!formats.length) {
-    return "";
-  }
-
-  if (kind === "audio") {
-    const audioFormats = formats
-      .filter((format) => format?.url && format.hasAudio)
-      .sort((left, right) => {
-        const leftAudioOnly = left.hasVideo ? 0 : 1;
-        const rightAudioOnly = right.hasVideo ? 0 : 1;
-
-        if (rightAudioOnly !== leftAudioOnly) {
-          return rightAudioOnly - leftAudioOnly;
-        }
-
-        const leftBitrate = Number(left.audioBitrate || left.bitrate || 0);
-        const rightBitrate = Number(right.audioBitrate || right.bitrate || 0);
-        return rightBitrate - leftBitrate;
-      });
-
-    if (audioFormats.length) {
-      return `${audioFormats[0].url || ""}`.trim();
-    }
-
-    try {
-      const chosen = ytdl.chooseFormat(formats, {
-        quality: "highestaudio",
-        filter: "audioonly"
-      });
-
-      return `${chosen?.url || ""}`.trim();
-    } catch {}
-
-    try {
-      const chosen = ytdl.chooseFormat(
-        formats.filter((format) => format?.url && format.hasAudio),
-        {
-          quality: "highest"
-        }
-      );
-
-      return `${chosen?.url || ""}`.trim();
-    } catch {
+    if (!formats.length) {
       return "";
     }
-  }
 
-  return "";
+    if (kind === "audio") {
+      const audioFormats = formats
+        .filter((format) => format?.url && format.hasAudio)
+        .sort((left, right) => {
+          const leftAudioOnly = left.hasVideo ? 0 : 1;
+          const rightAudioOnly = right.hasVideo ? 0 : 1;
+
+          if (rightAudioOnly !== leftAudioOnly) {
+            return rightAudioOnly - leftAudioOnly;
+          }
+
+          const leftBitrate = Number(left.audioBitrate || left.bitrate || 0);
+          const rightBitrate = Number(right.audioBitrate || right.bitrate || 0);
+          return rightBitrate - leftBitrate;
+        });
+
+      if (audioFormats.length) {
+        return `${audioFormats[0].url || ""}`.trim();
+      }
+
+      try {
+        const chosen = ytdl.chooseFormat(formats, {
+          quality: "highestaudio",
+          filter: "audioonly"
+        });
+
+        return `${chosen?.url || ""}`.trim();
+      } catch {}
+
+      try {
+        const chosen = ytdl.chooseFormat(
+          formats.filter((format) => format?.url && format.hasAudio),
+          {
+            quality: "highest"
+          }
+        );
+
+        return `${chosen?.url || ""}`.trim();
+      } catch {
+        return "";
+      }
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 async function downloadAudioFile(videoId, outputDirectory, options = {}) {

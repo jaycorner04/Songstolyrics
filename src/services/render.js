@@ -6305,6 +6305,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       const audioUrlPromise = resolveAudioInput(payload.videoId, {
         outputDirectory: audioInputDirectory,
         allowDownloadFallback: true,
+        preferLocal: true,
         preferKnownBlockRecovery: preferCookieBackedAudioRecovery
       }).then(
         (audioSource) => ({
