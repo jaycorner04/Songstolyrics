@@ -6924,6 +6924,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
         if (!strictSyncReport.approved) {
           const allowSoftStrictSyncFailure =
+            payload.syncMode === "estimated" ||
+            payload.syncMode === "captions" ||
+            payload.syncMode === "caption-aligned" ||
             payload.syncMode === "transcribed" ||
             String(payload.videoId || "").startsWith("upload-");
 
