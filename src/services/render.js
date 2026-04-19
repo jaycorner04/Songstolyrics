@@ -2349,14 +2349,19 @@ function canApproveNoSourceTranscriptFallbackReport({
   const candidateMetrics = report.candidateMetrics || {};
   const transcriptMetrics = report.transcriptMetrics || {};
   const effectiveDuration = Math.max(Number(durationSeconds || 0), Number(candidateMetrics.lastEnd || 0), 18);
+  const candidateLines = Array.isArray(report.candidateLines) ? report.candidateLines : [];
 
   return (
-    Number(candidateMetrics.meaningfulCount || 0) >= 3 &&
-    Number(candidateMetrics.coverageRatio || 0) >= 0.05 &&
-    Number(candidateMetrics.lastEnd || 0) > Number(candidateMetrics.firstStart || 0) + 4 &&
-    Number(candidateMetrics.lastEnd || 0) >= effectiveDuration * 0.18 &&
-    transcriptMetrics.reliableForWindowFit &&
-    Number(transcriptMetrics.coverageRatio || 0) >= 0.03
+    hasUsableAudioBuiltLyrics(candidateLines, durationSeconds, {
+      minimumMeaningfulCount: effectiveDuration <= 70 ? 2 : 3,
+      minimumCoverageRatio: effectiveDuration <= 70 ? 0.025 : 0.03,
+      minimumSpanSeconds: effectiveDuration <= 70 ? 2.4 : 3.6
+    }) &&
+    Number(candidateMetrics.lastEnd || 0) >= effectiveDuration * 0.12 &&
+    (
+      transcriptMetrics.reliableForWindowFit ||
+      Number(transcriptMetrics.coverageRatio || 0) >= 0.02
+    )
   );
 }
 
@@ -3252,6 +3257,33 @@ function getSourceTimingMetrics(lines = [], durationSeconds = 0) {
   };
 }
 
+function hasUsableAudioBuiltLyrics(lines = [], durationSeconds = 0, options = {}) {
+  const metrics = getSourceTimingMetrics(lines, durationSeconds);
+  const effectiveDuration = Math.max(
+    Number(durationSeconds || 0),
+    Number(metrics.lastEnd || 0),
+    MIN_RENDER_DURATION_SECONDS
+  );
+  const minimumMeaningfulCount = Math.max(2, Number(options.minimumMeaningfulCount || 2));
+  const minimumCoverageRatio = Math.max(
+    0.02,
+    Number(
+      options.minimumCoverageRatio ||
+        (effectiveDuration <= 70 ? 0.025 : effectiveDuration <= 180 ? 0.03 : 0.04)
+    )
+  );
+  const minimumSpanSeconds = Math.max(2.4, Number(options.minimumSpanSeconds || 2.4));
+
+  return (
+    Number(metrics.lineCount || 0) >= minimumMeaningfulCount &&
+    Number(metrics.meaningfulCount || 0) >= minimumMeaningfulCount &&
+    (
+      Number(metrics.coverageRatio || 0) >= minimumCoverageRatio ||
+      Number(metrics.lastEnd || 0) >= Number(metrics.firstStart || 0) + minimumSpanSeconds
+    )
+  );
+}
+
 function fitLyricLinesToTranscriptWindow(lines = [], transcriptLines = [], durationSeconds = 0) {
   const sanitizedSource = sanitizeLyricLines(lines, durationSeconds);
   const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds);
@@ -3996,8 +4028,32 @@ function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_P
   const normalizedText = normalizeWhitespace(text);
 
   if (!normalizedText) {
-    return "";
+  return "";
+}
+
+function describeFinalLyricSource(syncSource = "none", transcriptDerived = false) {
+  if (syncSource === "generated-fallback") {
+    return "Final lyric source: generated fallback title cards.";
   }
+
+  if (transcriptDerived || syncSource === "transcribed") {
+    return "Final lyric source: Whisper-generated audio transcript.";
+  }
+
+  if (syncSource === "synced-lyrics") {
+    return "Final lyric source: web lyrics.";
+  }
+
+  if (syncSource === "caption-aligned" || syncSource === "captions") {
+    return "Final lyric source: YouTube captions.";
+  }
+
+  if (syncSource === "estimated") {
+    return "Final lyric source: estimated lyric timing.";
+  }
+
+  return "Final lyric source: automatic fallback timing.";
+}
 
   if (["comic", "aa", "bounce", "spotlight", "neon", "glitch", "karaoke"].includes(lyricStylePreset?.key)) {
     return normalizedText.toUpperCase();
