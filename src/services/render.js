@@ -7608,6 +7608,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             transcriptCandidateLines,
             durationSeconds
           );
+          const bestEffortTranscriptCandidateLines = limitLyricLines(
+            buildBestEffortTranscriptLines(
+              validationTranscription.lines,
+              validationTranscription.words,
+              durationSeconds
+            ),
+            durationSeconds
+          );
           const canUseEmergencyTranscriptFallback =
             !transcriptCandidateReport.approved &&
             !renderLinesAreTranscriptDerived &&
@@ -7632,12 +7640,15 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const canUseNoSourceTranscriptFallback =
             !sourceLyricReferenceLines.length &&
             !transcriptCandidateReport.approved &&
-            validationTranscriptMetrics.reliableForWindowFit &&
-            transcriptCandidateLines.length >= 3 &&
-            emergencyTranscriptCandidateMetrics.meaningfulCount >= 3 &&
-            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.05 &&
+            (
+              validationTranscriptMetrics.reliableForWindowFit ||
+              bestEffortTranscriptCandidateLines.length >= 2
+            ) &&
+            transcriptCandidateLines.length >= 2 &&
+            emergencyTranscriptCandidateMetrics.meaningfulCount >= 2 &&
+            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.02 &&
             emergencyTranscriptCandidateMetrics.lastEnd >
-              emergencyTranscriptCandidateMetrics.firstStart + 4;
+              emergencyTranscriptCandidateMetrics.firstStart + 2.2;
 
           if (
             transcriptCandidateReport.approved &&
@@ -7688,7 +7699,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               "Strict sync verification recovered this uploaded-audio render with the best available transcript after the sync pass produced no safe lyric lines."
             );
           } else if (canUseNoSourceTranscriptFallback) {
-            renderLines = transcriptCandidateLines;
+            renderLines =
+              transcriptCandidateLines.length >= 2
+                ? transcriptCandidateLines
+                : bestEffortTranscriptCandidateLines;
             renderLineSyncSource = "transcribed";
             renderLinesAreTranscriptDerived = true;
             strictSyncReport = {
@@ -7697,9 +7711,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               reason: "",
               approvalMode: "best-effort-audio-transcript",
               transcriptDerived: true,
-              candidateMetrics: emergencyTranscriptCandidateMetrics,
+              candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
               transcriptMetrics: validationTranscriptMetrics,
-              referenceMetrics: emergencyTranscriptCandidateMetrics
+              referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
             };
             renderNotes.push(
               "Strict sync verification recovered this no-lyrics YouTube render with the best available audio-built transcript after the sync pass produced no stronger lyric source."
@@ -7815,21 +7829,48 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 "Strict sync verification accepted the best available audio-built lyric timing because this video had no stronger web lyric sheet to fall back to."
               );
             } else if (!sourceLyricReferenceLines.length) {
-              renderLines = buildFallbackLines(payload, durationSeconds);
-              renderLineSyncSource = "generated-fallback";
-              renderLinesAreTranscriptDerived = false;
-              strictSyncReport = {
-                ...strictSyncReport,
-                approved: true,
-                reason: "",
-                approvalMode: "generated-fallback-no-source",
-                transcriptDerived: false,
-                candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-              };
-              renderNotes.push(
-                "No trusted lyric sheet was available for this video, so the render continued with generated fallback title cards instead of failing the sync check."
+              const bestEffortTranscriptFallbackLines = limitLyricLines(
+                buildBestEffortTranscriptLines(
+                  validationTranscription.lines,
+                  validationTranscription.words,
+                  durationSeconds
+                ),
+                durationSeconds
               );
+
+              if (bestEffortTranscriptFallbackLines.length >= 2) {
+                renderLines = bestEffortTranscriptFallbackLines;
+                renderLineSyncSource = "transcribed";
+                renderLinesAreTranscriptDerived = true;
+                strictSyncReport = {
+                  ...strictSyncReport,
+                  approved: true,
+                  reason: "",
+                  approvalMode: "best-effort-audio-transcript",
+                  transcriptDerived: true,
+                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
+                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
+                };
+                renderNotes.push(
+                  "No trusted lyric sheet was available for this video, so the render kept the best available timed audio transcript instead of dropping to title cards."
+                );
+              } else {
+                renderLines = buildFallbackLines(payload, durationSeconds);
+                renderLineSyncSource = "generated-fallback";
+                renderLinesAreTranscriptDerived = false;
+                strictSyncReport = {
+                  ...strictSyncReport,
+                  approved: true,
+                  reason: "",
+                  approvalMode: "generated-fallback-no-source",
+                  transcriptDerived: false,
+                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
+                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
+                };
+                renderNotes.push(
+                  "No trusted lyric sheet was available for this video, so the render continued with generated fallback title cards instead of failing the sync check."
+                );
+              }
             } else {
               if (shouldBypassStrictSyncFailure(payload)) {
                 if (renderLines.length < 2) {
@@ -7898,6 +7939,26 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(
         "Final sync verification was skipped because YouTube blocked the server-side audio needed for that safety pass."
       );
+    }
+
+    if (!renderLines.length) {
+      const bestEffortTranscriptLines = limitLyricLines(
+        buildBestEffortTranscriptLines(
+          latestTranscription?.lines,
+          latestTranscription?.words,
+          durationSeconds
+        ),
+        durationSeconds
+      );
+
+      if (bestEffortTranscriptLines.length >= 2) {
+        renderLines = bestEffortTranscriptLines;
+        renderLineSyncSource = "transcribed";
+        renderLinesAreTranscriptDerived = true;
+        renderNotes.push(
+          "No trusted lyric sheet was available, so the render rebuilt a timed lyric draft directly from the detected audio words."
+        );
+      }
     }
 
     if (!renderLines.length) {
