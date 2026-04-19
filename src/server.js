@@ -1113,7 +1113,7 @@ async function recordAdaptiveSignalSafely(payload = {}) {
   } catch {}
 }
 
-async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
+async function buildPreviewLyrics(metadata, videoId, captionCues = [], options = {}) {
   const fallbackSong = inferSongFromVideo(metadata.title, metadata.channelTitle);
   const descriptionSong = inferSongFromDescriptionCredits(metadata.description, fallbackSong);
   const adaptiveProfile = await getAdaptiveProfile({
@@ -1253,6 +1253,16 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
   const hasNoLyrics = !lyricResult?.lines?.length || lyricResult?.syncMode === "none";
 
   if (!shouldUseAudioFallback && !hasNoLyrics) {
+    return { lyricResult, warnings };
+  }
+
+  if (options.skipAudioTranscription === true) {
+    if (hasNoLyrics) {
+      warnings.push(
+        "Website preview skipped deep audio lyric generation so the project can open faster. If you render this link, the app will still try to build lyrics from the audio automatically."
+      );
+    }
+
     return { lyricResult, warnings };
   }
 
@@ -2024,8 +2034,11 @@ app.post(
           durationSeconds: 60
         };
       }
+      const deferAudioBuiltLyricsToRender = true;
       let { lyricResult, warnings: previewWarnings } = await withTimeout(
-        buildPreviewLyrics(metadata, videoId, captionCues),
+        buildPreviewLyrics(metadata, videoId, captionCues, {
+          skipAudioTranscription: deferAudioBuiltLyricsToRender
+        }),
         shortUrlDetected ? 8000 : 12000,
         {
           lyricResult: {
@@ -2042,6 +2055,7 @@ app.post(
         !shouldAbortConvert() &&
         (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
         startupDiagnostics.transcriptionReady &&
+        !deferAudioBuiltLyricsToRender &&
         !(shortUrlDetected && !captionCues.length) &&
         videoId &&
         !String(videoId).startsWith("upload-")
