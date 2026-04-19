@@ -121,6 +121,7 @@ let uploadedAudioFallback = null;
 let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
 let audioFallbackPopupKey = "";
+let autoRenderPending = false;
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
@@ -972,6 +973,13 @@ function syncIdleRenderCta() {
     renderButton.disabled = true;
     renderButton.textContent = "Create Downloadable Lyric Video";
     setRenderMessage("Paste a song or upload audio and the app will build a downloadable lyric video automatically.");
+    return;
+  }
+
+  if (autoRenderPending) {
+    renderButton.disabled = true;
+    renderButton.textContent = "Starting...";
+    setRenderMessage("Song loaded. Starting the render automatically from your top Create button...");
     return;
   }
 
@@ -2866,17 +2874,19 @@ async function renderResult(result) {
     !result.lines?.length &&
     String(result.lyricsSource || "").toLowerCase() === "unavailable";
   setStatus(
-    noLyricsAvailable
-      ? canAutoBuildLyricsFromAudio(result)
-        ? `No web lyrics were found for ${result.title}, so the render will build lyric timing from the audio automatically.`
-        : `No lyrics were found for ${result.title}. Try another song link or upload the track audio directly.`
-      : isUploadedAudioProject(result)
-      ? `Uploaded audio loaded. The app can now create the lyric video directly from ${result.title}.`
-      : audioAccess.mode === "available"
-      ? `Loaded ${result.title}. Live soundtrack preview is ready, and the render can continue with your current style settings.`
-      : audioAccess.mode === "recovery"
-        ? `Loaded ${result.title}. This link opened in protected recovery mode, so the final render will try the stronger soundtrack path before needing uploaded audio.`
-        : `Loaded ${result.title}. Lyrics and artwork are ready, but this song needs uploaded audio if you want guaranteed sound in the final video.`
+    autoRenderPending
+      ? `Loaded ${result.title}. Starting the render automatically now...`
+      : noLyricsAvailable
+        ? canAutoBuildLyricsFromAudio(result)
+          ? `No web lyrics were found for ${result.title}, so the render will build lyric timing from the audio automatically.`
+          : `No lyrics were found for ${result.title}. Try another song link or upload the track audio directly.`
+        : isUploadedAudioProject(result)
+        ? `Uploaded audio loaded. The app can now create the lyric video directly from ${result.title}.`
+        : audioAccess.mode === "available"
+        ? `Loaded ${result.title}. Live soundtrack preview is ready, and the render can continue with your current style settings.`
+        : audioAccess.mode === "recovery"
+          ? `Loaded ${result.title}. This link opened in protected recovery mode, so the final render will try the stronger soundtrack path before needing uploaded audio.`
+          : `Loaded ${result.title}. Lyrics and artwork are ready, but this song needs uploaded audio if you want guaranteed sound in the final video.`
   );
 }
 
@@ -3048,6 +3058,7 @@ async function pollRenderJob(jobId) {
 
 async function handleRender() {
   if (!hasProjectSource()) {
+    autoRenderPending = false;
     setStatus("Paste a YouTube link or upload audio before rendering a video.", true);
     return;
   }
@@ -3056,6 +3067,7 @@ async function handleRender() {
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
 
   if (!isUploadedAudioProject() && audioAccess.mode === "upload-recommended" && !hasUploadedAudio) {
+    autoRenderPending = false;
     setStatus("This link needs uploaded audio before rendering. Add the song audio file and try again.", true);
     setRenderMessage(
       "Rendering is paused because this link needs uploaded audio for the final video to keep sound.",
@@ -3072,6 +3084,7 @@ async function handleRender() {
     return;
   }
 
+  autoRenderPending = false;
   clearRenderPolling();
   resetRenderedVideo();
   renderSettingsDirty = false;
@@ -3246,6 +3259,7 @@ async function handleSubmit(event) {
   }
 
   activeRenderJobId = "";
+  autoRenderPending = true;
   clearPersistedActiveRenderJob();
   setLoadingState(true);
   resetRenderState();
@@ -3263,6 +3277,7 @@ async function handleSubmit(event) {
           : await prepareUploadedAudioProject(uploadedAudioFallback);
 
       if (!uploadedAudioProject) {
+        autoRenderPending = false;
         throw new Error("The uploaded audio could not be prepared.");
       }
 
@@ -3282,6 +3297,7 @@ async function handleSubmit(event) {
     const payload = await response.json();
 
     if (!response.ok) {
+      autoRenderPending = false;
       throw new Error(payload.error || "The video could not be processed.");
     }
 
@@ -3317,6 +3333,7 @@ async function handleSubmit(event) {
     const allowAudioBuiltLyricsProject = canAutoBuildLyricsFromAudio(payload);
 
     if (noLyricsAvailable && !allowAudioBuiltLyricsProject) {
+      autoRenderPending = false;
       currentResult = null;
       resultPanel.hidden = true;
       setStatus(
@@ -3337,6 +3354,7 @@ async function handleSubmit(event) {
     await renderResult(payload);
     await handleRender();
   } catch (error) {
+    autoRenderPending = false;
     reportLocalDebugError({
       source: "client-submit",
       title: "Video load failed",
