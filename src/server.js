@@ -1952,7 +1952,7 @@ app.post(
   asyncHandler(async (req, res) => {
     req.socket.setTimeout(55000);
     res.setTimeout(55000);
-    const CONVERT_HARD_TIMEOUT_MS = 25000;
+    const CONVERT_HARD_TIMEOUT_MS = 50000;
     let convertTimedOut = false;
     const convertTimeout = setTimeout(() => {
       convertTimedOut = true;
@@ -2034,12 +2034,15 @@ app.post(
           durationSeconds: 60
         };
       }
-      const deferAudioBuiltLyricsToRender = true;
+      const deferAudioBuiltLyricsToRender = !(
+        startupDiagnostics.transcriptionReady &&
+        (shortUrlDetected || !captionCues.length)
+      );
       let { lyricResult, warnings: previewWarnings } = await withTimeout(
         buildPreviewLyrics(metadata, videoId, captionCues, {
           skipAudioTranscription: deferAudioBuiltLyricsToRender
         }),
-        shortUrlDetected ? 25000 : 20000,
+        shortUrlDetected ? 45000 : 35000,
         {
           lyricResult: {
             song: inferSongFromVideo(metadata.title, metadata.channelTitle),
