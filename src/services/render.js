@@ -3673,6 +3673,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
     return "Strict sync verification approved the best available audio-built lyric sheet because no trusted web lyric source existed for this video.";
   }
 
+  if (report.approvalMode === "generated-fallback-no-source") {
+    return "Strict sync verification could not confirm lyrics for this video, so the render continued with generated fallback title cards instead of stopping.";
+  }
+
   if (report.approvalMode === "no-source-transcript-fallback") {
     return "Strict sync verification approved the best available audio-built lyric sheet because no stronger web lyric source existed for this video.";
   }
@@ -7506,6 +7510,22 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               renderNotes.push(
                 "Strict sync verification accepted the best available audio-built lyric timing because this video had no stronger web lyric sheet to fall back to."
               );
+            } else if (!sourceLyricReferenceLines.length) {
+              renderLines = buildFallbackLines(payload, durationSeconds);
+              renderLineSyncSource = "generated-fallback";
+              renderLinesAreTranscriptDerived = false;
+              strictSyncReport = {
+                ...strictSyncReport,
+                approved: true,
+                reason: "",
+                approvalMode: "generated-fallback-no-source",
+                transcriptDerived: false,
+                candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
+                referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
+              };
+              renderNotes.push(
+                "No trusted lyric sheet was available for this video, so the render continued with generated fallback title cards instead of failing the sync check."
+              );
             } else {
               if (shouldBypassStrictSyncFailure(payload)) {
                 if (renderLines.length < 2) {
@@ -7563,7 +7583,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         message: "No verified lyric lines were available after all render-time recovery steps."
       });
 
-      if (payload.requireVerifiedSync !== false && canUseAudioTranscription && !shouldBypassStrictSyncFailure(payload)) {
+      if (
+        payload.requireVerifiedSync !== false &&
+        canUseAudioTranscription &&
+        !shouldBypassStrictSyncFailure(payload) &&
+        sourceLyricReferenceLines.length
+      ) {
         throw createRenderError(
           "No verified lyric lines were available for this video, so the app stopped before rendering.",
           422
