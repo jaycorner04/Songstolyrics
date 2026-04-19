@@ -1257,6 +1257,28 @@ function buildAdaptiveLyricMotionProfile(line = {}, selectedVariant = "", textLi
   };
 }
 
+function resolveLyricVisualLeadInSeconds(line = {}, motionProfile = {}, selectedVariant = "") {
+  const baseDuration = Math.max(0.18, Number(line?.duration || 0));
+  const fadeLeadInSeconds = Math.max(0.06, Number(motionProfile?.fadeInMs || LYRIC_FADE_MS) / 1000 * 0.72);
+  const revealLeadInSeconds = Math.max(0.05, Number(motionProfile?.revealMs || LYRIC_REVEAL_MS) / 1000 * 0.34);
+  const slowerPaceBonus = motionProfile?.pace === "slow" ? 0.04 : 0;
+  const buildHeavyVariant =
+    selectedVariant === "typewriter" ||
+    selectedVariant === "word-by-word" ||
+    selectedVariant === "karaoke" ||
+    selectedVariant === "line-by-line";
+  const baseLeadIn = Math.max(
+    fadeLeadInSeconds,
+    buildHeavyVariant ? revealLeadInSeconds : revealLeadInSeconds * 0.78
+  );
+
+  return clamp(
+    baseLeadIn + slowerPaceBonus,
+    0.08,
+    Math.min(0.34, Math.max(0.12, baseDuration * 0.24))
+  );
+}
+
 function pickLyricAnimationVariant(line = {}, index = 0) {
   const wordCount = tokenizeLyricWords(line.text).length;
   const duration = Number(line.duration || 0);
@@ -4157,15 +4179,15 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
   const teluguRomanized = Boolean(options?.teluguRomanized);
 
   if (syncMode === "synced-lyrics") {
-    return 0.14;
+    return -0.02;
   }
 
   if (syncMode === "caption-aligned" || syncMode === "captions") {
-    return 0.12;
+    return -0.04;
   }
 
   if (syncMode === "transcribed") {
-    return teluguRomanized ? -0.72 : 0;
+    return teluguRomanized ? -0.66 : -0.08;
   }
 
   return LYRIC_AUDIO_OFFSET_SECONDS;
@@ -4428,9 +4450,7 @@ function createAssSubtitleContent(
   const emojiOverlays = [];
   const lyricEvents = lines.flatMap((line, index) => {
     const nextLine = lines[index + 1];
-    const start = formatAssTime(line.start);
     const endSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
-    const end = formatAssTime(endSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
     const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
     const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
@@ -4556,6 +4576,11 @@ function createAssSubtitleContent(
       selectedVariant,
       textLines
     );
+    const dialogueStartSeconds = roundTimeValue(
+      Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
+    );
+    const start = formatAssTime(dialogueStartSeconds);
+    const end = formatAssTime(endSeconds);
     const revealMs = motionProfile.revealMs;
     const fadeInMs = motionProfile.fadeInMs;
     const fadeOutMs = motionProfile.fadeOutMs;
@@ -4744,7 +4769,10 @@ function createAssSubtitleContent(
       const perLineDelay = motionProfile.multiLineDelay;
 
       return textLines.map((textLine, textLineIndex) => {
-        const eventStartSeconds = Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex);
+        const eventStartSeconds = Math.max(
+          dialogueStartSeconds,
+          Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex)
+        );
         const eventEndSeconds = endSeconds;
         const eventY = Math.round(
           centerY + (textLineIndex - (lineCount - 1) / 2) * Math.round(baseFontSize * 0.9)
