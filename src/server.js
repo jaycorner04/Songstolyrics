@@ -1964,17 +1964,38 @@ app.post(
 
     try {
       const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
+      const shortUrlDetected = /\/shorts\//i.test(videoUrl);
 
       if (!videoUrl) {
         throw createError("Enter a YouTube video link to begin.", 400);
       }
 
       const videoId = extractVideoId(videoUrl);
-      const info = await getVideoInfo(videoId);
+      const info = await withTimeout(
+        getVideoInfo(videoId),
+        shortUrlDetected ? 6000 : 10000,
+        {
+          videoId,
+          oembed: null,
+          watchHtml: "",
+          watchUrl: `https://www.youtube.com/watch?v=${videoId}`
+        }
+      );
       if (shouldAbortConvert()) {
         return;
       }
-      const rawMetadata = await getVideoMetadata(videoId, info);
+      const rawMetadata = await withTimeout(
+        getVideoMetadata(videoId, info),
+        shortUrlDetected ? 4000 : 7000,
+        {
+          title: `YouTube Video ${videoId}`,
+          channelTitle: "",
+          description: "",
+          durationSeconds: shortUrlDetected ? 60 : 0,
+          thumbnails: [],
+          poster: ""
+        }
+      );
       const captionCues = await withTimeout(
         getCaptionCues({
           ...info,
