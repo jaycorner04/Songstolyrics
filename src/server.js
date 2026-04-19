@@ -1019,21 +1019,48 @@ function buildCaptionFallbackPayload(captionCues = [], durationSeconds = 0, fall
 
 function getLyricPreviewMetrics(lines = [], durationSeconds = 0) {
   const safeLines = Array.isArray(lines) ? lines : [];
-  const meaningfulCount = safeLines.filter((line) => {
+  const meaningfulLines = safeLines.filter((line) => {
     const words = normalizeWhitespace(line?.text || "").split(/\s+/).filter(Boolean);
     return words.length >= 2;
-  }).length;
+  });
+  const meaningfulCount = meaningfulLines.length;
   const coveredSeconds = safeLines.reduce(
     (sum, line) => sum + Math.max(0.8, Math.min(4.5, Number(line?.duration || 0))),
     0
   );
   const effectiveDuration = Math.max(12, Number(durationSeconds || 0));
+  const firstMeaningfulStart = meaningfulLines.length
+    ? Math.max(0, Number(meaningfulLines[0]?.start || 0))
+    : 0;
+  const lastMeaningfulStart = meaningfulLines.length
+    ? Math.max(0, Number(meaningfulLines.at(-1)?.start || 0))
+    : 0;
 
   return {
     lineCount: safeLines.length,
     meaningfulCount,
-    coverageRatio: effectiveDuration > 0 ? coveredSeconds / effectiveDuration : 0
+    coverageRatio: effectiveDuration > 0 ? coveredSeconds / effectiveDuration : 0,
+    firstMeaningfulStart,
+    lastMeaningfulStart
   };
+}
+
+function hasSuspiciousLateOpeningPreviewTiming(metrics = {}, durationSeconds = 0) {
+  const effectiveDuration = Math.max(12, Number(durationSeconds || 0));
+  const firstMeaningfulStart = Math.max(0, Number(metrics?.firstMeaningfulStart || 0));
+  const meaningfulCount = Math.max(0, Number(metrics?.meaningfulCount || 0));
+  const lateOpeningThreshold = Math.max(18, effectiveDuration * 0.28);
+  const veryLateOpeningThreshold = Math.max(24, effectiveDuration * 0.38);
+
+  if (meaningfulCount < 4) {
+    return false;
+  }
+
+  if (firstMeaningfulStart >= veryLateOpeningThreshold) {
+    return true;
+  }
+
+  return effectiveDuration <= 95 && firstMeaningfulStart >= lateOpeningThreshold;
 }
 
 function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
@@ -1086,6 +1113,10 @@ function shouldUseAudioFallbackForPreview(metadata = {}, lyricResult = {}, optio
   }
 
   if (lyricResult?.syncMode === "synced-lyrics") {
+    if (hasSuspiciousLateOpeningPreviewTiming(metrics, metadata?.durationSeconds)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -1251,10 +1282,20 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   }
 
   const shouldRomanize = shouldRomanizeTeluguLyrics(metadata, lyricResult);
+  const previewMetrics = getLyricPreviewMetrics(lyricResult?.lines, metadata?.durationSeconds);
+  const lateOpeningPreviewDetected =
+    lyricResult?.syncMode === "synced-lyrics"
+    && hasSuspiciousLateOpeningPreviewTiming(previewMetrics, metadata?.durationSeconds);
   const shouldUseAudioFallback = shouldUseAudioFallbackForPreview(metadata, lyricResult, {
     hasFastDescriptionLyrics: Boolean(descriptionLyrics)
   });
   const hasNoLyrics = !lyricResult?.lines?.length || lyricResult?.syncMode === "none";
+
+  if (lateOpeningPreviewDetected) {
+    warnings.push(
+      "The web lyric sheet opened unusually late for this song, so the app is rebuilding timing from the audio for a safer preview."
+    );
+  }
 
   if (!shouldUseAudioFallback && Array.isArray(lyricResult?.lines) && lyricResult.lines.length >= 4) {
     return { lyricResult, warnings };
