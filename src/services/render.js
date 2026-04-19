@@ -14,7 +14,6 @@ const { loadPersistedRenderJobs, persistRenderJob } = require("./render-job-stor
 const { containsTeluguScript, romanizeLyricLines } = require("./telugu");
 const { transcribeYouTubeAudio } = require("./transcription");
 const { extractVideoId } = require("./youtube");
-const { resolveCookieFilePath } = require("./ytdlp");
 
 const PUBLIC_FONTS_ROOT = path.join(publicRoot, "fonts");
 const VIDEO_SIZE = {
@@ -35,11 +34,10 @@ const MIN_RENDER_DURATION_SECONDS = 12;
 const MAX_UPLOADED_BACKGROUNDS = 5;
 const MIN_LYRIC_DURATION_SECONDS = 0.8;
 const MAX_LYRIC_HOLD_SECONDS = 4.2;
-const MAX_SMART_LYRIC_DISPLAY_SECONDS = 6.2;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
 const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
-const LYRIC_AUDIO_OFFSET_SECONDS = -0.15;
+const LYRIC_AUDIO_OFFSET_SECONDS = 0.08;
 const LYRIC_FADE_MS = 180;
 const LYRIC_REVEAL_MS = 220;
 const LYRIC_ACCENT_COLORS = ["#d7d7d7", "#8fc8ff", "#f2f2f2", "#c6d0ff"];
@@ -1144,7 +1142,10 @@ function buildWordByWordLyricText(text = "", durationSeconds = 0, maxLength = 24
 
   const displayWords = [...words];
   const wrappedLines = wrapLyricWords(displayWords, maxLength);
-  const allocations = buildAdaptiveWordTimingAllocations(words, durationSeconds);
+  const totalCentiseconds = Math.max(words.length * 12, Math.round(Math.max(1, durationSeconds) * 100));
+  const baseDuration = Math.max(10, Math.floor(totalCentiseconds / words.length));
+  const allocations = words.map(() => baseDuration);
+  allocations[allocations.length - 1] += totalCentiseconds - baseDuration * words.length;
   const baseColor = hexToAssColor(options.baseTextHex || "#ffffff");
 
   return wrappedLines
@@ -1156,133 +1157,9 @@ function buildWordByWordLyricText(text = "", durationSeconds = 0, maxLength = 24
     .join("\\N");
 }
 
-function buildAdaptiveWordTimingAllocations(words = [], durationSeconds = 0) {
-  const normalizedWords = Array.isArray(words) ? words.filter(Boolean) : [];
-
-  if (!normalizedWords.length) {
-    return [];
-  }
-
-  const totalCentiseconds = Math.max(
-    normalizedWords.length * 10,
-    Math.round(Math.max(0.65, Number(durationSeconds || 0)) * 100)
-  );
-  const weights = normalizedWords.map((word) => {
-    const plain = sanitizeKeywordToken(word).replace(/'/g, "");
-    const vowelBursts = (plain.match(/[aeiouy]+/gi) || []).length;
-    const punctuationBoost = /[,.!?]$/.test(`${word || ""}`) ? 0.35 : 0;
-    const syllableWeight = Math.max(0, vowelBursts - 1) * 0.35;
-
-    return Math.max(0.8, plain.length * 0.42 + vowelBursts * 0.55 + syllableWeight + punctuationBoost);
-  });
-  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || normalizedWords.length;
-  const baseAllocations = weights.map((weight) =>
-    Math.max(7, Math.floor((totalCentiseconds * weight) / totalWeight))
-  );
-  let assignedCentiseconds = baseAllocations.reduce((sum, value) => sum + value, 0);
-
-  if (assignedCentiseconds < totalCentiseconds) {
-    baseAllocations[baseAllocations.length - 1] += totalCentiseconds - assignedCentiseconds;
-    assignedCentiseconds = totalCentiseconds;
-  }
-
-  while (assignedCentiseconds > totalCentiseconds) {
-    let adjusted = false;
-
-    for (let index = 0; index < baseAllocations.length && assignedCentiseconds > totalCentiseconds; index += 1) {
-      if (baseAllocations[index] <= 7) {
-        continue;
-      }
-
-      baseAllocations[index] -= 1;
-      assignedCentiseconds -= 1;
-      adjusted = true;
-    }
-
-    if (!adjusted) {
-      break;
-    }
-  }
-
-  return baseAllocations;
-}
-
-function buildAdaptiveLyricMotionProfile(line = {}, selectedVariant = "", textLines = []) {
-  const lineDurationSeconds = Math.max(0.18, Number(line?.duration || 0));
-  const words = tokenizeLyricWords(line?.text || "");
-  const wordCount = Math.max(1, words.length);
-  const characterCount = normalizeWhitespace(line?.text || "").length || wordCount;
-  const wordsPerSecond = wordCount / Math.max(0.25, lineDurationSeconds);
-  const charsPerSecond = characterCount / Math.max(0.25, lineDurationSeconds);
-  const isFastPace = wordsPerSecond >= 3.2 || charsPerSecond >= 17;
-  const isSlowPace = wordsPerSecond <= 1.45 && charsPerSecond <= 9;
-  const revealMs = clamp(
-    Math.round(420 - wordsPerSecond * 58 + Math.min(lineDurationSeconds, 4) * 42),
-    120,
-    620
-  );
-  const fadeInMs = clamp(Math.round(revealMs * (isFastPace ? 0.48 : isSlowPace ? 0.72 : 0.6)), 70, 280);
-  const fadeOutMs = clamp(
-    Math.round(Math.min(260, Math.max(90, lineDurationSeconds * (isSlowPace ? 120 : isFastPace ? 78 : 96)))),
-    80,
-    280
-  );
-  const movementMultiplier = isSlowPace ? 1.18 : isFastPace ? 0.76 : 1;
-  const wordBuildDuration = clamp(
-    lineDurationSeconds * (isFastPace ? 0.94 : isSlowPace ? 0.74 : 0.84),
-    0.45,
-    MAX_LYRIC_HOLD_SECONDS
-  );
-  const multiLineDelay = textLines.length > 1
-    ? clamp(
-        lineDurationSeconds /
-          (textLines.length + (isFastPace ? 1.8 : isSlowPace ? 0.7 : 1.15)),
-        0.06,
-        isSlowPace ? 0.46 : 0.28
-      )
-    : 0;
-
-  return {
-    lineDurationSeconds,
-    wordsPerSecond,
-    charsPerSecond,
-    pace: isFastPace ? "fast" : isSlowPace ? "slow" : "steady",
-    revealMs,
-    fadeInMs,
-    fadeOutMs,
-    movementMultiplier,
-    wordBuildDuration,
-    multiLineDelay,
-    karaokeActive: selectedVariant === "karaoke" || (selectedVariant === "word-by-word" && isFastPace)
-  };
-}
-
-function resolveLyricVisualLeadInSeconds(line = {}, motionProfile = {}, selectedVariant = "") {
-  const baseDuration = Math.max(0.18, Number(line?.duration || 0));
-  const fadeLeadInSeconds = Math.max(0.06, Number(motionProfile?.fadeInMs || LYRIC_FADE_MS) / 1000 * 0.72);
-  const revealLeadInSeconds = Math.max(0.05, Number(motionProfile?.revealMs || LYRIC_REVEAL_MS) / 1000 * 0.34);
-  const slowerPaceBonus = motionProfile?.pace === "slow" ? 0.04 : 0;
-  const buildHeavyVariant =
-    selectedVariant === "typewriter" ||
-    selectedVariant === "word-by-word" ||
-    selectedVariant === "karaoke" ||
-    selectedVariant === "line-by-line";
-  const baseLeadIn = Math.max(
-    fadeLeadInSeconds,
-    buildHeavyVariant ? revealLeadInSeconds : revealLeadInSeconds * 0.78
-  );
-
-  return clamp(
-    baseLeadIn + slowerPaceBonus,
-    0.08,
-    Math.min(0.34, Math.max(0.12, baseDuration * 0.24))
-  );
-}
-
 function pickLyricAnimationVariant(line = {}, index = 0) {
   const wordCount = tokenizeLyricWords(line.text).length;
   const duration = Number(line.duration || 0);
-  const wordsPerSecond = wordCount / Math.max(0.25, duration || 0.25);
   const autoMixVariants = [
     "bounce",
     "magic",
@@ -1299,11 +1176,7 @@ function pickLyricAnimationVariant(line = {}, index = 0) {
   ];
   let selectedVariant = autoMixVariants[index % autoMixVariants.length];
 
-  if (wordsPerSecond >= 3.25 && wordCount >= 4) {
-    selectedVariant = index % 2 === 0 ? "word-by-word" : "karaoke";
-  } else if (wordsPerSecond <= 1.4 && duration >= 2.6) {
-    selectedVariant = index % 2 === 0 ? "cinematic-left" : "whisper";
-  } else if (duration >= 2.8 && wordCount >= 6) {
+  if (duration >= 2.8 && wordCount >= 6) {
     selectedVariant = index % 3 === 0 ? "word-by-word" : "line-by-line";
   } else if (wordCount <= 3 || duration <= 1.2) {
     selectedVariant = index % 2 === 0 ? "bounce" : "magic";
@@ -2096,28 +1969,6 @@ async function ensureDirectory(directoryPath) {
 
 function buildUserRenderMessage(job = {}) {
   if (job.status === "completed") {
-    const notes = Array.isArray(job.notes) ? job.notes : [];
-
-    if (notes.some((note) => /uploaded audio fallback/i.test(`${note || ""}`))) {
-      return "Your lyric video is ready with the uploaded soundtrack in place.";
-    }
-
-    if (notes.some((note) => /silent fallback/i.test(`${note || ""}`))) {
-      return "Your visual draft is ready, but this link still needs uploaded audio if you want sound in the final export.";
-    }
-
-    if (notes.some((note) => /downloaded a local audio fallback automatically|replacing the audio source/i.test(`${note || ""}`))) {
-      return "Your lyric video is ready. The app recovered the soundtrack automatically before export.";
-    }
-
-    if (notes.some((note) => /Final lyric source: Whisper-generated audio transcript\./i.test(`${note || ""}`))) {
-      return "Your lyric video is ready. The app rebuilt the lyric timing from the audio automatically.";
-    }
-
-    if (notes.some((note) => /Final lyric source: generated fallback title cards\./i.test(`${note || ""}`))) {
-      return "Your lyric video is ready as a fallback draft because this link did not produce reliable lyrics.";
-    }
-
     return "Your lyric video is ready to preview and download.";
   }
 
@@ -2127,10 +1978,10 @@ function buildUserRenderMessage(job = {}) {
 
   if (job.status === "failed") {
     if (/YOUTUBE_BOT_BLOCK|not a bot|cookies-from-browser|temporarily blocked audio access/i.test(`${job.error || ""}`)) {
-      return "The soundtrack could not be unlocked from YouTube on this server. Upload audio to keep sound, or try another link.";
+      return "YouTube blocked the video audio for this link. Add a YouTube cookie file on the server or try another link.";
     }
 
-    if (/verify|verified|match(?:ed)? .*detected vocals|sync check|sync quality|lyric timing|strongly enough|audio-built lyric fallback|too sparse across the song|trust as the final lyric sheet|audio sync pass|usable lyric lines/i.test(`${job.error || ""}`)) {
+    if (/verify|verified|match(?:ed)? .*detected vocals|sync check|sync quality|lyric timing|strongly enough|audio-built lyric fallback|too sparse across the song|trust as the final lyric sheet/i.test(`${job.error || ""}`)) {
       return "The app stopped before rendering because it could not verify that the lyrics match the audio closely enough.";
     }
 
@@ -2192,29 +2043,9 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
   const options = {
     ...baseOptions
   };
-  const hasExplicitPreviewFlag = typeof options.preview === "boolean";
-  const shouldPreferFastRenderTranscription = options.preview !== false;
-  const preferredRenderModel =
-    process.env.WHISPER_RENDER_MODEL ||
-    process.env.WHISPER_PREVIEW_MODEL ||
-    process.env.WHISPER_MODEL ||
-    "tiny";
 
   if (adaptiveProfile?.preferKnownAudioBlockRecovery) {
     options.preferKnownAudioBlockRecovery = true;
-  }
-
-  if (!hasExplicitPreviewFlag) {
-    options.preview = true;
-  }
-
-  if (!options.modelName && shouldPreferFastRenderTranscription) {
-    options.modelName = preferredRenderModel;
-  }
-
-  if (shouldPreferFastRenderTranscription) {
-    options.timeoutMs = Math.max(Number(options.timeoutMs || 0), 3 * 60 * 1000);
-    options.downloadTimeoutMs = Math.max(Number(options.downloadTimeoutMs || 0), 2 * 60 * 1000);
   }
 
   if (!adaptiveProfile?.preferStrongerFinalTranscription || options.preview) {
@@ -2225,13 +2056,7 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
     ...options,
     timeoutMs: Math.max(Number(options.timeoutMs || 0), 10 * 60 * 1000),
     downloadTimeoutMs: Math.max(Number(options.downloadTimeoutMs || 0), 6 * 60 * 1000),
-    modelName:
-      options.modelName ||
-      process.env.WHISPER_ADAPTIVE_MODEL ||
-      process.env.WHISPER_RENDER_MODEL ||
-      process.env.WHISPER_PREVIEW_MODEL ||
-      process.env.WHISPER_MODEL ||
-      "tiny",
+    modelName: options.modelName || process.env.WHISPER_ADAPTIVE_MODEL || "small",
     beamSize: Math.max(Number(options.beamSize || 0), 6),
     conditionOnPreviousText: options.conditionOnPreviousText !== false
   };
@@ -2255,18 +2080,8 @@ function isRecoverableRenderError(error) {
   }
 
   const message = `${error?.message || error || ""}`.toLowerCase();
-  const code = `${error?.code || ""}`.toUpperCase();
 
   if (!message) {
-    return false;
-  }
-
-  if (
-    code === "YOUTUBE_BOT_BLOCK" ||
-    /youtube blocked audio access|temporarily blocked audio access|not a bot|cookies-from-browser/.test(
-      message
-    )
-  ) {
     return false;
   }
 
@@ -2354,117 +2169,6 @@ function canKeepStrongSourceAfterSparseValidationReport({
   }
 
   return /too few|did not match enough|stable enough timing|covered too little|too sparse/.test(reason);
-}
-
-function canApproveUploadedAudioSparseTranscriptReport(report = {}) {
-  if (!report || report.approved || !report.transcriptDerived) {
-    return false;
-  }
-
-  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
-
-  if (!/too sparse|too few|covered too little|did not detect enough words|stable enough timing|no usable lyric lines/.test(reason)) {
-    return false;
-  }
-
-  const candidateMetrics = report.candidateMetrics || {};
-  const transcriptMetrics = report.transcriptMetrics || {};
-
-  return (
-    Number(candidateMetrics.meaningfulCount || 0) >= 3 &&
-    Number(candidateMetrics.coverageRatio || 0) >= 0.06 &&
-    transcriptMetrics.reliableForWindowFit &&
-    Number(transcriptMetrics.coverageRatio || 0) >= 0.03 &&
-    Number(transcriptMetrics.lastEnd || 0) > Number(transcriptMetrics.firstStart || 0) + 4
-  );
-}
-
-function canApproveNoSourceTranscriptFallbackReport({
-  report = {},
-  syncMode = "none",
-  durationSeconds = 0,
-  referenceLines = []
-} = {}) {
-  if (!report || report.approved || !report.transcriptDerived) {
-    return false;
-  }
-
-  if (Array.isArray(referenceLines) && referenceLines.length) {
-    return false;
-  }
-
-  if (!["none", "transcribed", "estimated"].includes(syncMode)) {
-    return false;
-  }
-
-  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
-
-  if (!/no usable lyric lines|too sparse|too few|covered too little|did not detect enough words|stable enough timing/.test(reason)) {
-    return false;
-  }
-
-  const candidateMetrics = report.candidateMetrics || {};
-  const transcriptMetrics = report.transcriptMetrics || {};
-  const effectiveDuration = Math.max(Number(durationSeconds || 0), Number(candidateMetrics.lastEnd || 0), 18);
-  const candidateLines = Array.isArray(report.candidateLines) ? report.candidateLines : [];
-
-  return (
-    hasUsableAudioBuiltLyrics(candidateLines, durationSeconds, {
-      minimumMeaningfulCount: effectiveDuration <= 70 ? 2 : 3,
-      minimumCoverageRatio: effectiveDuration <= 70 ? 0.025 : 0.03,
-      minimumSpanSeconds: effectiveDuration <= 70 ? 2.4 : 3.6
-    }) &&
-    Number(candidateMetrics.lastEnd || 0) >= effectiveDuration * 0.12 &&
-    (
-      transcriptMetrics.reliableForWindowFit ||
-      Number(transcriptMetrics.coverageRatio || 0) >= 0.02
-    )
-  );
-}
-
-function canApproveShortCaptionReferenceReport({
-  report = {},
-  syncMode = "none",
-  durationSeconds = 0,
-  referenceLines = []
-} = {}) {
-  if (!report || report.approved) {
-    return false;
-  }
-
-  if (!["captions", "caption-aligned"].includes(syncMode)) {
-    return false;
-  }
-
-  if (Number(durationSeconds || 0) <= 0 || Number(durationSeconds || 0) > 70) {
-    return false;
-  }
-
-  const reason = normalizeWhitespace(report.reason || "").toLowerCase();
-
-  if (!/no usable lyric lines|too sparse|too few|covered too little|stable enough timing/.test(reason)) {
-    return false;
-  }
-
-  const sourceMetrics = getSourceTimingMetrics(referenceLines, durationSeconds);
-
-  return (
-    Number(sourceMetrics.meaningfulCount || 0) >= 3 &&
-    Number(sourceMetrics.coverageRatio || 0) >= 0.1 &&
-    Number(sourceMetrics.lastEnd || 0) > Number(sourceMetrics.firstStart || 0) + 4
-  );
-}
-
-function shouldBypassStrictSyncFailure(payload = {}) {
-  const sourceText = normalizeWhitespace(
-    `${payload?.videoId || ""} ${payload?.title || ""} ${payload?.channelTitle || ""} ${payload?.song?.title || ""} ${payload?.song?.artist || ""}`
-  );
-  const uploadedAudioOnly = /^upload-/i.test(`${payload?.videoId || ""}`.trim()) && !`${payload?.inputUrl || ""}`.trim();
-  const teluguOrDevotional = /\b(telugu|devotional|stotram|mantra|bhajan|chalisa|aarti|slokam|ashtakam|sahasranamam|suprabhatam)\b/i.test(
-    sourceText
-  );
-
-  return uploadedAudioOnly || teluguOrDevotional;
 }
 
 function buildIntroPreservedTranscriptCandidate({
@@ -2858,8 +2562,6 @@ function calibrateLyricTimingAgainstTranscript(
   const sanitizedCandidate = sanitizeLyricLines(candidateLines, durationSeconds);
   const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds);
   const minimumAnchorScore = Number(options.minimumAnchorScore || 0.42);
-  const candidateMetrics = getSourceTimingMetrics(sanitizedCandidate, durationSeconds);
-  const transcriptMetrics = getTranscriptTimingMetrics(sanitizedTranscript, [], durationSeconds);
 
   if (!sanitizedCandidate.length || !sanitizedTranscript.length) {
     return {
@@ -2913,35 +2615,8 @@ function calibrateLyricTimingAgainstTranscript(
   const minInlierDrift = inlierDrifts.reduce((smallest, value) => Math.min(smallest, value), inlierDrifts[0]);
   const maxInlierDrift = inlierDrifts.reduce((largest, value) => Math.max(largest, value), inlierDrifts[0]);
   const inlierSpread = Math.abs(maxInlierDrift - minInlierDrift);
-  const earliestInlierAnchor = inlierAnchors.reduce((earliest, anchor) => {
-    if (!earliest) {
-      return anchor;
-    }
-
-    return Number(anchor?.sourceStart || 0) < Number(earliest?.sourceStart || 0) ? anchor : earliest;
-  }, null);
-  const hasOpeningAnchor =
-    Number(earliestInlierAnchor?.sourceStart || Infinity) <= Math.max(4.5, Number(durationSeconds || 0) * 0.08);
-  const transcriptLeadDelta = roundTimeValue(
-    Math.max(0, Number(transcriptMetrics.firstStart || 0) - Number(candidateMetrics.firstStart || 0))
-  );
 
   if (Math.abs(finalMedianShift) < 0.12 || Math.abs(finalMedianShift) > 2.6 || inlierSpread > 0.85) {
-    return {
-      lines: sanitizedCandidate,
-      changed: false,
-      appliedShift: 0,
-      anchorCount: anchors.length,
-      inlierAnchorCount: inlierAnchors.length
-    };
-  }
-
-  if (
-    candidateMetrics.reliableForSourcePacing &&
-    !hasOpeningAnchor &&
-    finalMedianShift > 0.55 &&
-    transcriptLeadDelta > Math.max(1.1, Math.min(3.6, Number(durationSeconds || 0) * 0.07))
-  ) {
     return {
       lines: sanitizedCandidate,
       changed: false,
@@ -3343,33 +3018,6 @@ function getSourceTimingMetrics(lines = [], durationSeconds = 0) {
   };
 }
 
-function hasUsableAudioBuiltLyrics(lines = [], durationSeconds = 0, options = {}) {
-  const metrics = getSourceTimingMetrics(lines, durationSeconds);
-  const effectiveDuration = Math.max(
-    Number(durationSeconds || 0),
-    Number(metrics.lastEnd || 0),
-    MIN_RENDER_DURATION_SECONDS
-  );
-  const minimumMeaningfulCount = Math.max(2, Number(options.minimumMeaningfulCount || 2));
-  const minimumCoverageRatio = Math.max(
-    0.02,
-    Number(
-      options.minimumCoverageRatio ||
-        (effectiveDuration <= 70 ? 0.025 : effectiveDuration <= 180 ? 0.03 : 0.04)
-    )
-  );
-  const minimumSpanSeconds = Math.max(2.4, Number(options.minimumSpanSeconds || 2.4));
-
-  return (
-    Number(metrics.lineCount || 0) >= minimumMeaningfulCount &&
-    Number(metrics.meaningfulCount || 0) >= minimumMeaningfulCount &&
-    (
-      Number(metrics.coverageRatio || 0) >= minimumCoverageRatio ||
-      Number(metrics.lastEnd || 0) >= Number(metrics.firstStart || 0) + minimumSpanSeconds
-    )
-  );
-}
-
 function fitLyricLinesToTranscriptWindow(lines = [], transcriptLines = [], durationSeconds = 0) {
   const sanitizedSource = sanitizeLyricLines(lines, durationSeconds);
   const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds);
@@ -3394,39 +3042,10 @@ function fitLyricLinesToTranscriptWindow(lines = [], transcriptLines = [], durat
   );
   const sourceSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, sourceEnd - sourceStart);
   const transcriptSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, transcriptEnd - transcriptStart);
-  const sourceMetrics = getSourceTimingMetrics(sanitizedSource, durationSeconds);
-  const transcriptMetrics = getTranscriptTimingMetrics(sanitizedTranscript, [], durationSeconds);
-  const openingAnchors = findLyricAlignmentAnchors(
-    sanitizedSource.slice(0, Math.min(8, sanitizedSource.length)),
-    sanitizedTranscript.slice(0, Math.min(8, sanitizedTranscript.length))
-  ).filter((anchor) => Number(anchor?.score || 0) >= 0.42);
-  const hasEarlyOpeningAnchor = openingAnchors.some(
-    (anchor) =>
-      Number(anchor?.sourceIndex || 0) <= 2 &&
-      Number(anchor?.transcriptIndex || 0) <= 2 &&
-      Math.abs(Number(anchor?.transcriptStart || 0) - Number(anchor?.sourceStart || 0)) <= 1.35
-  );
-  const lateTranscriptLeadSeconds = roundTimeValue(Math.max(0, transcriptStart - sourceStart));
   const appliedShift = roundTimeValue(Math.max(0, transcriptStart - sourceStart));
   const appliedScale = roundTimeValue(transcriptSpan / sourceSpan);
 
   if (appliedShift < 0.22 && Math.abs(appliedScale - 1) < 0.04) {
-    return {
-      lines: sanitizedSource,
-      appliedShift: 0,
-      appliedScale: 1
-    };
-  }
-
-  if (
-    sourceMetrics.reliableForSourcePacing &&
-    !hasEarlyOpeningAnchor &&
-    lateTranscriptLeadSeconds > Math.max(1.4, Math.min(4.5, sourceSpan * 0.12)) &&
-    (
-      !transcriptMetrics.reliableForFullAlignment ||
-      Number(transcriptMetrics.coverageRatio || 0) < 0.24
-    )
-  ) {
     return {
       lines: sanitizedSource,
       appliedShift: 0,
@@ -3812,30 +3431,6 @@ function formatStrictSyncApprovalSummary(report = {}) {
     return `Strict sync verification approved the render by keeping the trusted intro lyrics and matching the rest to the audio transcript.`;
   }
 
-  if (report.approvalMode === "uploaded-audio-sparse-transcript-fallback") {
-    return "Strict sync verification approved the render using the uploaded audio transcript, even though the final transcript was too sparse for the normal full-song bar.";
-  }
-
-  if (report.approvalMode === "best-effort-audio-transcript") {
-    return "Strict sync verification approved the best available audio-built lyric sheet because no trusted web lyric source existed for this video.";
-  }
-
-  if (report.approvalMode === "generated-fallback-no-source") {
-    return "Strict sync verification could not confirm lyrics for this video, so the render continued with generated fallback title cards instead of stopping.";
-  }
-
-  if (report.approvalMode === "no-source-transcript-fallback") {
-    return "Strict sync verification approved the best available audio-built lyric sheet because no stronger web lyric source existed for this video.";
-  }
-
-  if (report.approvalMode === "short-caption-reference-fallback") {
-    return "Strict sync verification kept the caption-timed lyric sheet for this short-form video because the validation transcript was too sparse to replace it safely.";
-  }
-
-  if (report.approvalMode === "trusted-sparse-source-bypass") {
-    return "Strict sync verification was bypassed for this uploaded-audio or Telugu/devotional render, so the export continued with the best available lyric timing.";
-  }
-
   return report.transcriptDerived
     ? `Strict sync verification approved the render using audio-built lyrics (${report.anchorCount} lyric anchors, average drift ${roundTimeValue(report.averageDriftSeconds)}s).`
     : `Strict sync verification approved the render (${report.anchorCount} lyric/audio anchors, average drift ${roundTimeValue(report.averageDriftSeconds)}s).`;
@@ -3976,64 +3571,6 @@ function buildTranscriptWordTimeline(transcriptLines = [], transcriptWords = [],
   });
 
   return sanitizeTranscriptWords(approximatedWords, durationSeconds);
-}
-
-function buildBestEffortTranscriptLines(transcriptLines = [], transcriptWords = [], durationSeconds = 0) {
-  const wordTimeline = buildTranscriptWordTimeline(transcriptLines, transcriptWords, durationSeconds);
-
-  if (!wordTimeline.length) {
-    return sanitizeLyricLines(transcriptLines, durationSeconds);
-  }
-
-  const fallbackLines = [];
-  let chunk = [];
-  let chunkStart = Number(wordTimeline[0]?.start || 0);
-
-  const flushChunk = () => {
-    if (!chunk.length) {
-      return;
-    }
-
-    const start = Number(chunk[0]?.start || chunkStart || 0);
-    const end = Math.max(start + MIN_LYRIC_DURATION_SECONDS, Number(chunk.at(-1)?.end || start + 1));
-    const text = normalizeWhitespace(chunk.map((word) => word.text).join(" "));
-
-    if (text) {
-      fallbackLines.push({
-        text,
-        start,
-        duration: Math.max(MIN_LYRIC_DURATION_SECONDS, end - start)
-      });
-    }
-
-    chunk = [];
-    chunkStart = end;
-  };
-
-  wordTimeline.forEach((word, index) => {
-    if (!chunk.length) {
-      chunkStart = Number(word.start || 0);
-    }
-
-    chunk.push(word);
-
-    const nextWord = wordTimeline[index + 1];
-    const chunkSpan = Math.max(0, Number(word.end || 0) - chunkStart);
-    const text = normalizeWhitespace(chunk.map((entry) => entry.text).join(" "));
-    const endsSentence = /[.!?,:;]$/.test(String(word.text || ""));
-    const nextGap = nextWord ? Number(nextWord.start || 0) - Number(word.end || 0) : Infinity;
-    const longEnough = chunkSpan >= 3.2;
-    const tooManyWords = tokenizeLyricWords(text).length >= (durationSeconds > 0 && durationSeconds <= 70 ? 5 : 7);
-    const naturalBreak = nextGap >= 0.45;
-
-    if (endsSentence || longEnough || tooManyWords || naturalBreak || !nextWord) {
-      flushChunk();
-    }
-  });
-
-  flushChunk();
-
-  return sanitizeLyricLines(fallbackLines, durationSeconds);
 }
 
 function getLyricTimingWeight(line = {}) {
@@ -4179,15 +3716,15 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
   const teluguRomanized = Boolean(options?.teluguRomanized);
 
   if (syncMode === "synced-lyrics") {
-    return -0.02;
+    return 0.14;
   }
 
   if (syncMode === "caption-aligned" || syncMode === "captions") {
-    return -0.04;
+    return 0.12;
   }
 
   if (syncMode === "transcribed") {
-    return teluguRomanized ? -0.66 : -0.08;
+    return teluguRomanized ? -0.72 : 0;
   }
 
   return LYRIC_AUDIO_OFFSET_SECONDS;
@@ -4215,128 +3752,6 @@ function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_P
   return normalizedText;
 }
 
-function describeFinalLyricSource(syncSource = "none", transcriptDerived = false) {
-  if (syncSource === "generated-fallback") {
-    return "Final lyric source: generated fallback title cards.";
-  }
-
-  if (transcriptDerived || syncSource === "transcribed") {
-    return "Final lyric source: Whisper-generated audio transcript.";
-  }
-
-  if (syncSource === "synced-lyrics") {
-    return "Final lyric source: web lyrics.";
-  }
-
-  if (syncSource === "caption-aligned" || syncSource === "captions") {
-    return "Final lyric source: YouTube captions.";
-  }
-
-  if (syncSource === "estimated") {
-    return "Final lyric source: estimated lyric timing.";
-  }
-
-  return "Final lyric source: automatic fallback timing.";
-}
-
-function smoothTranscribedDisplayPacing(lines = [], durationSeconds = 0, options = {}) {
-  const sanitizedLines = sanitizeLyricLines(lines, durationSeconds);
-
-  if (sanitizedLines.length < 2) {
-    return {
-      lines: sanitizedLines,
-      mergedCount: 0,
-      changed: false
-    };
-  }
-
-  const minimumDisplaySeconds = Math.max(1.2, Number(options.minimumDisplaySeconds || 2.5));
-  const maximumDisplaySeconds = Math.max(
-    minimumDisplaySeconds,
-    Number(options.maximumDisplaySeconds || 5.0)
-  );
-  const maximumMergedWords = Math.max(6, Number(options.maximumMergedWords || 12));
-  const timelineLimit = durationSeconds
-    ? Math.max(Number(durationSeconds || 0), sanitizedLines.at(-1).start + minimumDisplaySeconds)
-    : sanitizedLines.at(-1).start + maximumDisplaySeconds;
-  const smoothedLines = [];
-  let mergedCount = 0;
-
-  for (let index = 0; index < sanitizedLines.length; ) {
-    const startLine = sanitizedLines[index];
-    const textParts = [startLine.text];
-    let start = Number(startLine.start || 0);
-    let end = start + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(startLine.duration || 0));
-    let lookahead = index + 1;
-
-    while (lookahead < sanitizedLines.length) {
-      const nextLine = sanitizedLines[lookahead];
-      const currentSpan = Number(nextLine.start || 0) - start;
-      const currentText = normalizeWhitespace(textParts.join(" "));
-      const mergedWordCount =
-        tokenizeLyricWords(currentText).length + tokenizeLyricWords(nextLine.text).length;
-      const currentEndsWithPause = /[.!?]$/.test(currentText);
-
-      if (
-        currentSpan >= minimumDisplaySeconds ||
-        mergedWordCount > maximumMergedWords ||
-        currentEndsWithPause
-      ) {
-        break;
-      }
-
-      textParts.push(nextLine.text);
-      end = Math.max(
-        end,
-        Number(nextLine.start || 0) + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(nextLine.duration || 0))
-      );
-      mergedCount += 1;
-      lookahead += 1;
-    }
-
-    const nextStart = lookahead < sanitizedLines.length
-      ? Number(sanitizedLines[lookahead].start || start + maximumDisplaySeconds)
-      : timelineLimit;
-    const maximumAvailableDuration = Math.max(
-      MIN_LYRIC_DURATION_SECONDS,
-      Math.min(maximumDisplaySeconds, nextStart - start - (lookahead < sanitizedLines.length ? LYRIC_TRANSITION_GAP_SECONDS : 0))
-    );
-    const preferredMinimumDuration = Math.min(minimumDisplaySeconds, maximumAvailableDuration);
-    const adjustedDuration = clamp(
-      Math.max(end - start, preferredMinimumDuration),
-      MIN_LYRIC_DURATION_SECONDS,
-      maximumAvailableDuration
-    );
-
-    smoothedLines.push({
-      text: normalizeWhitespace(textParts.join(" ")),
-      start: roundTimeValue(start),
-      duration: roundTimeValue(adjustedDuration)
-    });
-
-    index = lookahead;
-  }
-
-  const normalizedSmoothedLines = sanitizeLyricLines(smoothedLines, durationSeconds);
-  const changed =
-    mergedCount > 0 ||
-    normalizedSmoothedLines.length !== sanitizedLines.length ||
-    normalizedSmoothedLines.some((line, index) => {
-      const originalLine = sanitizedLines[index];
-      return (
-        normalizeWhitespace(line.text) !== normalizeWhitespace(originalLine?.text || "") ||
-        Math.abs(Number(line.duration || 0) - Number(originalLine?.duration || 0)) > 0.18 ||
-        Math.abs(Number(line.start || 0) - Number(originalLine?.start || 0)) > 0.05
-      );
-    });
-
-  return {
-    lines: normalizedSmoothedLines,
-    mergedCount,
-    changed
-  };
-}
-
 function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
   if (!lyricStylePreset || lyricStylePreset.key === "auto") {
     return pickLyricAnimationVariant(line, index);
@@ -4345,38 +3760,11 @@ function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
   return lyricStylePreset.key;
 }
 
-function resolveSmartLyricDisplayDuration(line = {}, availableSeconds = 0) {
-  const baseDuration = Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0));
-  const safeAvailableSeconds = Math.max(MIN_LYRIC_DURATION_SECONDS, Number(availableSeconds || 0));
-  const text = normalizeWhitespace(line?.text || "");
-  const words = tokenizeLyricWords(text);
-  const wordCount = words.length;
-  const characterCount = text.replace(/\s+/g, "").length;
-  const punctuationPause = /[,.!?]$/.test(text) ? 0.28 : /[,;:]$/.test(text) ? 0.18 : 0;
-
-  if (!wordCount) {
-    return Math.min(baseDuration, safeAvailableSeconds);
-  }
-
-  const pacingTargetSeconds = clamp(
-    wordCount <= 2
-      ? wordCount * 0.95 + punctuationPause
-      : wordCount * 0.62 + Math.min(1.1, characterCount / 22) + punctuationPause,
-    1.2,
-    MAX_SMART_LYRIC_DISPLAY_SECONDS
-  );
-
-  return Math.min(
-    safeAvailableSeconds,
-    Math.max(baseDuration, pacingTargetSeconds)
-  );
-}
-
 function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   const start = Math.max(0, Number(line?.start || 0));
   const cappedDuration = Math.min(
     Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0)),
-    MAX_SMART_LYRIC_DISPLAY_SECONDS
+    MAX_LYRIC_HOLD_SECONDS
   );
   const timelineLimit = durationSeconds
     ? Math.max(start + 0.12, Number(durationSeconds))
@@ -4389,12 +3777,10 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
 
   const nextStart = Math.max(start + 0.12, Number(nextLine?.start || start + MIN_LYRIC_DURATION_SECONDS));
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
-  const smartDisplayDuration = resolveSmartLyricDisplayDuration(line, safeUpperBound - start);
-  const preferredEnd = Math.min(start + smartDisplayDuration, safeUpperBound);
   const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.92, 0.12, 0.72);
   const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.12, safeUpperBound - start));
 
-  return clamp(Math.max(Math.min(naturalEnd, safeUpperBound), preferredEnd), minimumEnd, safeUpperBound);
+  return clamp(Math.min(naturalEnd, safeUpperBound), minimumEnd, safeUpperBound);
 }
 
 function createAssSubtitleContent(
@@ -4450,7 +3836,9 @@ function createAssSubtitleContent(
   const emojiOverlays = [];
   const lyricEvents = lines.flatMap((line, index) => {
     const nextLine = lines[index + 1];
+    const start = formatAssTime(line.start);
     const endSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
+    const end = formatAssTime(endSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
     const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
     const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
@@ -4568,25 +3956,8 @@ function createAssSubtitleContent(
       clamp(targetCenterY, safeMargin + boxHeight / 2, videoSize.height - safeMargin - boxHeight / 2)
     );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
-    const motionProfile = buildAdaptiveLyricMotionProfile(
-      {
-        ...line,
-        duration: lineDurationSeconds
-      },
-      selectedVariant,
-      textLines
-    );
-    const dialogueStartSeconds = roundTimeValue(
-      Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
-    );
-    const start = formatAssTime(dialogueStartSeconds);
-    const end = formatAssTime(endSeconds);
-    const revealMs = motionProfile.revealMs;
-    const fadeInMs = motionProfile.fadeInMs;
-    const fadeOutMs = motionProfile.fadeOutMs;
-    const travelX = Math.round(cinematicTravelX * motionProfile.movementMultiplier);
-    const travelY = Math.round(cinematicTravelY * motionProfile.movementMultiplier);
-    const bounceY = Math.round(bounceTravelY * motionProfile.movementMultiplier);
+    const fadeInMs = Math.round(LYRIC_FADE_MS * 0.72);
+    const fadeOutMs = Math.round(LYRIC_FADE_MS * 0.92);
     const lineEmojiAnchors = plainWords
       .map((word, wordIndex) => ({
         emoji: getLyricEmojiForWord(word),
@@ -4649,19 +4020,19 @@ function createAssSubtitleContent(
     if (selectedVariant === "typewriter" || selectedVariant === "word-by-word") {
       const styledText = buildWordByWordLyricText(
         displayText,
-        motionProfile.wordBuildDuration,
-        effectiveWrapLength,
+        Math.min(lineDurationSeconds * 0.82, MAX_LYRIC_HOLD_SECONDS),
+        wrapLength,
         {
           emojiAssetMap,
           baseTextHex: primaryTextHex
         }
       );
       const startX = alignmentTag === "\\an4"
-        ? Math.max(safeMargin, centerX - Math.round(travelX * 0.5))
-        : centerX + (index % 2 === 0 ? -Math.round(travelX * 0.55) : Math.round(travelX * 0.55));
-      const startY = centerY + Math.round(travelY * 1.2);
+        ? Math.max(safeMargin, centerX - Math.round(cinematicTravelX * 0.5))
+        : centerX + (index % 2 === 0 ? -Math.round(cinematicTravelX * 0.55) : Math.round(cinematicTravelX * 0.55));
+      const startY = centerY + Math.round(cinematicTravelY * 1.2);
       const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.1
+        LYRIC_REVEAL_MS * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord2.8\\shad0\\blur0.45\\fscx100\\fscy100\\fsp1.2\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4678,7 +4049,7 @@ function createAssSubtitleContent(
       });
       const comicRotation = index % 2 === 0 ? -1.4 : 1.2;
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(bounceTravelY * 1.05)},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.05
+        LYRIC_REVEAL_MS * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx84\\fscy84\\bord1.2\\shad0\\blur0.05\\frz${comicRotation}\\fsp0.8\\t(0,130,\\fscx112\\fscy112)\\t(130,260,\\fscx100\\fscy100\\frz0)\\c${hexToAssColor(
         customStyleColorHex || "#111111"
       )}\\3c${hexToAssColor(customStyleColorHex || "#111111")}}`;
@@ -4754,8 +4125,8 @@ function createAssSubtitleContent(
         emojiAssetMap,
         baseTextHex: primaryTextHex
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + bounceY},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.15
+      const textTag = `{\\an5\\move(${centerX},${centerY + bounceTravelY},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx74\\fscy74\\bord3.4\\shad0\\blur0.25\\frz0\\t(0,120,\\fscx122\\fscy122)\\t(120,260,\\fscx100\\fscy100)\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4766,13 +4137,10 @@ function createAssSubtitleContent(
     }
 
     if (selectedVariant === "line-by-line") {
-      const perLineDelay = motionProfile.multiLineDelay;
+      const perLineDelay = lineCount > 1 ? Math.max(0.12, Math.min(0.34, lineDurationSeconds / (lineCount + 1))) : 0;
 
       return textLines.map((textLine, textLineIndex) => {
-        const eventStartSeconds = Math.max(
-          dialogueStartSeconds,
-          Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex)
-        );
+        const eventStartSeconds = Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex);
         const eventEndSeconds = endSeconds;
         const eventY = Math.round(
           centerY + (textLineIndex - (lineCount - 1) / 2) * Math.round(baseFontSize * 0.9)
@@ -4783,7 +4151,7 @@ function createAssSubtitleContent(
           disableHighlight: textLineIndex !== lineCount - 1
         });
         const textTag = `{\\an5\\move(${centerX},${eventY + 26},${centerX},${eventY},0,${Math.round(
-          revealMs * 0.9
+          LYRIC_REVEAL_MS * 0.9
         )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.8\\shad0\\blur0.2\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4804,7 +4172,7 @@ function createAssSubtitleContent(
           disableHighlight: false
         });
         const textTag = `{\\an4\\move(${laneX - 42},${laneY + 16},${laneX},${laneY},0,${Math.round(
-          revealMs
+          LYRIC_REVEAL_MS
         )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.1\\shad0\\blur0.32\\fscx100\\fscy100\\fsp0.8\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4818,8 +4186,8 @@ function createAssSubtitleContent(
         emojiAssetMap,
         baseTextHex: customStyleColorHex || "#ffffff"
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(travelY * 1.2)},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.15
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord1.2\\shad0\\blur0.2\\fsp1.1\\b1\\c${hexToAssColor(
         customStyleColorHex || "#ffffff"
       )}\\3c${hexToAssColor(customStyleColorHex || "#ffffff")}}`;
@@ -4836,9 +4204,9 @@ function createAssSubtitleContent(
         baseTextHex: "#ffffff",
         disableHighlight: false
       });
-      const magicTravelY = Math.round((isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45) * motionProfile.movementMultiplier);
+      const magicTravelY = Math.round(isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45);
       const textTag = `{\\an5\\move(${centerX},${centerY + magicTravelY},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.05
+        LYRIC_REVEAL_MS * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 0.78)})\\fscx96\\fscy96\\bord1.6\\shad0\\blur0.7\\fsp0.3\\i1\\c${hexToAssColor(
         "#ffffff"
       )}\\3c${hexToAssColor("#171717")}\\t(0,150,\\fscx104\\fscy104)\\t(150,260,\\fscx100\\fscy100)}`;
@@ -4855,8 +4223,8 @@ function createAssSubtitleContent(
         baseTextHex: neonHex,
         disableHighlight: true
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(travelY * 0.95)},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.05
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 0.95)},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx102\\fscy102\\bord1.1\\shad0\\blur${(0.45 + neonGlowStrength * 2.4).toFixed(2)}\\fsp${(
         0.8 + neonGlowStrength * 1.2
       ).toFixed(2)}\\b1\\c${hexToAssColor(
@@ -4878,7 +4246,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const baseTag = `{\\an5\\move(${centerX + 8},${centerY + 12},${centerX},${centerY},0,${Math.round(
-        revealMs
+        LYRIC_REVEAL_MS
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.6\\shad0\\blur0.25\\fsp0.9\\b1\\c${hexToAssColor(
         glitchPrimaryHex
       )}\\3c${hexToAssColor("#0f1015")}}`;
@@ -4898,13 +4266,13 @@ function createAssSubtitleContent(
 
     if (selectedVariant === "karaoke") {
       const karaokeHex = customStyleColorHex || accentHex || "#ffe17c";
-      const styledText = buildWordByWordLyricText(displayText, motionProfile.wordBuildDuration, effectiveWrapLength, {
+      const styledText = buildStyledLyricText(displayText, karaokeHex, wrapLength, {
         emojiAssetMap,
         baseTextHex: "#111111",
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 18},${centerX},${centerY},0,${Math.round(
-        revealMs * 0.9
+        LYRIC_REVEAL_MS * 0.9
       )})\\fad(${Math.round(fadeInMs * 0.82)},${Math.round(fadeOutMs * 0.86)})\\fscx100\\fscy100\\bord0\\shad0\\blur0\\fsp0.6\\b1\\c${hexToAssColor(
         "#111111"
       )}\\3c${hexToAssColor("#111111")}}`;
@@ -4922,7 +4290,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 14},${centerX},${centerY},0,${Math.round(
-        revealMs * 1.05
+        LYRIC_REVEAL_MS * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 1.05)})\\1a&H18&\\fscx100\\fscy100\\bord1.2\\shad0\\blur0.7\\fsp2.1\\c${hexToAssColor(
         whisperHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4944,7 +4312,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{${alignmentTag}\\move(${startPosterX},${centerY},${arrivalX},${centerY},0,${Math.round(
-        revealMs * 0.95
+        LYRIC_REVEAL_MS * 0.95
       )})\\fad(${Math.round(fadeInMs * 0.8)},${Math.round(fadeOutMs * 0.82)})\\fscx98\\fscy98\\bord1.4\\shad0.4\\blur0.05\\fsp-0.25\\b1\\c${hexToAssColor(
         posterTextHex
       )}\\3c${hexToAssColor(posterOutlineHex)}}`;
@@ -4995,17 +4363,17 @@ function createAssSubtitleContent(
         : selectedVariant === "cinematic"
           ? (index % 2 === 0 ? -1 : 1)
           : -1;
-    const startX = centerX + cinematicDirection * travelX;
-    const startY = centerY + travelY;
+    const startX = centerX + cinematicDirection * cinematicTravelX;
+    const startY = centerY + cinematicTravelY;
     const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
       emojiAssetMap,
       baseTextHex: primaryTextHex
     });
     const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-      revealMs * 1.4
+      LYRIC_REVEAL_MS * 1.4
     )})\\fad(${fadeInMs},${fadeOutMs})\\fscx106\\fscy106\\bord3\\shad0\\blur1.05\\fsp1.3\\frz${
       cinematicDirection * -1.2
-    }\\t(0,${Math.round(revealMs * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
+    }\\t(0,${Math.round(LYRIC_REVEAL_MS * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
       primaryTextHex
     )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
@@ -5839,54 +5207,6 @@ async function saveUploadedBackgroundVideo(payload, renderDirectory) {
   };
 }
 
-function resolveUploadedAudioExtension(uploadedAudio = {}) {
-  const originalExtension = path.extname(uploadedAudio.originalName || "");
-
-  if (originalExtension) {
-    return originalExtension;
-  }
-
-  if (/wav/i.test(uploadedAudio.mimeType || "")) {
-    return ".wav";
-  }
-
-  if (/ogg/i.test(uploadedAudio.mimeType || "")) {
-    return ".ogg";
-  }
-
-  if (/aac/i.test(uploadedAudio.mimeType || "")) {
-    return ".aac";
-  }
-
-  return ".mp3";
-}
-
-async function saveUploadedAudio(payload, renderDirectory) {
-  const uploadedAudio = payload.customAudioUpload;
-
-  if (!uploadedAudio?.tempPath || !fs.existsSync(uploadedAudio.tempPath)) {
-    return null;
-  }
-
-  const targetPath = path.join(
-    renderDirectory,
-    `uploaded-audio${resolveUploadedAudioExtension(uploadedAudio)}`
-  );
-
-  await fsp.copyFile(uploadedAudio.tempPath, targetPath);
-
-  try {
-    await fsp.unlink(uploadedAudio.tempPath);
-  } catch {}
-
-  return {
-    filePath: targetPath,
-    duration: Number(uploadedAudio.duration || 0),
-    originalName: uploadedAudio.originalName || path.basename(targetPath),
-    mimeType: uploadedAudio.mimeType || ""
-  };
-}
-
 async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirectory, backgroundPlan, videoSize) {
   updateJob(job, {
     stage: "Preparing uploaded image backgrounds",
@@ -6656,7 +5976,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const videoSize = getRenderSize(payload);
     const renderProfile = buildRenderProfile(payload);
     const allowSilentAudioFallback = process.env.ALLOW_SILENT_AUDIO_FALLBACK === "true";
-    const continueRenderOnBlockedAudio = process.env.RENDER_CONTINUE_ON_AUDIO_BLOCK === "true";
     const metadataDurationSeconds = Number(payload.durationSeconds || 0);
     let durationSeconds = getRenderDurationSeconds(
       metadataDurationSeconds > 0
@@ -6677,9 +5996,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         ? "Fast Render mode is active, so the app is using a lighter background pipeline and a quicker export profile."
         : "Standard render mode is active for the full visual pipeline."
     );
-    renderNotes.push(
-      "Lyric animation pacing now adapts to each line's vocal timing, so slower phrases hold longer and faster phrases reveal more quickly."
-    );
 
     if (adaptiveProfile.knownLyricsRisk) {
       renderNotes.push(
@@ -6688,22 +6004,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
-    const uploadedAudio = await saveUploadedAudio(payload, renderDirectory);
-    const uploadedAudioDurationSeconds = Number(
-      uploadedAudio?.duration || payload?.customAudioUpload?.duration || 0
-    );
-    const hasUploadedAudioOnlySource = Boolean(uploadedAudio?.filePath) && !`${payload.inputUrl || ""}`.trim();
-    const preferCookieBackedAudioRecovery =
-      adaptiveProfile.preferKnownAudioBlockRecovery || Boolean(resolveCookieFilePath());
-    const hasCaptionBackedLyrics =
-      payload.syncMode === "captions" && Array.isArray(payload.lines) && payload.lines.length >= 3;
-    const allowBlockedShortRecovery =
-      !hasUploadedAudioOnlySource && hasCaptionBackedLyrics && durationSeconds > 0 && durationSeconds <= 70;
-    const shouldAttemptAudioBuiltLyricsRecovery =
-      !hasUploadedAudioOnlySource &&
-      payload.videoId &&
-      (!Array.isArray(payload.lines) || payload.lines.length < 2 || payload.syncMode === "none");
-    const shouldContinueOnBlockedAudio = continueRenderOnBlockedAudio || allowBlockedShortRecovery;
 
     if (uploadedBackgroundPaths.length) {
       renderNotes.push(
@@ -6717,57 +6017,29 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
     }
 
-    if (uploadedAudioDurationSeconds > 0 && Math.abs(uploadedAudioDurationSeconds - durationSeconds) > 0.5) {
-      durationSeconds = getRenderDurationSeconds(uploadedAudioDurationSeconds);
-      renderNotes.push(
-        `Render duration was matched to the uploaded audio length (${roundTimeValue(uploadedAudioDurationSeconds)}s).`
-      );
-    }
-
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
-    let audioResolution = null;
-
-    if (uploadedAudio?.filePath) {
-      updateJob(job, {
-        stage: "Preparing uploaded audio fallback",
-        progress: 0.12
-      });
-      audioResolution = {
-        audioSource: {
-          input: uploadedAudio.filePath,
-          sourceType: "file",
-          mimeType: uploadedAudio.mimeType || "",
-          recovered: true,
-          uploaded: true
-        },
+    const audioUrlPromise = resolveAudioInput(payload.videoId, {
+      outputDirectory: audioInputDirectory,
+      allowDownloadFallback: true,
+      preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
+    }).then(
+      (audioSource) => ({
+        audioSource,
         error: null
-      };
-    } else {
-      const audioUrlPromise = resolveAudioInput(payload.videoId, {
-        outputDirectory: audioInputDirectory,
-        allowDownloadFallback: true,
-        preferLocal: true,
-        preferKnownBlockRecovery: preferCookieBackedAudioRecovery
-      }).then(
-        (audioSource) => ({
-          audioSource,
-          error: null
-        }),
-        (error) => ({
-          audioSource: null,
-          error
-        })
-      );
-      updateJob(job, {
-        stage: "Resolving video audio",
-        progress: 0.12
-      });
+      }),
+      (error) => ({
+        audioSource: null,
+        error
+      })
+    );
+    updateJob(job, {
+      stage: "Resolving video audio",
+      progress: 0.12
+    });
 
-      audioResolution = await audioUrlPromise;
-    }
+    const audioResolution = await audioUrlPromise;
     let audioUrl = "";
     let usingSilentAudioFallback = false;
-    let pendingAudioRecoveryError = null;
 
     if (audioResolution.error) {
       if (audioResolution.error?.code === "YOUTUBE_BOT_BLOCK") {
@@ -6778,66 +6050,38 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           message: audioResolution.error.message || ""
         });
 
-        if (!allowSilentAudioFallback && !shouldContinueOnBlockedAudio && !shouldAttemptAudioBuiltLyricsRecovery) {
+        if (!allowSilentAudioFallback) {
           const blockedAudioError = createRenderError(
-            "YouTube blocked audio access for this video. Upload the song audio in the app, add a YouTube cookie file on the server, or try another link.",
+            "YouTube blocked audio access for this video. Add a YouTube cookie file on the server or try another link.",
             503
           );
           blockedAudioError.code = "YOUTUBE_BOT_BLOCK";
           blockedAudioError.cause = audioResolution.error;
           throw blockedAudioError;
         }
-        if (shouldAttemptAudioBuiltLyricsRecovery) {
-          pendingAudioRecoveryError = audioResolution.error;
-          renderNotes.push(
-            "Direct YouTube soundtrack access was blocked, so the render will try to rebuild the audio and lyrics from a deeper transcription pass."
-          );
-        } else {
-          updateJob(job, {
-            stage: "Preparing fallback audio",
-            progress: 0.13
-          });
-          audioUrl = await createSilentAudioFallback(
-            path.join(audioInputDirectory, "silent-fallback.wav"),
-            durationSeconds
-          );
-          usingSilentAudioFallback = true;
-          renderNotes.push(
-            "YouTube blocked direct audio access for this video, so the render continued with a silent fallback track instead of stopping."
-          );
-          renderNotes.push(
-            "Final timing stays based on the video metadata and the lyric source that was already available."
-          );
-          if (!allowSilentAudioFallback && shouldContinueOnBlockedAudio) {
-            renderNotes.push(
-              "Render recovery mode kept the export alive even though silent fallback was not explicitly enabled in the environment."
-            );
-          }
-          if (allowBlockedShortRecovery) {
-            renderNotes.push(
-              "This short-form link already had usable caption timing, so the app finished the visual draft even though YouTube blocked the soundtrack on the server."
-            );
-          }
-        }
-      } else {
-        if (!shouldAttemptAudioBuiltLyricsRecovery) {
-          throw audioResolution.error;
-        }
-
-        pendingAudioRecoveryError = audioResolution.error;
-        renderNotes.push(
-          "The first soundtrack recovery path failed, so the render will try to generate audio-backed lyrics directly from the source audio."
+        updateJob(job, {
+          stage: "Preparing fallback audio",
+          progress: 0.13
+        });
+        audioUrl = await createSilentAudioFallback(
+          path.join(audioInputDirectory, "silent-fallback.wav"),
+          durationSeconds
         );
+        usingSilentAudioFallback = true;
+        renderNotes.push(
+          "YouTube blocked direct audio access for this video, so the render continued with a silent fallback track instead of stopping."
+        );
+        renderNotes.push(
+          "Final timing stays based on the video metadata and the lyric source that was already available."
+        );
+      } else {
+        throw audioResolution.error;
       }
     } else {
       audioUrl = audioResolution.audioSource.input;
     }
 
-    if (audioResolution.audioSource?.uploaded) {
-      renderNotes.push(
-        `Uploaded audio fallback ${uploadedAudio.originalName} is driving the soundtrack for this render.`
-      );
-    } else if (audioResolution.audioSource?.recovered) {
+    if (audioResolution.audioSource?.recovered) {
       renderNotes.push(
         "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
       );
@@ -6846,7 +6090,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const canUseAudioTranscription = !usingSilentAudioFallback;
     const audioDurationSeconds = usingSilentAudioFallback ? 0 : await probeAudioDurationSeconds(audioUrl);
 
-    if (audioDurationSeconds > 0 && Math.abs(audioDurationSeconds - durationSeconds) > 1) {
+    if (audioDurationSeconds > 0 && audioDurationSeconds < durationSeconds - 1) {
       durationSeconds = getRenderDurationSeconds(audioDurationSeconds);
       renderNotes.push(
         `Render duration was matched to the actual audio stream (${Math.round(audioDurationSeconds)}s).`
@@ -6866,7 +6110,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const cachedTranscriptions = new Map();
-    let latestTranscription = null;
 
     async function getTranscription(stageLabel, progressValue, options = {}) {
       if (!canUseAudioTranscription) {
@@ -6906,7 +6149,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
       if (
         transcription.audioDurationSeconds > 0 &&
-        Math.abs(transcription.audioDurationSeconds - durationSeconds) > 1
+        transcription.audioDurationSeconds < durationSeconds - 1
       ) {
         durationSeconds = getRenderDurationSeconds(transcription.audioDurationSeconds);
         renderNotes.push(
@@ -6920,62 +6163,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         audioUrl = transcription.audioPath;
       }
 
-      latestTranscription = transcription;
       cachedTranscriptions.set(cacheKey, transcription);
       return transcription;
     }
 
     const shouldUseRomanizedTeluguLyrics = shouldRomanizeTeluguLyrics(renderLines, payload);
-    if (!audioUrl && pendingAudioRecoveryError && canUseAudioTranscription) {
-      try {
-        const recoveryTranscription = await getTranscription(
-          shouldUseRomanizedTeluguLyrics
-            ? "Recovering Telugu audio and generating lyrics"
-            : "Recovering audio and generating lyrics",
-          0.16,
-          shouldUseRomanizedTeluguLyrics
-            ? {
-                task: "transcribe",
-                language: "te"
-              }
-            : {
-                task: "transcribe"
-              }
-        );
-
-        if (Array.isArray(recoveryTranscription?.lines) && recoveryTranscription.lines.length) {
-          renderNotes.push(
-            shouldUseRomanizedTeluguLyrics
-              ? "The main audio stream failed, so the render recovered by transcribing the song audio and rebuilding Telugu lyric timing in English letters."
-              : "The main audio stream failed, so the render recovered by transcribing the song audio and rebuilding lyric timing automatically."
-          );
-        }
-        pendingAudioRecoveryError = null;
-      } catch (error) {
-        pendingAudioRecoveryError = error;
-      }
-    }
-
-    if (!audioUrl && pendingAudioRecoveryError) {
-      if (shouldContinueOnBlockedAudio || shouldAttemptAudioBuiltLyricsRecovery) {
-        updateJob(job, {
-          stage: "Preparing fallback audio",
-          progress: 0.13
-        });
-        audioUrl = await createSilentAudioFallback(
-          path.join(audioInputDirectory, "silent-fallback.wav"),
-          durationSeconds
-        );
-        usingSilentAudioFallback = true;
-        renderNotes.push(
-          "Audio recovery still failed after the deeper transcription pass, so the render continued with a fallback track instead of stopping."
-        );
-        renderNotes.push(`Audio recovery detail: ${pendingAudioRecoveryError.message || pendingAudioRecoveryError}`);
-      } else {
-        throw pendingAudioRecoveryError;
-      }
-    }
-
     const prefersTranscribedLyrics = shouldPreferAudioTranscription(
       renderLines,
       durationSeconds,
@@ -7190,13 +6382,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const finalTranscribedRenderLines = wordTimedTranscribedLines.applied
             ? wordTimedTranscribedLines.lines
             : transcribedRenderLines;
-          const canPreferNoSourceAudioTranscript =
-            !sourceLyricReferenceLines.length &&
-            hasUsableAudioBuiltLyrics(finalTranscribedRenderLines, durationSeconds, {
-              minimumMeaningfulCount: durationSeconds <= 70 ? 2 : 3,
-              minimumCoverageRatio: durationSeconds <= 70 ? 0.025 : 0.03,
-              minimumSpanSeconds: durationSeconds <= 70 ? 2.4 : 3.6
-            });
           let alignedLyrics = {
             lines: [],
             anchorCount: 0
@@ -7215,10 +6400,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           if (
             (prefersTranscribedLyrics || shouldReplaceEarlyDriftingSource) &&
             finalTranscribedRenderLines.length &&
-            (
-              transcriptTimingMetrics.reliableForFullAlignment ||
-              canPreferNoSourceAudioTranscript
-            )
+            transcriptTimingMetrics.reliableForFullAlignment
           ) {
             renderLines = applyLyricOffset(
               finalTranscribedRenderLines,
@@ -7234,9 +6416,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                   : "The original lyric timing started drifting away from the detected vocals, so the render switched to audio-transcribed lyric lines."
                 : wordTimedTranscribedLines.applied
                   ? `The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines paced across ${wordTimedTranscribedLines.wordCount} sung words.`
-                  : canPreferNoSourceAudioTranscript
-                    ? "No trusted lyric sheet was available, so the video kept the usable Whisper transcript instead of dropping to fallback title cards."
-                    : "The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines."
+                  : "The original lyric source was too sparse for a full render, so the video switched to audio-transcribed lyric lines."
             );
           } else if (syncQualityCheck.rejectUnsafeTranscriptAlignment) {
             await recordAdaptiveSignalSafely({
@@ -7694,14 +6874,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             transcriptCandidateLines,
             durationSeconds
           );
-          const bestEffortTranscriptCandidateLines = limitLyricLines(
-            buildBestEffortTranscriptLines(
-              validationTranscription.lines,
-              validationTranscription.words,
-              durationSeconds
-            ),
-            durationSeconds
-          );
           const canUseEmergencyTranscriptFallback =
             !transcriptCandidateReport.approved &&
             !renderLinesAreTranscriptDerived &&
@@ -7714,27 +6886,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             emergencyTranscriptCandidateMetrics.coverageRatio >= 0.08 &&
             emergencyTranscriptCandidateMetrics.lastEnd >
               emergencyTranscriptCandidateMetrics.firstStart + 6;
-          const canUseUploadedAudioTranscriptFallback =
-            hasUploadedAudioOnlySource &&
-            !transcriptCandidateReport.approved &&
-            validationTranscriptMetrics.reliableForWindowFit &&
-            transcriptCandidateLines.length >= 3 &&
-            emergencyTranscriptCandidateMetrics.meaningfulCount >= 3 &&
-            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.05 &&
-            emergencyTranscriptCandidateMetrics.lastEnd >
-              emergencyTranscriptCandidateMetrics.firstStart + 4;
-          const canUseNoSourceTranscriptFallback =
-            !sourceLyricReferenceLines.length &&
-            !transcriptCandidateReport.approved &&
-            (
-              validationTranscriptMetrics.reliableForWindowFit ||
-              bestEffortTranscriptCandidateLines.length >= 2
-            ) &&
-            transcriptCandidateLines.length >= 2 &&
-            emergencyTranscriptCandidateMetrics.meaningfulCount >= 2 &&
-            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.02 &&
-            emergencyTranscriptCandidateMetrics.lastEnd >
-              emergencyTranscriptCandidateMetrics.firstStart + 2.2;
 
           if (
             transcriptCandidateReport.approved &&
@@ -7768,42 +6919,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             renderNotes.push(
               "Strict sync verification recovered the render by switching from a weak estimated lyric sheet to the safer audio transcript timing."
             );
-          } else if (canUseUploadedAudioTranscriptFallback) {
-            renderLines = transcriptCandidateLines;
-            renderLineSyncSource = "transcribed";
-            renderLinesAreTranscriptDerived = true;
-            strictSyncReport = {
-              ...transcriptCandidateReport,
-              approved: true,
-              reason: "",
-              approvalMode: "uploaded-audio-sparse-transcript-fallback",
-              transcriptDerived: true,
-              candidateMetrics: emergencyTranscriptCandidateMetrics,
-              transcriptMetrics: validationTranscriptMetrics
-            };
-            renderNotes.push(
-              "Strict sync verification recovered this uploaded-audio render with the best available transcript after the sync pass produced no safe lyric lines."
-            );
-          } else if (canUseNoSourceTranscriptFallback) {
-            renderLines =
-              transcriptCandidateLines.length >= 2
-                ? transcriptCandidateLines
-                : bestEffortTranscriptCandidateLines;
-            renderLineSyncSource = "transcribed";
-            renderLinesAreTranscriptDerived = true;
-            strictSyncReport = {
-              ...transcriptCandidateReport,
-              approved: true,
-              reason: "",
-              approvalMode: "best-effort-audio-transcript",
-              transcriptDerived: true,
-              candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-              transcriptMetrics: validationTranscriptMetrics,
-              referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-            };
-            renderNotes.push(
-              "Strict sync verification recovered this no-lyrics YouTube render with the best available audio-built transcript after the sync pass produced no stronger lyric source."
-            );
           }
         }
 
@@ -7825,186 +6940,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               category: "sparse_validation_preview",
               message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
             });
-            } else if (
-              canApproveShortCaptionReferenceReport({
-                report: strictSyncReport,
-                syncMode: renderLineSyncSource,
-                durationSeconds,
-                referenceLines: sourceLyricReferenceLines
-              })
-            ) {
-              const shortCaptionReferenceLines = limitLyricLines(
-                applyLyricOffset(sourceLyricReferenceLines, lyricOffsetSeconds, durationSeconds),
-                durationSeconds
-              );
-
-              if (shortCaptionReferenceLines.length) {
-                renderLines = shortCaptionReferenceLines;
-                renderLineSyncSource = payload.syncMode;
-                renderLinesAreTranscriptDerived = false;
-                strictSyncReport = {
-                  ...strictSyncReport,
-                  approved: true,
-                  reason: "",
-                  approvalMode: "short-caption-reference-fallback",
-                  transcriptDerived: false,
-                  candidateMetrics: getSourceTimingMetrics(shortCaptionReferenceLines, durationSeconds),
-                  referenceMetrics: getSourceTimingMetrics(shortCaptionReferenceLines, durationSeconds)
-                };
-                renderNotes.push(
-                  "Strict sync verification kept the original caption timing for this short-form video because the validation transcript was too sparse to replace it safely."
-                );
-              } else {
-                throw createStrictSyncValidationError(strictSyncReport);
-              }
-            } else if (
-              hasUploadedAudioOnlySource &&
-              (
-                canApproveUploadedAudioSparseTranscriptReport(strictSyncReport) ||
-                renderLineSyncSource === "synced-lyrics" ||
-                renderLines.length >= 4
-              )
-            ) {
-              strictSyncReport = {
-                ...strictSyncReport,
-              approved: true,
-              reason: "",
-              approvalMode: "uploaded-audio-sparse-transcript-fallback",
-              transcriptDerived: true
-            };
-            renderNotes.push(
-              "Strict sync verification approved this uploaded-audio render with the best available transcript even though the final transcript was sparse."
-            );
-            } else if (
-              canApproveNoSourceTranscriptFallbackReport({
-                report: strictSyncReport,
-                syncMode: renderLineSyncSource,
-                durationSeconds,
-                referenceLines: sourceLyricReferenceLines
-              })
-            ) {
-              strictSyncReport = {
-                ...strictSyncReport,
-                approved: true,
-                reason: "",
-                approvalMode: "no-source-transcript-fallback",
-                transcriptDerived: true
-              };
-              renderNotes.push(
-                "Strict sync verification approved the best available audio-built lyric timing because no trusted web lyric sheet existed for this video."
-              );
-            } else if (
-              !sourceLyricReferenceLines.length &&
-              renderLineSyncSource === "transcribed" &&
-              hasUsableAudioBuiltLyrics(renderLines, durationSeconds, {
-                minimumMeaningfulCount: durationSeconds <= 70 ? 2 : 3,
-                minimumCoverageRatio: durationSeconds <= 70 ? 0.025 : 0.03,
-                minimumSpanSeconds: durationSeconds <= 70 ? 2.4 : 3.6
-              })
-            ) {
-              strictSyncReport = {
-                ...strictSyncReport,
-                approved: true,
-                reason: "",
-                approvalMode: "best-effort-audio-transcript",
-                transcriptDerived: true,
-                candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-              };
-              renderNotes.push(
-                "Strict sync verification accepted the best available audio-built lyric timing because this video had no stronger web lyric sheet to fall back to."
-              );
-            } else if (!sourceLyricReferenceLines.length) {
-              const bestEffortTranscriptFallbackLines = limitLyricLines(
-                buildBestEffortTranscriptLines(
-                  validationTranscription.lines,
-                  validationTranscription.words,
-                  durationSeconds
-                ),
-                durationSeconds
-              );
-
-              if (bestEffortTranscriptFallbackLines.length >= 2) {
-                renderLines = bestEffortTranscriptFallbackLines;
-                renderLineSyncSource = "transcribed";
-                renderLinesAreTranscriptDerived = true;
-                strictSyncReport = {
-                  ...strictSyncReport,
-                  approved: true,
-                  reason: "",
-                  approvalMode: "best-effort-audio-transcript",
-                  transcriptDerived: true,
-                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-                };
-                renderNotes.push(
-                  "No trusted lyric sheet was available for this video, so the render kept the best available timed audio transcript instead of dropping to title cards."
-                );
-              } else {
-                renderLines = buildFallbackLines(payload, durationSeconds);
-                renderLineSyncSource = "generated-fallback";
-                renderLinesAreTranscriptDerived = false;
-                strictSyncReport = {
-                  ...strictSyncReport,
-                  approved: true,
-                  reason: "",
-                  approvalMode: "generated-fallback-no-source",
-                  transcriptDerived: false,
-                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-                };
-                renderNotes.push(
-                  "No trusted lyric sheet was available for this video, so the render continued with generated fallback title cards instead of failing the sync check."
-                );
-              }
-            } else {
-              if (shouldBypassStrictSyncFailure(payload)) {
-                if (renderLines.length < 2) {
-                  renderLines = buildFallbackLines(payload, durationSeconds);
-                }
-
-                strictSyncReport = {
-                  ...strictSyncReport,
-                  approved: true,
-                  reason: "",
-                  approvalMode: "trusted-sparse-source-bypass",
-                  transcriptDerived: renderLinesAreTranscriptDerived,
-                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-                };
-                renderNotes.push(
-                  "Strict sync validation was bypassed for this uploaded-audio or Telugu/devotional render, so the export continued with the best available lyric source."
-                );
-              } else if (hasUploadedAudioOnlySource) {
-                const hasAnyLines = Array.isArray(renderLines) && renderLines.length >= 2;
-
-                if (!hasAnyLines) {
-                  renderLines = buildFallbackLines(payload, durationSeconds);
-                  renderLineSyncSource = "generated-fallback";
-                  renderLinesAreTranscriptDerived = false;
-                }
-
-                strictSyncReport = {
-                  ...strictSyncReport,
-                  approved: true,
-                  reason: "",
-                  approvalMode: hasAnyLines
-                    ? "uploaded-audio-sparse-transcript-fallback"
-                    : "generated-fallback-no-source",
-                  transcriptDerived: hasAnyLines ? renderLinesAreTranscriptDerived : false,
-                  candidateMetrics: getSourceTimingMetrics(renderLines, durationSeconds),
-                  referenceMetrics: getSourceTimingMetrics(renderLines, durationSeconds)
-                };
-                renderNotes.push(
-                  hasAnyLines
-                    ? "Strict sync check was relaxed for uploaded audio and the render kept the best available transcript-driven lyric lines."
-                    : "Strict sync check was relaxed for uploaded audio, so the render used generated fallback title cards instead of failing."
-                );
-              } else {
-                throw createStrictSyncValidationError(strictSyncReport);
-              }
-            }
+          } else {
+            throw createStrictSyncValidationError(strictSyncReport);
           }
+        }
 
         if (strictSyncReport.approved && strictSyncReport.approvalMode === "structured-source-fallback") {
           await recordAdaptiveSignalSafely({
@@ -8028,26 +6967,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     if (!renderLines.length) {
-      const bestEffortTranscriptLines = limitLyricLines(
-        buildBestEffortTranscriptLines(
-          latestTranscription?.lines,
-          latestTranscription?.words,
-          durationSeconds
-        ),
-        durationSeconds
-      );
-
-      if (bestEffortTranscriptLines.length >= 2) {
-        renderLines = bestEffortTranscriptLines;
-        renderLineSyncSource = "transcribed";
-        renderLinesAreTranscriptDerived = true;
-        renderNotes.push(
-          "No trusted lyric sheet was available, so the render rebuilt a timed lyric draft directly from the detected audio words."
-        );
-      }
-    }
-
-    if (!renderLines.length) {
       await recordAdaptiveSignalSafely({
         channelTitle: payload.channelTitle,
         title: payload.title || payload.song?.title || "",
@@ -8055,12 +6974,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         message: "No verified lyric lines were available after all render-time recovery steps."
       });
 
-      if (
-        payload.requireVerifiedSync !== false &&
-        canUseAudioTranscription &&
-        !shouldBypassStrictSyncFailure(payload) &&
-        sourceLyricReferenceLines.length
-      ) {
+      if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
         throw createRenderError(
           "No verified lyric lines were available for this video, so the app stopped before rendering.",
           422
@@ -8068,32 +6982,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
 
       renderLines = buildFallbackLines(payload, durationSeconds);
-      renderNotes.push(
-        shouldBypassStrictSyncFailure(payload)
-          ? "Verified lyrics stayed too sparse, so this uploaded-audio or Telugu/devotional render continued with safe fallback title cards."
-          : "Lyrics were not found or transcribed, so the video uses artist and title cards instead."
-      );
+      renderNotes.push("Lyrics were not found or transcribed, so the video uses artist and title cards instead.");
     } else {
-      if (renderLineSyncSource === "transcribed") {
-        const smoothedTranscribedPacing = smoothTranscribedDisplayPacing(renderLines, durationSeconds, {
-          minimumDisplaySeconds: 2.5,
-          maximumDisplaySeconds: 5.0
-        });
-
-        if (smoothedTranscribedPacing.changed) {
-          renderLines = smoothedTranscribedPacing.lines;
-          renderNotes.push(
-            smoothedTranscribedPacing.mergedCount > 0
-              ? `Transcribed lyric pacing was smoothed by merging ${smoothedTranscribedPacing.mergedCount} fast micro-line transition${smoothedTranscribedPacing.mergedCount === 1 ? "" : "s"}, so slower vocals stay readable on screen.`
-              : "Transcribed lyric pacing was smoothed so slower vocals hold longer on screen while faster vocals still move quickly."
-          );
-        }
-      }
-
       renderNotes.push("Lyrics animate in bold kinetic title cards with fast entry and exit motion.");
     }
-
-    renderNotes.push(describeFinalLyricSource(renderLineSyncSource, renderLinesAreTranscriptDerived));
 
     const uploadedImageTimelineProfile = uploadedBackgroundPaths.length && !uploadedBackgroundVideo
       ? {
@@ -8458,23 +7350,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 }
 
 async function startRenderJob(payload) {
-  const customUploadVideoId =
-    typeof payload.videoId === "string" && /^upload-/i.test(payload.videoId.trim())
-      ? payload.videoId.trim()
-      : "";
-  const extractedVideoId = customUploadVideoId
-    ? ""
-    : extractVideoId(payload.videoId || payload.inputUrl);
-  const fallbackVideoId =
-    slugify(
-      customUploadVideoId ||
-        payload.videoId ||
-        payload.song?.title ||
-        payload.title ||
-        payload.customAudioUpload?.originalName ||
-        "uploaded-audio"
-    ) || "uploaded-audio";
-  const videoId = extractedVideoId || customUploadVideoId || `upload-${fallbackVideoId}`;
+  const videoId = extractVideoId(payload.videoId || payload.inputUrl);
   const titleSlug = slugify(payload.song?.title || payload.title || videoId) || videoId;
   const createdAt = new Date().toISOString();
 

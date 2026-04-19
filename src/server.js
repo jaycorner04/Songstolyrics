@@ -19,34 +19,21 @@ const {
   uploadsRoot
 } = require("./config/runtime");
 const {
-  cacheRemoteAudioUrlToFile,
-  findDownloadedAudioFile,
   isYouTubeBotBlockError,
-  getAudioMimeType,
   resolveAudioInput,
   resolveAudioUrl,
-  resolveAudioUrlDeep,
   resolveVideoUrl
 } = require("./services/audio");
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
 const { getRuntimeDiagnostics } = require("./services/deployment");
-const {
-  buildLyricsPayload,
-  estimateStartsFromDuration,
-  inferSongFromFilename,
-  inferSongFromVideo,
-  parseLyricsLines,
-  parseSyncedLyrics,
-  searchLrcLib
-} = require("./services/lyrics");
+const { buildLyricsPayload, inferSongFromVideo } = require("./services/lyrics");
 const {
   buildRequestDebugContext,
   clearLocalDebugEvents,
   deleteLocalDebugEvent,
   getLocalDebugEvents,
   isLocalDebugRequest,
-  recordLocalDebugEvent,
-  subscribeLocalDebugEvents
+  recordLocalDebugEvent
 } = require("./services/local-debug");
 const { containsTeluguScript, romanizeLyricLines } = require("./services/telugu");
 const { transcribeYouTubeAudio } = require("./services/transcription");
@@ -72,8 +59,6 @@ const port = Number(process.env.PORT || 3000);
 const trustProxy = process.env.TRUST_PROXY === "true";
 const buildMarker =
   `${process.env.BUILD_MARKER || `dev-${Date.now()}`}`.trim() || `dev-${Date.now()}`;
-const localDebugRemoteBaseUrl =
-  `${process.env.LOCAL_DEBUG_REMOTE_BASE_URL || "https://d2nlogmzadt51n.cloudfront.net"}`.trim();
 const publicIndexPath = path.join(publicRoot, "index.html");
 let startupDiagnostics = {
   checkedAt: "",
@@ -82,7 +67,6 @@ let startupDiagnostics = {
   transcriptionReady: false,
   checks: {}
 };
-const previewWarmups = new Map();
 
 const renderUpload = multer({
   storage: multer.diskStorage({
@@ -91,20 +75,11 @@ const renderUpload = multer({
     },
     filename(req, file, callback) {
       const originalExtension = path.extname(file.originalname || "");
-      const fallbackExtension =
-        file.fieldname === "audioFile"
-          ? file.mimetype.includes("wav")
-            ? ".wav"
-            : file.mimetype.includes("ogg")
-              ? ".ogg"
-              : file.mimetype.includes("aac")
-                ? ".aac"
-                : ".mp3"
-          : file.mimetype.includes("webm")
-            ? ".webm"
-            : file.mimetype.includes("quicktime")
-              ? ".mov"
-              : ".mp4";
+      const fallbackExtension = file.mimetype.includes("webm")
+        ? ".webm"
+        : file.mimetype.includes("quicktime")
+          ? ".mov"
+          : ".mp4";
       const extension = originalExtension || fallbackExtension;
       callback(
         null,
@@ -117,16 +92,6 @@ const renderUpload = multer({
     fieldSize: 80 * 1024 * 1024
   },
   fileFilter(req, file, callback) {
-    if (file.fieldname === "audioFile") {
-      if (!/^audio\//i.test(file.mimetype || "")) {
-        callback(createError("Only audio files can be uploaded as a sound fallback.", 400));
-        return;
-      }
-
-      callback(null, true);
-      return;
-    }
-
     if (!/^video\//i.test(file.mimetype || "")) {
       callback(createError("Only video files can be uploaded as a background video.", 400));
       return;
@@ -165,210 +130,13 @@ function asyncHandler(handler) {
   };
 }
 
-function shouldSkipLocalDebugApiEvent(req, error, statusCode) {
-  const requestPath = `${req?.originalUrl || req?.url || ""}`.trim();
-  const requestMethod = `${req?.method || ""}`.trim().toUpperCase();
-
-  if (`${req?.headers?.["x-local-debug-silent"] || ""}`.trim() === "1") {
-    return true;
-  }
-
-  if (
-    statusCode === 404 &&
-    /^\/api\/render\/not-a-real-job(?:\/(?:file|download))?$/i.test(requestPath)
-  ) {
-    return true;
-  }
-
-  if (
-    /^\/api\/render$/i.test(requestPath) &&
-    /request aborted/i.test(`${error?.message || ""}`)
-  ) {
-    return true;
-  }
-
-  if (
-    requestMethod === "HEAD" &&
-    /^\/api\/audio\//i.test(requestPath) &&
-    (
-      error?.code === "YOUTUBE_BOT_BLOCK" ||
-      isYouTubeBotBlockError(error) ||
-      statusCode >= 400
-    )
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function warmPreviewAudioCache(videoId, audioSource) {
-  if (!videoId || !audioSource?.input) {
-    return Promise.resolve();
-  }
-
-  const outputDirectory = path.join(previewAudioCacheRoot, videoId);
-
-  return Promise.resolve()
-    .then(async () => {
-      if (audioSource.sourceType === "file") {
-        return;
-      }
-
-      await cacheRemoteAudioUrlToFile(audioSource.input, outputDirectory, videoId);
-    })
-    .catch(() => {});
-}
-
-function queuePreviewWarmup(videoId) {
-  if (!videoId) {
-    return;
-  }
-
-  const existingWarmup = previewWarmups.get(videoId);
-
-  if (existingWarmup) {
-    return;
-  }
-
-  const warmupPromise = Promise.resolve()
-    .then(async () => {
-      const outputDirectory = path.join(previewAudioCacheRoot, videoId);
-      const source = await resolveAudioInput(videoId, {
-        outputDirectory,
-        allowDownloadFallback: true
-      });
-      await warmPreviewAudioCache(videoId, source);
-    })
-    .catch(() => {})
-    .finally(() => {
-      previewWarmups.delete(videoId);
-    });
-
-  previewWarmups.set(videoId, warmupPromise);
-}
-
-async function proxyRemoteMedia(req, res, sourceUrl, defaultMimeType = "application/octet-stream") {
-  const upstreamHeaders = new Headers();
-  const requestedRange = `${req.headers.range || ""}`.trim();
-
-  if (requestedRange) {
-    upstreamHeaders.set("Range", requestedRange);
-  }
-
-  const upstreamResponse = await fetch(sourceUrl, {
-    method: "GET",
-    headers: upstreamHeaders,
-    redirect: "follow"
-  });
-
-  if (!upstreamResponse.ok && upstreamResponse.status !== 206) {
-    throw createError("The server could not stream that soundtrack right now.", 502);
-  }
-
-  const passthroughHeaders = [
-    "accept-ranges",
-    "content-length",
-    "content-range",
-    "content-type",
-    "etag",
-    "last-modified"
-  ];
-
-  res.setHeader("Cache-Control", "no-store");
-  res.status(upstreamResponse.status);
-
-  passthroughHeaders.forEach((headerName) => {
-    const value = upstreamResponse.headers.get(headerName);
-
-    if (value) {
-      res.setHeader(headerName, value);
-    }
-  });
-
-  if (!res.getHeader("content-type")) {
-    res.type(defaultMimeType);
-  }
-
-  if (!upstreamResponse.body) {
-    res.end();
-    return;
-  }
-
-  const upstreamStream = upstreamResponse.body;
-  const writable = res;
-
-  await upstreamStream.pipeTo(
-    new WritableStream({
-      write(chunk) {
-        return new Promise((resolve, reject) => {
-          writable.write(Buffer.from(chunk), (error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-
-            resolve();
-          });
-        });
-      },
-      close() {
-        writable.end();
-      },
-      abort(error) {
-        writable.destroy(error);
-      }
-    })
-  );
-}
-
-async function sendCachedPreviewAudio(res, videoId, outputDirectory, fallbackMimeType = "audio/mpeg") {
-  const cachedPreviewPath = await findDownloadedAudioFile(videoId, outputDirectory);
-
-  if (!cachedPreviewPath) {
-    return false;
-  }
-
-  res.setHeader("Cache-Control", "no-store");
-  res.type(getAudioMimeType(cachedPreviewPath) || fallbackMimeType);
-  res.sendFile(cachedPreviewPath);
-  return true;
-}
-
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
-  const renderedHtml = html
-    .replace(/__BUILD_MARKER__/g, buildMarker)
-    .replace(/__LOCAL_DEBUG_BASE_URL__/g, localDebugRemoteBaseUrl);
+  const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
   res.type("html").send(renderedHtml);
-}
-
-function isAllowedLocalDebugCorsOrigin(origin = "") {
-  try {
-    const parsed = new URL(`${origin || ""}`.trim());
-    const hostname = `${parsed.hostname || ""}`.trim().toLowerCase();
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-  } catch {
-    return false;
-  }
-}
-
-function applyLocalDebugCors(req, res) {
-  const origin = `${req.headers?.origin || ""}`.trim();
-
-  if (!isAllowedLocalDebugCorsOrigin(origin)) {
-    return false;
-  }
-
-  res.set("Access-Control-Allow-Origin", origin);
-  res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type,Cache-Control,X-Local-Debug-Silent");
-  res.set("Access-Control-Allow-Credentials", "false");
-  return true;
 }
 
 app.get(
@@ -403,22 +171,12 @@ function buildWarnings(result) {
 function buildApiErrorMessage(error, req = {}) {
   const requestPath = `${req.originalUrl || req.url || ""}`;
 
-  if (/request aborted/i.test(`${error?.message || ""}`)) {
-    return /^\/api\/render$/i.test(requestPath)
-      ? "The upload was interrupted before the render could start. Please try again on a stable connection."
-      : "The request was interrupted before the server could finish reading it.";
-  }
-
   if (error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)) {
     if (/^\/api\/audio\//i.test(requestPath)) {
-      return "Live preview audio is not available from this server for this song right now. You can still render it, or add the song audio for guaranteed sound.";
+      return "Audio preview is blocked for this video on the server right now. Rendering may still work later if server-side YouTube access is available.";
     }
 
-    if (/^\/api\/video-frames\//i.test(requestPath)) {
-      return "The server could not sample live video frames for this song, so the app should fall back to artwork instead.";
-    }
-
-    return "This song opened in recovery mode because live YouTube audio is limited on this server right now. You can still continue, or add audio for guaranteed sound.";
+    return "YouTube blocked audio access for this video on the server. Try another link or add a server cookie file.";
   }
 
   const statusCode = Number(error?.statusCode || 500);
@@ -427,106 +185,8 @@ function buildApiErrorMessage(error, req = {}) {
     : error?.message || "Request failed.";
 }
 
-function buildAudioAccessState({ audioPreviewBlocked = false, audioPreviewProbe = {} } = {}) {
-  const checks = startupDiagnostics?.checks || {};
-  const cookieConfigured = Boolean(checks.ytDlpCookies?.ok);
-  const ytDlpProxyConfigured = Boolean(checks.ytDlpProxy?.ok);
-  const ytdlCoreProxyConfigured = Boolean(checks.ytdlCoreProxy?.ok);
-  const bgutilConfigured = Boolean(checks.ytDlpBgutilProvider?.ok);
-  const proxyConfigured = ytDlpProxyConfigured || ytdlCoreProxyConfigured;
-  const recoveryConfigured = cookieConfigured || proxyConfigured || bgutilConfigured;
-  const probeReason = normalizeWhitespace(
-    audioPreviewProbe?.reason || (audioPreviewProbe?.timedOut ? "probe-timeout" : "")
-  );
-  const hasDedicatedRecoveryProxy = Boolean(ytdlCoreProxyConfigured);
-  const recoveryParts = [];
-
-  if (cookieConfigured) {
-    recoveryParts.push("signed-in cookies");
-  }
-
-  if (hasDedicatedRecoveryProxy) {
-    recoveryParts.push("a dedicated recovery proxy");
-  } else if (ytDlpProxyConfigured) {
-    recoveryParts.push("a server proxy");
-  }
-
-  if (bgutilConfigured) {
-    recoveryParts.push("bgutil recovery");
-  }
-
-  const recoveryLabel = recoveryParts.length ? recoveryParts.join(" + ") : "server recovery";
-
-  if (!audioPreviewBlocked) {
-    return {
-      mode: "available",
-      previewAvailable: true,
-      cookieConfigured,
-      proxyConfigured,
-      recoveryConfigured,
-      probeReason,
-      badgeLabel: "Audio live",
-      title: "Live soundtrack is reachable",
-      summary:
-        "YouTube preview audio is available for this link. The final render will still verify timing before export.",
-      primaryActionLabel: "Create lyric video",
-      recommendedAction: "render"
-    };
-  }
-
-  if (recoveryConfigured) {
-    return {
-      mode: "recovery",
-      previewAvailable: false,
-      cookieConfigured,
-      proxyConfigured,
-      recoveryConfigured,
-      probeReason,
-      badgeLabel: "Recovery ready",
-      title: "This link is ready in smart recovery mode",
-      summary:
-        probeReason === "probe-timeout"
-          ? `The quick sound check stayed conservative, so the preview player is hidden for now. The final render will still try ${recoveryLabel} before asking for an uploaded audio file.`
-          : `Live preview audio is not available on this server for this link, but the final render will still try ${recoveryLabel} before asking for an uploaded audio file.`,
-      primaryActionLabel: "Create smart recovery render",
-      recommendedAction: "render-or-upload"
-    };
-  }
-
-  return {
-    mode: "upload-recommended",
-    previewAvailable: false,
-    cookieConfigured,
-    proxyConfigured,
-    recoveryConfigured,
-    probeReason,
-    badgeLabel: "Add sound",
-    title: "This link is ready, and a sound file will make it perfect",
-    summary:
-      "Lyrics and artwork are ready. Add the song audio file here if you want guaranteed sound in the final video.",
-    primaryActionLabel: "Add audio",
-    recommendedAction: "upload-audio"
-  };
-}
-
 function normalizeWhitespace(value = "") {
   return `${value || ""}`.replace(/\s+/g, " ").trim();
-}
-
-function getLatestTimedItemEnd(items = []) {
-  return (Array.isArray(items) ? items : []).reduce((largestEnd, item) => {
-    const start = Math.max(0, Number(item?.start || 0));
-    const duration = Math.max(0, Number(item?.duration || 0));
-    return Math.max(largestEnd, start + duration);
-  }, 0);
-}
-
-function slugifyProjectId(value = "") {
-  return `${value || ""}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
 }
 
 function dedupeSequentialLines(lines = []) {
@@ -1019,48 +679,21 @@ function buildCaptionFallbackPayload(captionCues = [], durationSeconds = 0, fall
 
 function getLyricPreviewMetrics(lines = [], durationSeconds = 0) {
   const safeLines = Array.isArray(lines) ? lines : [];
-  const meaningfulLines = safeLines.filter((line) => {
+  const meaningfulCount = safeLines.filter((line) => {
     const words = normalizeWhitespace(line?.text || "").split(/\s+/).filter(Boolean);
     return words.length >= 2;
-  });
-  const meaningfulCount = meaningfulLines.length;
+  }).length;
   const coveredSeconds = safeLines.reduce(
     (sum, line) => sum + Math.max(0.8, Math.min(4.5, Number(line?.duration || 0))),
     0
   );
   const effectiveDuration = Math.max(12, Number(durationSeconds || 0));
-  const firstMeaningfulStart = meaningfulLines.length
-    ? Math.max(0, Number(meaningfulLines[0]?.start || 0))
-    : 0;
-  const lastMeaningfulStart = meaningfulLines.length
-    ? Math.max(0, Number(meaningfulLines.at(-1)?.start || 0))
-    : 0;
 
   return {
     lineCount: safeLines.length,
     meaningfulCount,
-    coverageRatio: effectiveDuration > 0 ? coveredSeconds / effectiveDuration : 0,
-    firstMeaningfulStart,
-    lastMeaningfulStart
+    coverageRatio: effectiveDuration > 0 ? coveredSeconds / effectiveDuration : 0
   };
-}
-
-function hasSuspiciousLateOpeningPreviewTiming(metrics = {}, durationSeconds = 0) {
-  const effectiveDuration = Math.max(12, Number(durationSeconds || 0));
-  const firstMeaningfulStart = Math.max(0, Number(metrics?.firstMeaningfulStart || 0));
-  const meaningfulCount = Math.max(0, Number(metrics?.meaningfulCount || 0));
-  const lateOpeningThreshold = Math.max(18, effectiveDuration * 0.28);
-  const veryLateOpeningThreshold = Math.max(24, effectiveDuration * 0.38);
-
-  if (meaningfulCount < 4) {
-    return false;
-  }
-
-  if (firstMeaningfulStart >= veryLateOpeningThreshold) {
-    return true;
-  }
-
-  return effectiveDuration <= 95 && firstMeaningfulStart >= lateOpeningThreshold;
 }
 
 function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
@@ -1081,26 +714,6 @@ function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
   return false;
 }
 
-function shouldPreferCaptionPreviewForShortVideo(metadata = {}, captionSummary = {}) {
-  const durationSeconds = Number(metadata?.durationSeconds || 0);
-  const title = normalizeWhitespace(metadata?.title || "").toLowerCase();
-  const description = normalizeWhitespace(metadata?.description || "").toLowerCase();
-  const readableCount = Number(captionSummary?.readableCount || 0);
-  const totalCount = Number(captionSummary?.total || 0);
-  const readableRatio = totalCount > 0 ? readableCount / totalCount : 0;
-  const shortTagDetected = /(^|[\s#])shorts?\b/.test(title) || /(^|[\s#])shorts?\b/.test(description);
-
-  if (durationSeconds > 70) {
-    return false;
-  }
-
-  if (readableCount < 4) {
-    return false;
-  }
-
-  return shortTagDetected || readableRatio >= 0.55 || totalCount <= 12;
-}
-
 function shouldUseAudioFallbackForPreview(metadata = {}, lyricResult = {}, options = {}) {
   if (options.hasFastDescriptionLyrics) {
     return false;
@@ -1113,10 +726,6 @@ function shouldUseAudioFallbackForPreview(metadata = {}, lyricResult = {}, optio
   }
 
   if (lyricResult?.syncMode === "synced-lyrics") {
-    if (hasSuspiciousLateOpeningPreviewTiming(metrics, metadata?.durationSeconds)) {
-      return true;
-    }
-
     return false;
   }
 
@@ -1148,7 +757,7 @@ async function recordAdaptiveSignalSafely(payload = {}) {
   } catch {}
 }
 
-async function buildPreviewLyrics(metadata, videoId, captionCues = [], options = {}) {
+async function buildPreviewLyrics(metadata, videoId, captionCues = []) {
   const fallbackSong = inferSongFromVideo(metadata.title, metadata.channelTitle);
   const descriptionSong = inferSongFromDescriptionCredits(metadata.description, fallbackSong);
   const adaptiveProfile = await getAdaptiveProfile({
@@ -1157,31 +766,6 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   });
   const captionSummary = selectCaptionCuesForLyrics(captionCues, adaptiveProfile);
   const safeCaptionCues = captionSummary.usableCues;
-
-  if (shouldPreferCaptionPreviewForShortVideo(metadata, captionSummary)) {
-    const captionFallback = buildCaptionFallbackPayload(
-      captionSummary.readableCues,
-      metadata.durationSeconds,
-      descriptionSong || fallbackSong
-    );
-
-    if (captionFallback?.lines?.length) {
-      const romanizedCaptionFallback = romanizeLyricResultIfNeeded(captionFallback);
-      const warnings = [
-        "This short-form video opened with YouTube captions for a faster preview."
-      ];
-
-      if (romanizedCaptionFallback.changed) {
-        warnings.push("Telugu lyrics were converted into English letters for the website preview.");
-      }
-
-      return {
-        lyricResult: romanizedCaptionFallback.lyricResult,
-        warnings
-      };
-    }
-  }
-
   let lyricResult = await withTimeout(
     buildLyricsPayload({
       rawTitle: metadata.title,
@@ -1282,50 +866,11 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   }
 
   const shouldRomanize = shouldRomanizeTeluguLyrics(metadata, lyricResult);
-  const previewMetrics = getLyricPreviewMetrics(lyricResult?.lines, metadata?.durationSeconds);
-  const lateOpeningPreviewDetected =
-    lyricResult?.syncMode === "synced-lyrics"
-    && hasSuspiciousLateOpeningPreviewTiming(previewMetrics, metadata?.durationSeconds);
-  const skipDeepAudioPreviewRecovery =
-    lateOpeningPreviewDetected && Number(captionSummary?.readableCount || 0) < 4;
-
-  if (lateOpeningPreviewDetected) {
-    lyricResult = {
-      song: lyricResult?.song || descriptionSong || fallbackSong,
-      source: "unavailable",
-      syncMode: "none",
-      lines: []
-    };
-  }
-
   const shouldUseAudioFallback = shouldUseAudioFallbackForPreview(metadata, lyricResult, {
     hasFastDescriptionLyrics: Boolean(descriptionLyrics)
   });
-  const hasNoLyrics = !lyricResult?.lines?.length || lyricResult?.syncMode === "none";
 
-  if (lateOpeningPreviewDetected) {
-    warnings.push(
-      "The web lyric sheet opened unusually late for this song, so the app is rebuilding timing from the audio for a safer preview."
-    );
-  }
-
-  if (skipDeepAudioPreviewRecovery) {
-    warnings.push(
-      "This link does not have a quick caption fallback, so the website is skipping slow preview regeneration. Add the song audio in the app if you want tight lyric sync for this video."
-    );
-  }
-
-  if (!shouldUseAudioFallback && Array.isArray(lyricResult?.lines) && lyricResult.lines.length >= 4) {
-    return { lyricResult, warnings };
-  }
-
-  if (options.skipAudioTranscription === true || skipDeepAudioPreviewRecovery) {
-    if (hasNoLyrics) {
-      warnings.push(
-        "Website preview skipped deep audio lyric generation so the project can open faster. If you render this link, the app will still try to build lyrics from the audio automatically."
-      );
-    }
-
+  if (!shouldUseAudioFallback) {
     return { lyricResult, warnings };
   }
 
@@ -1335,25 +880,19 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   );
 
   try {
-    const previewWhisperModel =
-      process.env.WHISPER_PREVIEW_MODEL ||
-      process.env.WHISPER_RENDER_MODEL ||
-      process.env.WHISPER_MODEL ||
-      "tiny";
     const previewTranscription = await transcribeYouTubeAudio(
       videoId,
       scratchDirectory,
       metadata.durationSeconds,
       {
-        preview: true,
-        timeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 35000 : 20000,
-        downloadTimeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 30000 : 18000,
+        preview: !adaptiveProfile.preferStrongerPreviewTranscription,
+        timeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 120000 : 30000,
+        downloadTimeoutMs: adaptiveProfile.preferStrongerPreviewTranscription ? 90000 : 45000,
         ...(adaptiveProfile.preferStrongerPreviewTranscription
           ? {
-              modelName: previewWhisperModel,
-              beamSize: 1,
-              conditionOnPreviousText: false,
-              vadFilter: false
+              modelName: process.env.WHISPER_ADAPTIVE_MODEL || process.env.WHISPER_MODEL || "base",
+              beamSize: 6,
+              conditionOnPreviousText: true
             }
           : {}),
         ...(shouldRomanize
@@ -1376,13 +915,9 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
         scratchDirectory,
         metadata.durationSeconds,
         {
-          preview: true,
-          timeoutMs: 22000,
-          downloadTimeoutMs: 18000,
-          modelName: previewWhisperModel,
-          beamSize: 1,
-          conditionOnPreviousText: false,
-          vadFilter: false,
+          timeoutMs: 120000,
+          downloadTimeoutMs: 90000,
+          modelName: process.env.WHISPER_MODEL || "base",
           ...(shouldRomanize
             ? {
                 task: "transcribe",
@@ -1476,192 +1011,6 @@ async function buildPreviewLyrics(metadata, videoId, captionCues = [], options =
   return { lyricResult, warnings };
 }
 
-async function buildUploadedAudioPreview(audioFileUpload, options = {}) {
-  if (!audioFileUpload?.path) {
-    throw createError("Upload an audio file to start an audio-only project.", 400);
-  }
-
-  const requestedTitle = normalizeWhitespace(options.title || "");
-  const filenameGuess = inferSongFromFilename(audioFileUpload.originalname || "");
-  const fallbackTitle = normalizeWhitespace(
-    `${audioFileUpload.originalname || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "")
-  );
-  const title = requestedTitle || filenameGuess.title || fallbackTitle || "Uploaded audio";
-  const projectId = slugifyProjectId(title) || `uploaded-audio-${Date.now()}`;
-  const guessedSong =
-    filenameGuess?.title || filenameGuess?.artist
-      ? filenameGuess
-      : inferSongFromVideo(title, "Uploaded audio");
-  const warnings = [
-    "This project started from uploaded audio, so the website is building lyrics directly from your file instead of from a YouTube link."
-  ];
-  const scratchDirectory = path.join(
-    convertCacheRoot,
-    `upload-preview-${projectId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  );
-  let effectiveDurationSeconds = Math.max(0, Number(options.durationSeconds || 0));
-  let lyricResult = {
-    song: guessedSong,
-    source: "uploaded-audio",
-    syncMode: "transcribed",
-    lines: []
-  };
-
-  try {
-    const lrcMatches = await searchLrcLib(guessedSong, effectiveDurationSeconds);
-    const bestMatch = Array.isArray(lrcMatches) ? lrcMatches[0] : null;
-
-    if (bestMatch?.syncedLyrics) {
-      const syncedLines = parseSyncedLyrics(bestMatch.syncedLyrics, effectiveDurationSeconds);
-
-      if (syncedLines.length >= 6) {
-        lyricResult = {
-          song: {
-            title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
-            artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
-          },
-          source: "lrclib-synced",
-          syncMode: "synced-lyrics",
-          lines: syncedLines
-        };
-        warnings.push("The website found synced lyrics from the uploaded audio filename before falling back to transcription.");
-      }
-    } else if (bestMatch?.plainLyrics) {
-      const plainLines = parseLyricsLines(bestMatch.plainLyrics);
-
-      if (plainLines.length >= 6) {
-        const starts = estimateStartsFromDuration(plainLines, effectiveDurationSeconds);
-        lyricResult = {
-          song: {
-            title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
-            artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
-          },
-          source: "lrclib-plain",
-          syncMode: "estimated",
-          lines: buildTimedLines(
-            plainLines,
-            starts,
-            effectiveDurationSeconds || starts.at(-1) + 4
-          )
-        };
-        warnings.push("The website found lyric text from the uploaded audio filename and estimated timing before using transcription.");
-      }
-    }
-  } catch {}
-
-  try {
-    if (!lyricResult.lines.length) {
-      const previewTranscription = await transcribeYouTubeAudio(
-        `upload-${projectId}`,
-        scratchDirectory,
-        effectiveDurationSeconds,
-        {
-          preview: true,
-          timeoutMs: 90000,
-          audioInputPath: audioFileUpload.path
-        }
-      );
-
-      effectiveDurationSeconds =
-        Number(previewTranscription?.audioDurationSeconds || 0) || effectiveDurationSeconds;
-
-      const previewLines = Array.isArray(previewTranscription?.lines) ? previewTranscription.lines : [];
-      const previewAssessment = assessAudioFallbackLyrics(previewLines, effectiveDurationSeconds);
-      let effectiveLines = previewAssessment.lines.length ? previewAssessment.lines : previewLines;
-      let effectiveSource = previewTranscription?.source || "audio-transcription";
-
-      if (!previewAssessment.usable) {
-        const strongerTranscription = await transcribeYouTubeAudio(
-          `upload-${projectId}`,
-          scratchDirectory,
-          effectiveDurationSeconds,
-          {
-            timeoutMs: 180000,
-            modelName: process.env.WHISPER_MODEL || "base",
-            audioInputPath: audioFileUpload.path
-          }
-        );
-        const strongerLines = Array.isArray(strongerTranscription?.lines)
-          ? strongerTranscription.lines
-          : [];
-        const strongerAssessment = assessAudioFallbackLyrics(strongerLines, effectiveDurationSeconds);
-
-        if (strongerAssessment.lines.length) {
-          effectiveLines = strongerAssessment.lines;
-          effectiveSource = strongerTranscription?.source || effectiveSource;
-        }
-
-        if (strongerAssessment.usable) {
-          warnings.push(
-            "The first pass on the uploaded audio was light, so the website regenerated the lyrics with a deeper audio pass."
-          );
-        } else if (effectiveLines.length) {
-          warnings.push(
-            "The uploaded audio transcript is still a rough draft, so the website is showing the best lines it could recover before the final render does a stricter sync pass."
-          );
-        } else {
-          warnings.push(
-            "The uploaded audio is ready, but the preview transcript was too light to show yet. The final render will still try a deeper transcription from the same file."
-          );
-        }
-      } else {
-        warnings.push("Timed lyrics were generated directly from the uploaded audio.");
-      }
-
-      if (effectiveLines.length) {
-        const romanized = romanizeLyricLines(effectiveLines);
-        lyricResult = {
-          song: guessedSong,
-          source: "audio-transcription",
-          syncMode: "transcribed",
-          lines: romanized.lines
-        };
-
-        if (romanized.changed) {
-          warnings.push("Telugu lyrics were converted into English letters for the website preview.");
-        }
-      }
-    }
-  } catch (error) {
-    warnings.push(
-      "The uploaded audio is ready, but lyric preview generation needs a second pass. The final render will still build lyrics from this file."
-    );
-  } finally {
-    await safeRemoveDirectory(scratchDirectory);
-  }
-
-  return {
-    sourceType: "uploaded-audio",
-    projectId,
-    inputUrl: "",
-    videoId: `upload-${projectId}`,
-    title,
-    channelTitle: "Uploaded audio",
-    description: "This project was started from an uploaded audio file.",
-    durationSeconds: effectiveDurationSeconds,
-    thumbnails: [],
-    poster: "",
-    audioUrl: "",
-    audioPreviewBlocked: false,
-    audioAccess: {
-      mode: "available",
-      previewAvailable: false,
-      badgeLabel: "Audio uploaded",
-      title: "Uploaded audio is ready",
-      summary:
-        "This project can build lyrics and the final video directly from your uploaded audio file. A YouTube link is optional for this path.",
-      primaryActionLabel: "Create lyric video",
-      recommendedAction: "render"
-    },
-    audioMimeType: audioFileUpload.mimetype || "audio/mpeg",
-    song: lyricResult.song || guessedSong,
-    lyricsSource: lyricResult.source || "uploaded-audio",
-    syncMode: lyricResult.syncMode || "transcribed",
-    lines: Array.isArray(lyricResult.lines) ? lyricResult.lines : [],
-    warnings
-  };
-}
-
 function parseRenderRequestBody(req) {
   if (typeof req.body?.renderPayload !== "string") {
     return req.body || {};
@@ -1741,43 +1090,13 @@ async function runCommand(command, args, options = {}) {
 }
 
 async function sampleVideoFrames(videoId, durationSeconds = 0) {
-  async function buildArtworkFallbackFrames() {
-    try {
-      const info = await getVideoInfo(videoId);
-      const metadata = await getVideoMetadata(videoId, info);
-      const candidates = [
-        ...(Array.isArray(metadata?.thumbnails) ? metadata.thumbnails.map((thumbnail) => thumbnail?.url) : []),
-        metadata?.poster || ""
-      ]
-        .map((entry) => normalizeWhitespace(entry || ""))
-        .filter(Boolean);
-
-      return candidates.filter((entry, index, list) => list.indexOf(entry) === index).slice(0, 4);
-    } catch {
-      return [];
-    }
-  }
-
-  const requestedDuration = Math.max(0, Number(durationSeconds || 0));
-
-  if (requestedDuration <= 0) {
-    return buildArtworkFallbackFrames();
-  }
-
-  let videoUrl = "";
-
-  try {
-    videoUrl = await resolveVideoUrl(videoId);
-  } catch {
-    return buildArtworkFallbackFrames();
-  }
-
+  const videoUrl = await resolveVideoUrl(videoId);
   const tempDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), `song-to-lyrics-${videoId}-`));
-  const samplingDuration = Math.max(12, requestedDuration);
+  const requestedDuration = Math.max(12, Number(durationSeconds || 0));
   const frameCount = 4;
-  const startPadding = Math.min(6, Math.max(1.2, samplingDuration * 0.08));
-  const endPadding = Math.min(8, Math.max(1.8, samplingDuration * 0.12));
-  const usableDuration = Math.max(1, samplingDuration - startPadding - endPadding);
+  const startPadding = Math.min(6, Math.max(1.2, requestedDuration * 0.08));
+  const endPadding = Math.min(8, Math.max(1.8, requestedDuration * 0.12));
+  const usableDuration = Math.max(1, requestedDuration - startPadding - endPadding);
   const frames = [];
 
   try {
@@ -1812,8 +1131,6 @@ async function sampleVideoFrames(videoId, durationSeconds = 0) {
       const buffer = await fsp.readFile(outputPath);
       frames.push(`data:image/jpeg;base64,${buffer.toString("base64")}`);
     }
-  } catch {
-    return buildArtworkFallbackFrames();
   } finally {
     await fsp.rm(tempDirectory, { recursive: true, force: true }).catch(() => {});
   }
@@ -1837,7 +1154,6 @@ async function withTimeout(promise, timeoutMs, fallbackValue) {
 }
 
 app.get("/api/health", (req, res) => {
-  applyLocalDebugCors(req, res);
   res.json({
     ok: true,
     ready: Boolean(startupDiagnostics.ready),
@@ -1846,14 +1162,6 @@ app.get("/api/health", (req, res) => {
     now: new Date().toISOString()
   });
 });
-
-app.options(
-  ["/api/health", "/api/local-debug/errors", "/api/local-debug/stream", "/api/local-debug/errors/:id"],
-  (req, res) => {
-    applyLocalDebugCors(req, res);
-    res.status(204).end();
-  }
-);
 
 app.get("/api/readiness", (req, res) => {
   const payload = {
@@ -1873,53 +1181,12 @@ app.get("/api/local-debug/errors", (req, res) => {
     return;
   }
 
-  applyLocalDebugCors(req, res);
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
   res.json({
     enabled: true,
     entries: getLocalDebugEvents()
-  });
-});
-
-app.get("/api/local-debug/stream", (req, res) => {
-  if (!isLocalDebugRequest(req)) {
-    res.status(404).json({ error: "Not found." });
-    return;
-  }
-
-  applyLocalDebugCors(req, res);
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  if (typeof res.flushHeaders === "function") {
-    res.flushHeaders();
-  }
-
-  const send = (eventName, payload = {}) => {
-    res.write(`event: ${eventName}\n`);
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
-  };
-
-  send("ready", {
-    ok: true,
-    entryCount: getLocalDebugEvents().length,
-    updatedAt: new Date().toISOString()
-  });
-
-  const unsubscribe = subscribeLocalDebugEvents((payload) => {
-    send("update", payload);
-  });
-  const heartbeat = setInterval(() => {
-    res.write(": keep-alive\n\n");
-  }, 15000);
-
-  req.on("close", () => {
-    clearInterval(heartbeat);
-    unsubscribe();
-    res.end();
   });
 });
 
@@ -1930,7 +1197,6 @@ app.post(
       throw createError("Not found.", 404);
     }
 
-    applyLocalDebugCors(req, res);
     const payload = req.body || {};
     const entry = recordLocalDebugEvent({
       source: normalizeWhitespace(payload.source || "client"),
@@ -1959,7 +1225,6 @@ app.delete("/api/local-debug/errors", (req, res) => {
     return;
   }
 
-  applyLocalDebugCors(req, res);
   clearLocalDebugEvents();
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.json({ ok: true });
@@ -1971,7 +1236,6 @@ app.delete("/api/local-debug/errors/:id", (req, res) => {
     return;
   }
 
-  applyLocalDebugCors(req, res);
   const deleted = deleteLocalDebugEvent(req.params.id);
 
   if (!deleted) {
@@ -1998,338 +1262,87 @@ app.get(
 );
 
 app.post(
-  "/api/convert-audio",
-  renderUpload.fields([{ name: "audioFile", maxCount: 1 }]),
-  asyncHandler(async (req, res) => {
-    const audioFileUpload = Array.isArray(req.files?.audioFile) ? req.files.audioFile[0] : null;
-
-    if (!audioFileUpload) {
-      throw createError("Upload an audio file to start an audio-only project.", 400);
-    }
-
-    try {
-      const payload = await buildUploadedAudioPreview(audioFileUpload, {
-        title: `${req.body?.title || ""}`.trim(),
-        durationSeconds: Number(req.body?.durationSeconds || 0)
-      });
-
-      res.json(payload);
-    } finally {
-      await fsp.rm(audioFileUpload.path, { force: true }).catch(() => {});
-    }
-  })
-);
-
-app.post(
   "/api/convert",
   asyncHandler(async (req, res) => {
-    req.socket.setTimeout(55000);
-    res.setTimeout(55000);
-    const CONVERT_HARD_TIMEOUT_MS = 50000;
-    let convertTimedOut = false;
-    const convertTimeout = setTimeout(() => {
-      convertTimedOut = true;
-      if (!res.headersSent) {
-        res.json({
-          error: "timeout",
-          inputUrl: req.body?.url || "",
-          videoId: "",
-          title: "",
-          lines: [],
-          syncMode: "none",
-          lyricsSource: "unavailable",
-          audioPreviewBlocked: true,
-          warnings: ["This video took too long to process. Try another link or upload audio directly."]
-        });
-      }
-    }, CONVERT_HARD_TIMEOUT_MS);
-    const shouldAbortConvert = () => convertTimedOut || res.headersSent;
+    const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
 
-    try {
-      const videoUrl = `${req.body?.url || req.body?.inputUrl || ""}`.trim();
-      const shortUrlDetected = /\/shorts\//i.test(videoUrl);
-
-      if (!videoUrl) {
-        throw createError("Enter a YouTube video link to begin.", 400);
-      }
-
-      const videoId = extractVideoId(videoUrl);
-      const info = await withTimeout(
-        getVideoInfo(videoId),
-        shortUrlDetected ? 6000 : 10000,
-        {
-          videoId,
-          oembed: null,
-          watchHtml: "",
-          watchUrl: `https://www.youtube.com/watch?v=${videoId}`
-        }
-      );
-      if (shouldAbortConvert()) {
-        return;
-      }
-      const rawMetadata = await withTimeout(
-        getVideoMetadata(videoId, info),
-        shortUrlDetected ? 4000 : 7000,
-        {
-          title: `YouTube Video ${videoId}`,
-          channelTitle: "",
-          description: "",
-          durationSeconds: shortUrlDetected ? 60 : 0,
-          thumbnails: [],
-          poster: ""
-        }
-      );
-      const captionCues = await withTimeout(
-        getCaptionCues({
-          ...info,
-          durationSeconds: Number(rawMetadata?.durationSeconds || 0)
-        }),
-        7000,
-        []
-      );
-      if (shouldAbortConvert()) {
-        return;
-      }
-      const metadataDurationSeconds = Math.max(
-        Number(rawMetadata?.durationSeconds || 0),
-        getLatestTimedItemEnd(captionCues)
-      );
-      let metadata =
-        metadataDurationSeconds > Number(rawMetadata?.durationSeconds || 0)
-          ? {
-              ...rawMetadata,
-              durationSeconds: metadataDurationSeconds
-            }
-          : rawMetadata;
-      if (!metadata.durationSeconds || metadata.durationSeconds === 0) {
-        metadata = {
-          ...metadata,
-          durationSeconds: 60
-        };
-      }
-      const deferAudioBuiltLyricsToRender = !(
-        startupDiagnostics.transcriptionReady &&
-        (shortUrlDetected || !captionCues.length)
-      );
-      let { lyricResult, warnings: previewWarnings } = await withTimeout(
-        buildPreviewLyrics(metadata, videoId, captionCues, {
-          skipAudioTranscription: deferAudioBuiltLyricsToRender
-        }),
-        shortUrlDetected ? 45000 : 35000,
-        {
-          lyricResult: {
-            song: inferSongFromVideo(metadata.title, metadata.channelTitle),
-            source: "unavailable",
-            syncMode: "none",
-            lines: []
-          },
-          warnings: ["Preview assembly took too long, so the app returned a faster fallback response."]
-        }
-      );
-
-      if (
-        !shouldAbortConvert() &&
-        (!lyricResult?.lines?.length || lyricResult?.syncMode === "none") &&
-        startupDiagnostics.transcriptionReady &&
-        !deferAudioBuiltLyricsToRender &&
-        !(shortUrlDetected && !captionCues.length) &&
-        videoId &&
-        !String(videoId).startsWith("upload-")
-      ) {
-        const fallbackSong = lyricResult?.song || inferSongFromVideo(metadata.title, metadata.channelTitle);
-        const effectiveDuration = Number(metadata?.durationSeconds || 0) || 60;
-        const scratchDir = path.join(
-          convertCacheRoot,
-          `${videoId}-force-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-        );
-
-        try {
-          const forcedTranscription = await withTimeout(
-            transcribeYouTubeAudio(videoId, scratchDir, effectiveDuration, {
-              preview: true,
-              timeoutMs: 12000,
-              downloadTimeoutMs: 15000
-            }),
-            16000,
-            { song: null, source: "unavailable", syncMode: "none", lines: [] }
-          );
-
-          if (Array.isArray(forcedTranscription?.lines) && forcedTranscription.lines.length >= 3) {
-            lyricResult = {
-              song: fallbackSong,
-              source: "audio-transcription",
-              syncMode: "transcribed",
-              lines: forcedTranscription.lines
-            };
-            previewWarnings = [
-              ...previewWarnings,
-              "Lyrics were generated by listening to the audio directly."
-            ];
-          }
-        } catch {}
-        finally {
-          await safeRemoveDirectory(scratchDir);
-        }
-      }
-
-      if (shouldAbortConvert()) {
-        return;
-      }
-
-      const audioPreviewProbe = await withTimeout(
-        resolveAudioInput(videoId, {
-          outputDirectory: path.join(previewAudioCacheRoot, `${videoId}-probe`),
-          allowDownloadFallback: false
-        })
-          .then((source) => ({ blocked: false, timedOut: false, source }))
-          .catch((error) => ({
-            blocked: true,
-            timedOut: false,
-            reason:
-              error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error)
-                ? "youtube-blocked"
-                : "preview-unavailable"
-          })),
-        5000,
-        { blocked: true, timedOut: true, reason: "probe-timeout" }
-      );
-      const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
-      const audioAccess = buildAudioAccessState({
-        audioPreviewBlocked,
-        audioPreviewProbe
-      });
-
-      if (!audioPreviewBlocked && audioPreviewProbe?.source) {
-        warmPreviewAudioCache(videoId, audioPreviewProbe.source);
-      }
-
-      queuePreviewWarmup(videoId);
-
-      if (shouldAbortConvert()) {
-        return;
-      }
-
-      clearTimeout(convertTimeout);
-      res.json({
-        inputUrl: videoUrl,
-        videoId,
-        title: metadata.title,
-        channelTitle: metadata.channelTitle,
-        description: metadata.description,
-        durationSeconds: metadata.durationSeconds,
-        thumbnails: metadata.thumbnails,
-        poster: metadata.poster,
-        audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
-        audioPreviewBlocked,
-        audioAccess,
-        audioMimeType: "audio/mp4",
-        song: lyricResult.song,
-        lyricsSource: lyricResult.source,
-        syncMode: lyricResult.syncMode,
-        lines: lyricResult.lines,
-        warnings: [
-          ...buildWarnings(lyricResult),
-          ...previewWarnings,
-          ...(audioAccess.mode === "recovery"
-            ? [audioAccess.summary]
-            : audioAccess.mode === "upload-recommended"
-              ? [audioAccess.summary]
-              : []),
-          ...(audioPreviewProbe?.timedOut
-            ? [
-                "Audio preview safety check timed out, so the website is staying conservative and not auto-loading the player for this link."
-              ]
-            : []),
-          "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
-          ...(shouldRomanizeTeluguLyrics(metadata, lyricResult)
-            ? ["Telugu lyrics were detected. The render step will keep Telugu audio and show the lyrics in English letters when needed."]
-            : [])
-        ]
-      });
-    } finally {
-      clearTimeout(convertTimeout);
+    if (!videoUrl) {
+      throw createError("Enter a YouTube video link to begin.", 400);
     }
+
+    const videoId = extractVideoId(videoUrl);
+    const info = await getVideoInfo(videoId);
+    const metadata = await getVideoMetadata(videoId, info);
+    const captionCues = await getCaptionCues(info);
+    const { lyricResult, warnings: previewWarnings } = await buildPreviewLyrics(
+      metadata,
+      videoId,
+      captionCues
+    );
+    const audioPreviewProbe = await withTimeout(
+      resolveAudioUrl(videoId)
+        .then(() => ({ blocked: false }))
+        .catch((error) => ({
+          blocked: Boolean(error?.code === "YOUTUBE_BOT_BLOCK" || isYouTubeBotBlockError(error))
+        })),
+      2500,
+      { blocked: false, timedOut: true }
+    );
+    const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
+
+    res.json({
+      inputUrl: videoUrl,
+      videoId,
+      title: metadata.title,
+      channelTitle: metadata.channelTitle,
+      description: metadata.description,
+      durationSeconds: metadata.durationSeconds,
+      thumbnails: metadata.thumbnails,
+      poster: metadata.poster,
+      audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
+      audioPreviewBlocked,
+      audioMimeType: "audio/mp4",
+      song: lyricResult.song,
+      lyricsSource: lyricResult.source,
+      syncMode: lyricResult.syncMode,
+      lines: lyricResult.lines,
+      warnings: [
+        ...buildWarnings(lyricResult),
+        ...previewWarnings,
+        ...(audioPreviewBlocked
+          ? [
+              "Audio preview is blocked for this video on the server right now, so the website will avoid auto-loading the player."
+            ]
+          : []),
+        "The final render will verify lyric timing against the audio before export and will stop if the sync is not trustworthy.",
+        ...(shouldRomanizeTeluguLyrics(metadata, lyricResult)
+          ? ["Telugu lyrics were detected. The render step will keep Telugu audio and show the lyrics in English letters when needed."]
+          : [])
+      ]
+    });
   })
 );
 
 app.post(
   "/api/render",
-  renderUpload.fields([
-    { name: "backgroundVideo", maxCount: 1 },
-    { name: "audioFile", maxCount: 1 }
-  ]),
+  renderUpload.single("backgroundVideo"),
   asyncHandler(async (req, res) => {
     const body = parseRenderRequestBody(req);
     const inputUrl = `${body?.inputUrl || ""}`.trim();
-    const backgroundVideoUpload = Array.isArray(req.files?.backgroundVideo) ? req.files.backgroundVideo[0] : null;
-    const audioFileUpload = Array.isArray(req.files?.audioFile) ? req.files.audioFile[0] : null;
-    const hasUploadedAudio = Boolean(audioFileUpload);
-    const uploadedAudioTitle = `${audioFileUpload?.originalname || ""}`.replace(/\.[a-z0-9]{1,8}$/i, "").trim();
 
-    if (!inputUrl && !hasUploadedAudio) {
-      throw createError("A YouTube link or uploaded audio file is required before rendering.", 400);
+    if (!inputUrl) {
+      throw createError("A YouTube link is required before rendering.", 400);
     }
 
     let renderSong = body?.song || null;
     let renderLines = Array.isArray(body?.lines) ? body.lines : [];
-    const renderTitle = `${body?.title || ""}`.trim() || uploadedAudioTitle || "Uploaded audio";
-    const renderChannelTitle = `${body?.channelTitle || ""}`.trim() || (hasUploadedAudio ? "Uploaded audio" : "");
-    const renderVideoId = `${body?.videoId || ""}`.trim() || (hasUploadedAudio ? `upload-${Date.now()}` : "");
-    const renderDurationSeconds = Math.max(
-      Number(body?.durationSeconds || 0),
-      Number(body?.customAudioUpload?.duration || 0),
-      getLatestTimedItemEnd(renderLines)
-    );
 
-    if (!renderSong && hasUploadedAudio) {
-      renderSong = {
-        title: renderTitle,
-        artist: "Uploaded audio"
-      };
-    }
-
-    if (!renderLines.length && hasUploadedAudio) {
-      const guessedSong = inferSongFromFilename(audioFileUpload.originalname || renderTitle);
-
-      try {
-        const lrcMatches = await searchLrcLib(guessedSong, renderDurationSeconds);
-        const bestMatch = Array.isArray(lrcMatches) ? lrcMatches[0] : null;
-
-        if (bestMatch?.syncedLyrics) {
-          const syncedLines = parseSyncedLyrics(bestMatch.syncedLyrics, renderDurationSeconds);
-
-          if (syncedLines.length >= 6) {
-            renderLines = syncedLines;
-            renderSong = {
-              title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
-              artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
-            };
-          }
-        } else if (bestMatch?.plainLyrics) {
-          const plainLines = parseLyricsLines(bestMatch.plainLyrics);
-
-          if (plainLines.length >= 6) {
-            const starts = estimateStartsFromDuration(plainLines, renderDurationSeconds);
-            renderLines = buildTimedLines(
-              plainLines,
-              starts,
-              renderDurationSeconds || starts.at(-1) + 4
-            );
-            renderSong = {
-              title: normalizeWhitespace(bestMatch.trackName || bestMatch.name || guessedSong.title),
-              artist: normalizeWhitespace(bestMatch.artistName || guessedSong.artist)
-            };
-          }
-        }
-      } catch {}
-    }
-
-    if (!renderLines.length && renderTitle) {
+    if (!renderLines.length && body?.title) {
       const lyricRetry = await withTimeout(
         buildLyricsPayload({
-          rawTitle: renderTitle,
-          channelTitle: renderChannelTitle,
-          durationSeconds: renderDurationSeconds,
+          rawTitle: body.title,
+          channelTitle: body?.channelTitle,
+          durationSeconds: body?.durationSeconds,
           captionCues: []
         }),
         12000,
@@ -2344,34 +1357,25 @@ app.post(
 
     const renderJob = await startRenderJob({
       inputUrl,
-      videoId: renderVideoId,
-      title: renderTitle,
-      channelTitle: renderChannelTitle,
-      durationSeconds: renderDurationSeconds,
+      videoId: body?.videoId,
+      title: body?.title,
+      channelTitle: body?.channelTitle,
+      durationSeconds: body?.durationSeconds,
       lines: renderLines,
       song: renderSong,
-      syncMode: body?.syncMode || (hasUploadedAudio ? "transcribed" : "none"),
+      syncMode: body?.syncMode || "none",
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
-      customBackgroundVideo: backgroundVideoUpload
+      customBackgroundVideo: req.file
         ? {
-            tempPath: backgroundVideoUpload.path,
-            originalName: backgroundVideoUpload.originalname,
-            mimeType: backgroundVideoUpload.mimetype,
-            size: backgroundVideoUpload.size,
+            tempPath: req.file.path,
+            originalName: req.file.originalname,
+            mimeType: req.file.mimetype,
+            size: req.file.size,
             width: Number(body?.customBackgroundVideo?.width || 0),
             height: Number(body?.customBackgroundVideo?.height || 0),
             duration: Number(body?.customBackgroundVideo?.duration || 0)
-          }
-        : null,
-      customAudioUpload: audioFileUpload
-        ? {
-            tempPath: audioFileUpload.path,
-            originalName: audioFileUpload.originalname,
-            mimeType: audioFileUpload.mimetype,
-            size: audioFileUpload.size,
-            duration: Number(body?.customAudioUpload?.duration || 0)
           }
         : null,
       outputFormat: body?.outputFormat || "auto",
@@ -2451,49 +1455,10 @@ app.get(
   "/api/audio/:videoId",
   asyncHandler(async (req, res) => {
     const videoId = extractVideoId(req.params.videoId);
-    const outputDirectory = path.join(previewAudioCacheRoot, videoId);
-
-    if (await sendCachedPreviewAudio(res, videoId, outputDirectory)) {
-      return;
-    }
-
-    const activeWarmup = previewWarmups.get(videoId);
-
-    if (activeWarmup) {
-      await Promise.race([
-        activeWarmup.catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, 20000))
-      ]);
-
-      if (await sendCachedPreviewAudio(res, videoId, outputDirectory)) {
-        return;
-      }
-    }
-
-    let audioSource;
-
-    try {
-      audioSource = await resolveAudioInput(videoId, {
-        outputDirectory,
-        allowDownloadFallback: true,
-        preferLocal: true
-      });
-    } catch (localPreviewError) {
-      try {
-        const recoveredAudioUrl = await resolveAudioUrlDeep(videoId);
-        audioSource = {
-          input: recoveredAudioUrl,
-          sourceType: "remote",
-          mimeType: "audio/mp4",
-          recovered: true
-        };
-      } catch {
-        audioSource = await resolveAudioInput(videoId, {
-          outputDirectory,
-          allowDownloadFallback: false
-        });
-      }
-    }
+    const audioSource = await resolveAudioInput(videoId, {
+      outputDirectory: path.join(previewAudioCacheRoot, videoId),
+      allowDownloadFallback: true
+    });
     res.setHeader("Cache-Control", "no-store");
 
     if (audioSource.sourceType === "file") {
@@ -2502,27 +1467,9 @@ app.get(
       return;
     }
 
-    try {
-      const cachedPreviewPath = await cacheRemoteAudioUrlToFile(
-        audioSource.input,
-        outputDirectory,
-        videoId
-      );
-
-        if (cachedPreviewPath) {
-          res.type(getAudioMimeType(cachedPreviewPath) || audioSource.mimeType || "audio/mpeg");
-          res.sendFile(cachedPreviewPath);
-          return;
-        }
-      } catch {}
-
-      if (await sendCachedPreviewAudio(res, videoId, outputDirectory, audioSource.mimeType || "audio/mpeg")) {
-        return;
-      }
-
-      await proxyRemoteMedia(req, res, audioSource.input, audioSource.mimeType || "audio/mpeg");
-    })
-  );
+    res.redirect(302, audioSource.input);
+  })
+);
 
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
@@ -2531,7 +1478,7 @@ app.use((error, req, res, next) => {
       title: "Upload validation failed",
       userMessage:
         error.code === "LIMIT_FILE_SIZE"
-          ? "The uploaded media is too large. Try a smaller file."
+          ? "The background video is too large. Try a smaller file."
           : "The uploaded background media could not be processed.",
       errorMessage: error.message || error.code || "Multer error",
       cause: error.code || "",
@@ -2541,29 +1488,26 @@ app.use((error, req, res, next) => {
     res.status(400).json({
       error:
         error.code === "LIMIT_FILE_SIZE"
-          ? "The uploaded media is too large. Try a smaller file."
+          ? "The background video is too large. Try a smaller file."
           : "The uploaded background media could not be processed."
     });
     return;
   }
 
-  const requestWasAborted = /request aborted/i.test(`${error?.message || ""}`);
-  const statusCode = Number(error.statusCode || (requestWasAborted ? 499 : 500));
+  const statusCode = Number(error.statusCode || 500);
   const message = buildApiErrorMessage(error, req);
 
-  if (!shouldSkipLocalDebugApiEvent(req, error, statusCode)) {
-    recordLocalDebugEvent({
-      source: "api",
-      title: `${req.method || "REQUEST"} ${req.originalUrl || req.url || ""}`,
-      userMessage: message,
-      errorMessage: error?.message || "",
-      cause:
-        normalizeWhitespace(`${error?.cause?.message || error?.code || error?.statusCode || ""}`) ||
-        normalizeWhitespace(`${error?.cause || ""}`),
-      stack: error?.stack || "",
-      details: buildRequestDebugContext(req)
-    });
-  }
+  recordLocalDebugEvent({
+    source: "api",
+    title: `${req.method || "REQUEST"} ${req.originalUrl || req.url || ""}`,
+    userMessage: message,
+    errorMessage: error?.message || "",
+    cause:
+      normalizeWhitespace(`${error?.cause?.message || error?.code || error?.statusCode || ""}`) ||
+      normalizeWhitespace(`${error?.cause || ""}`),
+    stack: error?.stack || "",
+    details: buildRequestDebugContext(req)
+  });
 
   if (res.headersSent) {
     next(error);
