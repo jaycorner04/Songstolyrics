@@ -768,6 +768,13 @@ function scrollToUiTarget(target, options = {}) {
   }, Number(options.delayMs || 40));
 }
 
+function scrollToRenderProgressCard() {
+  scrollToUiTarget(renderButton || renderTools || resultPanel, {
+    block: "center",
+    delayMs: 60
+  });
+}
+
 function buildFallbackAudioAccessState(result = {}) {
   if (!result?.audioPreviewBlocked) {
     return {
@@ -2915,9 +2922,7 @@ function updateRenderJobUi(job) {
     }
     setRenderMessage(userMessage);
     setStatus(userMessage);
-    scrollToUiTarget(renderTools || renderButton || resultPanel, {
-      block: "start"
-    });
+    scrollToRenderProgressCard();
     return;
   }
 
@@ -3106,9 +3111,7 @@ async function handleRender() {
         ? "Starting a protected recovery render for this link..."
       : "Starting the render without a trusted preview soundtrack. Upload audio any time if you need guaranteed sound."
   );
-  scrollToUiTarget(renderTools || renderButton || resultPanel, {
-    block: "start"
-  });
+  scrollToRenderProgressCard();
 
   try {
     const renderPayload = {
