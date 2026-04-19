@@ -6284,6 +6284,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       payload.syncMode === "captions" && Array.isArray(payload.lines) && payload.lines.length >= 3;
     const allowBlockedShortRecovery =
       !hasUploadedAudioOnlySource && hasCaptionBackedLyrics && durationSeconds > 0 && durationSeconds <= 70;
+    const shouldAttemptAudioBuiltLyricsRecovery =
+      !hasUploadedAudioOnlySource &&
+      payload.videoId &&
+      (!Array.isArray(payload.lines) || payload.lines.length < 2 || payload.syncMode === "none");
     const shouldContinueOnBlockedAudio = continueRenderOnBlockedAudio || allowBlockedShortRecovery;
 
     if (uploadedBackgroundPaths.length) {
@@ -6341,6 +6345,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
     let audioUrl = "";
     let usingSilentAudioFallback = false;
+    let pendingAudioRecoveryError = null;
 
     if (audioResolution.error) {
       if (audioResolution.error?.code === "YOUTUBE_BOT_BLOCK") {
@@ -6351,7 +6356,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           message: audioResolution.error.message || ""
         });
 
-        if (!allowSilentAudioFallback && !shouldContinueOnBlockedAudio) {
+        if (!allowSilentAudioFallback && !shouldContinueOnBlockedAudio && !shouldAttemptAudioBuiltLyricsRecovery) {
           const blockedAudioError = createRenderError(
             "YouTube blocked audio access for this video. Upload the song audio in the app, add a YouTube cookie file on the server, or try another link.",
             503
@@ -6360,33 +6365,47 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           blockedAudioError.cause = audioResolution.error;
           throw blockedAudioError;
         }
-        updateJob(job, {
-          stage: "Preparing fallback audio",
-          progress: 0.13
-        });
-        audioUrl = await createSilentAudioFallback(
-          path.join(audioInputDirectory, "silent-fallback.wav"),
-          durationSeconds
-        );
-        usingSilentAudioFallback = true;
-        renderNotes.push(
-          "YouTube blocked direct audio access for this video, so the render continued with a silent fallback track instead of stopping."
-        );
-        renderNotes.push(
-          "Final timing stays based on the video metadata and the lyric source that was already available."
-        );
-        if (!allowSilentAudioFallback && shouldContinueOnBlockedAudio) {
+        if (shouldAttemptAudioBuiltLyricsRecovery) {
+          pendingAudioRecoveryError = audioResolution.error;
           renderNotes.push(
-            "Render recovery mode kept the export alive even though silent fallback was not explicitly enabled in the environment."
+            "Direct YouTube soundtrack access was blocked, so the render will try to rebuild the audio and lyrics from a deeper transcription pass."
           );
-        }
-        if (allowBlockedShortRecovery) {
+        } else {
+          updateJob(job, {
+            stage: "Preparing fallback audio",
+            progress: 0.13
+          });
+          audioUrl = await createSilentAudioFallback(
+            path.join(audioInputDirectory, "silent-fallback.wav"),
+            durationSeconds
+          );
+          usingSilentAudioFallback = true;
           renderNotes.push(
-            "This short-form link already had usable caption timing, so the app finished the visual draft even though YouTube blocked the soundtrack on the server."
+            "YouTube blocked direct audio access for this video, so the render continued with a silent fallback track instead of stopping."
           );
+          renderNotes.push(
+            "Final timing stays based on the video metadata and the lyric source that was already available."
+          );
+          if (!allowSilentAudioFallback && shouldContinueOnBlockedAudio) {
+            renderNotes.push(
+              "Render recovery mode kept the export alive even though silent fallback was not explicitly enabled in the environment."
+            );
+          }
+          if (allowBlockedShortRecovery) {
+            renderNotes.push(
+              "This short-form link already had usable caption timing, so the app finished the visual draft even though YouTube blocked the soundtrack on the server."
+            );
+          }
         }
       } else {
-        throw audioResolution.error;
+        if (!shouldAttemptAudioBuiltLyricsRecovery) {
+          throw audioResolution.error;
+        }
+
+        pendingAudioRecoveryError = audioResolution.error;
+        renderNotes.push(
+          "The first soundtrack recovery path failed, so the render will try to generate audio-backed lyrics directly from the source audio."
+        );
       }
     } else {
       audioUrl = audioResolution.audioSource.input;
@@ -6483,6 +6502,56 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const shouldUseRomanizedTeluguLyrics = shouldRomanizeTeluguLyrics(renderLines, payload);
+    if (!audioUrl && pendingAudioRecoveryError && canUseAudioTranscription) {
+      try {
+        const recoveryTranscription = await getTranscription(
+          shouldUseRomanizedTeluguLyrics
+            ? "Recovering Telugu audio and generating lyrics"
+            : "Recovering audio and generating lyrics",
+          0.16,
+          shouldUseRomanizedTeluguLyrics
+            ? {
+                task: "transcribe",
+                language: "te"
+              }
+            : {
+                task: "transcribe"
+              }
+        );
+
+        if (Array.isArray(recoveryTranscription?.lines) && recoveryTranscription.lines.length) {
+          renderNotes.push(
+            shouldUseRomanizedTeluguLyrics
+              ? "The main audio stream failed, so the render recovered by transcribing the song audio and rebuilding Telugu lyric timing in English letters."
+              : "The main audio stream failed, so the render recovered by transcribing the song audio and rebuilding lyric timing automatically."
+          );
+        }
+        pendingAudioRecoveryError = null;
+      } catch (error) {
+        pendingAudioRecoveryError = error;
+      }
+    }
+
+    if (!audioUrl && pendingAudioRecoveryError) {
+      if (shouldContinueOnBlockedAudio || shouldAttemptAudioBuiltLyricsRecovery) {
+        updateJob(job, {
+          stage: "Preparing fallback audio",
+          progress: 0.13
+        });
+        audioUrl = await createSilentAudioFallback(
+          path.join(audioInputDirectory, "silent-fallback.wav"),
+          durationSeconds
+        );
+        usingSilentAudioFallback = true;
+        renderNotes.push(
+          "Audio recovery still failed after the deeper transcription pass, so the render continued with a fallback track instead of stopping."
+        );
+        renderNotes.push(`Audio recovery detail: ${pendingAudioRecoveryError.message || pendingAudioRecoveryError}`);
+      } else {
+        throw pendingAudioRecoveryError;
+      }
+    }
+
     const prefersTranscribedLyrics = shouldPreferAudioTranscription(
       renderLines,
       durationSeconds,
