@@ -775,6 +775,13 @@ function scrollToRenderProgressCard() {
   });
 }
 
+function scrollToAudioFallbackCard() {
+  scrollToUiTarget(audioFallbackField || audioFallbackTip || "audio-fallback-field", {
+    block: "center",
+    delayMs: 60
+  });
+}
+
 function buildFallbackAudioAccessState(result = {}) {
   if (!result?.audioPreviewBlocked) {
     return {
@@ -817,6 +824,21 @@ function canAutoBuildLyricsFromAudio(result = {}) {
   }
 
   return true;
+}
+
+function linkNeedsUploadedAudio(result = currentResult) {
+  if (!result || isUploadedAudioProject(result)) {
+    return false;
+  }
+
+  return getCurrentAudioAccessState(result).mode === "upload-recommended";
+}
+
+function buildUploadedAudioRequiredMessage(result = currentResult) {
+  const title = normalizeWhitespace(result?.title || "").trim();
+  return title
+    ? `${title} needs uploaded audio to build synced lyrics and keep sound in the final video.`
+    : "This link needs uploaded audio to build synced lyrics and keep sound in the final video.";
 }
 
 function updateAudioFallbackStateUi(result = currentResult) {
@@ -892,9 +914,9 @@ function syncAudioFallbackPopup(result = currentResult) {
     return;
   }
 
-  audioFallbackPopupTitle.textContent = "This link needs audio";
+  audioFallbackPopupTitle.textContent = "This link needs uploaded audio";
   audioFallbackPopupText.textContent =
-    "Lyrics and artwork are ready. Add the song audio file now so the final video keeps sound.";
+    "Add the song audio file now so the app can build synced lyrics and keep sound in the final video.";
 }
 
 function applyAudioAccessState(result = currentResult) {
@@ -2153,18 +2175,16 @@ function promptAudioFallbackRecovery(message = "", options = {}) {
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
   const defaultText = hasUploadedAudio
     ? `Audio fallback ${uploadedAudioFallback.name} is ready. Render again and the app will use it instead of the blocked YouTube sound.`
-    : "The app already tried YouTube audio and alternate server recovery for this link. Add the song audio file once, then render again to keep sound.";
+    : "This link needs uploaded audio before render. Add the song audio file once and the app will build synced lyrics with sound.";
 
   showAudioFallbackRecovery({
-    title: hasUploadedAudio ? "Audio fallback is ready" : "This link needs an uploaded audio file",
+    title: hasUploadedAudio ? "Audio fallback is ready" : "This link needs uploaded audio",
     text: message || defaultText,
     ready: hasUploadedAudio
   });
 
   if (options.scroll !== false) {
-    scrollToUiTarget(audioFallbackField || audioFallbackTip, {
-      block: "center"
-    });
+    scrollToAudioFallbackCard();
   }
 }
 
@@ -2320,22 +2340,23 @@ function clearAudioFallbackSelection() {
 }
 
 function spotlightAudioFallbackInput(options = {}) {
-  if (!audioFallbackInput) {
+  const highlightTarget = audioFallbackField || audioFallbackTip || audioFallbackInput;
+
+  if (!highlightTarget) {
     return;
   }
 
   if (options.scroll !== false) {
-    audioFallbackInput.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
+    scrollToAudioFallbackCard();
   }
 
-  audioFallbackInput.style.outline = "2px solid #f59e0b";
-  audioFallbackInput.style.borderRadius = "6px";
+  highlightTarget.style.outline = "2px solid #f59e0b";
+  highlightTarget.style.outlineOffset = "2px";
+  highlightTarget.style.borderRadius = "18px";
   window.setTimeout(() => {
-    audioFallbackInput.style.outline = "";
-    audioFallbackInput.style.borderRadius = "";
+    highlightTarget.style.outline = "";
+    highlightTarget.style.outlineOffset = "";
+    highlightTarget.style.borderRadius = "";
   }, 3000);
 }
 
@@ -2910,6 +2931,20 @@ async function renderResult(result) {
     !isUploadedAudioProject(result) &&
     !result.lines?.length &&
     String(result.lyricsSource || "").toLowerCase() === "unavailable";
+  const uploadRequiredBeforeRender = linkNeedsUploadedAudio(result) && !uploadedAudioFallback?.file;
+
+  if (uploadRequiredBeforeRender) {
+    const uploadRequiredMessage = buildUploadedAudioRequiredMessage(result);
+    promptAudioFallbackRecovery(
+      `${uploadRequiredMessage} Add the song file in the audio card below, then the render can start.`,
+      { scroll: false }
+    );
+    setStatus(uploadRequiredMessage, true);
+    scrollToAudioFallbackCard();
+    spotlightAudioFallbackInput({ scroll: false });
+    return;
+  }
+
   setStatus(
     autoRenderPending
       ? `Loaded ${result.title}. Starting the render automatically now...`
@@ -3103,18 +3138,18 @@ async function handleRender() {
 
   if (!isUploadedAudioProject() && audioAccess.mode === "upload-recommended" && !hasUploadedAudio) {
     autoRenderPending = false;
-    setStatus("This link needs uploaded audio before rendering. Add the song audio file and try again.", true);
+    const uploadRequiredMessage = buildUploadedAudioRequiredMessage();
+    setStatus(uploadRequiredMessage, true);
     setRenderMessage(
-      "Rendering is paused because this link needs uploaded audio for the final video to keep sound.",
+      "Rendering is paused until you add the song audio file in the audio card below.",
       true
     );
     promptAudioFallbackRecovery(
-      "This link needs uploaded audio before rendering. Add the song audio file and then the render will start with sound.",
+      `${uploadRequiredMessage} Add the song audio file and then the render will start automatically with sound.`,
       { scroll: true }
     );
-    scrollToUiTarget(audioFallbackField || audioFallbackTip || "audio-fallback-field", {
-      block: "center"
-    });
+    scrollToAudioFallbackCard();
+    spotlightAudioFallbackInput({ scroll: false });
     syncIdleRenderCta();
     return;
   }
