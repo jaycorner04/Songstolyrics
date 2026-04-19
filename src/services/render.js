@@ -2087,6 +2087,14 @@ function buildUserRenderMessage(job = {}) {
       return "Your lyric video is ready. The app recovered the soundtrack automatically before export.";
     }
 
+    if (notes.some((note) => /Final lyric source: Whisper-generated audio transcript\./i.test(`${note || ""}`))) {
+      return "Your lyric video is ready. The app rebuilt the lyric timing from the audio automatically.";
+    }
+
+    if (notes.some((note) => /Final lyric source: generated fallback title cards\./i.test(`${note || ""}`))) {
+      return "Your lyric video is ready as a fallback draft because this link did not produce reliable lyrics.";
+    }
+
     return "Your lyric video is ready to preview and download.";
   }
 
