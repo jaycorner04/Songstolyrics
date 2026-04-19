@@ -4075,6 +4075,104 @@ function describeFinalLyricSource(syncSource = "none", transcriptDerived = false
   return "Final lyric source: automatic fallback timing.";
 }
 
+function smoothTranscribedDisplayPacing(lines = [], durationSeconds = 0, options = {}) {
+  const sanitizedLines = sanitizeLyricLines(lines, durationSeconds);
+
+  if (sanitizedLines.length < 2) {
+    return {
+      lines: sanitizedLines,
+      mergedCount: 0,
+      changed: false
+    };
+  }
+
+  const minimumDisplaySeconds = Math.max(1.2, Number(options.minimumDisplaySeconds || 2.5));
+  const maximumDisplaySeconds = Math.max(
+    minimumDisplaySeconds,
+    Number(options.maximumDisplaySeconds || 5.0)
+  );
+  const maximumMergedWords = Math.max(6, Number(options.maximumMergedWords || 12));
+  const timelineLimit = durationSeconds
+    ? Math.max(Number(durationSeconds || 0), sanitizedLines.at(-1).start + minimumDisplaySeconds)
+    : sanitizedLines.at(-1).start + maximumDisplaySeconds;
+  const smoothedLines = [];
+  let mergedCount = 0;
+
+  for (let index = 0; index < sanitizedLines.length; ) {
+    const startLine = sanitizedLines[index];
+    const textParts = [startLine.text];
+    let start = Number(startLine.start || 0);
+    let end = start + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(startLine.duration || 0));
+    let lookahead = index + 1;
+
+    while (lookahead < sanitizedLines.length) {
+      const nextLine = sanitizedLines[lookahead];
+      const currentSpan = Number(nextLine.start || 0) - start;
+      const currentText = normalizeWhitespace(textParts.join(" "));
+      const mergedWordCount =
+        tokenizeLyricWords(currentText).length + tokenizeLyricWords(nextLine.text).length;
+      const currentEndsWithPause = /[.!?]$/.test(currentText);
+
+      if (
+        currentSpan >= minimumDisplaySeconds ||
+        mergedWordCount > maximumMergedWords ||
+        currentEndsWithPause
+      ) {
+        break;
+      }
+
+      textParts.push(nextLine.text);
+      end = Math.max(
+        end,
+        Number(nextLine.start || 0) + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(nextLine.duration || 0))
+      );
+      mergedCount += 1;
+      lookahead += 1;
+    }
+
+    const nextStart = lookahead < sanitizedLines.length
+      ? Number(sanitizedLines[lookahead].start || start + maximumDisplaySeconds)
+      : timelineLimit;
+    const maximumAvailableDuration = Math.max(
+      MIN_LYRIC_DURATION_SECONDS,
+      Math.min(maximumDisplaySeconds, nextStart - start - (lookahead < sanitizedLines.length ? LYRIC_TRANSITION_GAP_SECONDS : 0))
+    );
+    const preferredMinimumDuration = Math.min(minimumDisplaySeconds, maximumAvailableDuration);
+    const adjustedDuration = clamp(
+      Math.max(end - start, preferredMinimumDuration),
+      MIN_LYRIC_DURATION_SECONDS,
+      maximumAvailableDuration
+    );
+
+    smoothedLines.push({
+      text: normalizeWhitespace(textParts.join(" ")),
+      start: roundTimeValue(start),
+      duration: roundTimeValue(adjustedDuration)
+    });
+
+    index = lookahead;
+  }
+
+  const normalizedSmoothedLines = sanitizeLyricLines(smoothedLines, durationSeconds);
+  const changed =
+    mergedCount > 0 ||
+    normalizedSmoothedLines.length !== sanitizedLines.length ||
+    normalizedSmoothedLines.some((line, index) => {
+      const originalLine = sanitizedLines[index];
+      return (
+        normalizeWhitespace(line.text) !== normalizeWhitespace(originalLine?.text || "") ||
+        Math.abs(Number(line.duration || 0) - Number(originalLine?.duration || 0)) > 0.18 ||
+        Math.abs(Number(line.start || 0) - Number(originalLine?.start || 0)) > 0.05
+      );
+    });
+
+  return {
+    lines: normalizedSmoothedLines,
+    mergedCount,
+    changed
+  };
+}
+
 function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
   if (!lyricStylePreset || lyricStylePreset.key === "auto") {
     return pickLyricAnimationVariant(line, index);
@@ -7743,6 +7841,22 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           : "Lyrics were not found or transcribed, so the video uses artist and title cards instead."
       );
     } else {
+      if (renderLineSyncSource === "transcribed") {
+        const smoothedTranscribedPacing = smoothTranscribedDisplayPacing(renderLines, durationSeconds, {
+          minimumDisplaySeconds: 2.5,
+          maximumDisplaySeconds: 5.0
+        });
+
+        if (smoothedTranscribedPacing.changed) {
+          renderLines = smoothedTranscribedPacing.lines;
+          renderNotes.push(
+            smoothedTranscribedPacing.mergedCount > 0
+              ? `Transcribed lyric pacing was smoothed by merging ${smoothedTranscribedPacing.mergedCount} fast micro-line transition${smoothedTranscribedPacing.mergedCount === 1 ? "" : "s"}, so slower vocals stay readable on screen.`
+              : "Transcribed lyric pacing was smoothed so slower vocals hold longer on screen while faster vocals still move quickly."
+          );
+        }
+      }
+
       renderNotes.push("Lyrics animate in bold kinetic title cards with fast entry and exit motion.");
     }
 
