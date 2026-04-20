@@ -7308,16 +7308,34 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       heroIndex: 0
     }));
     const emojiAssetMap = await prepareColorEmojiAssets(renderDirectory, renderLines);
+    const isAudioOnlyProject =
+      (String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload)) &&
+      !uploadedBackgroundVideo &&
+      !uploadedBackgroundPaths.length;
     let backgroundPaths;
     let manifestPath = path.join(renderDirectory, "backgrounds.concat");
-    let backgroundMode = uploadedBackgroundVideo
+    let backgroundMode = isAudioOnlyProject
+      ? "safe-fallback"
+      : uploadedBackgroundVideo
       ? "uploaded-video"
       : uploadedBackgroundPaths.length
         ? "uploaded-images"
         : "sampled-panels";
 
     try {
-      if (renderProfile.fastMode && !uploadedBackgroundVideo && !uploadedBackgroundPaths.length) {
+      if (isAudioOnlyProject) {
+        renderNotes.push(
+          "This project started from uploaded audio only, so the render is using generated backgrounds instead of trying to sample artwork from a source video."
+        );
+        backgroundPaths = await createEmergencyBackgroundPlates(
+          job,
+          renderDirectory,
+          backgroundPlan,
+          videoSize,
+          "Preparing generated backgrounds for uploaded audio",
+          0.18
+        );
+      } else if (renderProfile.fastMode && !uploadedBackgroundVideo && !uploadedBackgroundPaths.length) {
         updateJob(job, {
           stage: "Preparing fast comic backgrounds",
           progress: 0.18

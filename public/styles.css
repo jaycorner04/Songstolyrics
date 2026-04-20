@@ -2855,12 +2855,13 @@ button {
 
   .media-column {
     display: grid;
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "poster track"
-      "thumb track"
-      "video video";
-    gap: 10px;
+      "poster"
+      "track"
+      "stage"
+      "video";
+    gap: 12px;
     align-items: start;
     width: 100%;
     min-width: 0;
@@ -2868,23 +2869,26 @@ button {
 
   .media-column.has-mobile-stage {
     grid-template-areas:
-      "poster track"
-      "stage track"
-      "video video";
+      "poster"
+      "track"
+      "stage"
+      "video";
   }
 
   .poster-frame {
     grid-area: poster;
-    min-height: 184px;
+    min-height: 196px;
     border-radius: 18px;
   }
 
   .track-card {
     grid-area: track;
+    width: 100%;
   }
 
   #mobile-stage-card {
     grid-area: stage;
+    width: 100%;
   }
 
   .thumbnail-card {
@@ -2893,6 +2897,7 @@ button {
 
   .video-output-card {
     grid-area: video;
+    width: 100%;
   }
 
   .track-heading h2 {

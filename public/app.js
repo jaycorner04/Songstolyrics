@@ -132,7 +132,7 @@ const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const ACTIVE_RENDER_STORAGE_KEY = "song-to-lyrics-active-render";
 const LOCAL_DEBUG_REFRESH_MS = 3000;
 const LOCAL_DEBUG_REQUEST_TIMEOUT_MS = 4500;
-const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
+const isLocalHostRuntime = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const configuredLocalDebugBaseUrl = (
   document.querySelector('meta[name="local-debug-base-url"]')?.getAttribute("content") || ""
 ).trim();
@@ -140,7 +140,9 @@ const normalizedLocalDebugBaseUrl =
   configuredLocalDebugBaseUrl && !/^__.+__$/.test(configuredLocalDebugBaseUrl)
     ? configuredLocalDebugBaseUrl.replace(/\/+$/g, "")
     : "";
-const effectiveLocalDebugBaseUrl = isLocalDebugMode ? normalizedLocalDebugBaseUrl : "";
+const isLocalDebugMode = isLocalHostRuntime || Boolean(normalizedLocalDebugBaseUrl);
+const effectiveLocalDebugBaseUrl =
+  normalizedLocalDebugBaseUrl || (isLocalHostRuntime ? window.location.origin.replace(/\/+$/g, "") : "");
 const lyricPreviewSamples = {
   default: [
     "City lights in stereo",
