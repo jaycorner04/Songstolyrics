@@ -1835,7 +1835,7 @@ function clearPersistedActiveRenderJob() {
 }
 
 function maybeRequestRenderNotificationPermission() {
-  if (!("Notification" in window) || !window.isSecureContext) {
+  if (isCompactMobileLayout() || !("Notification" in window) || !window.isSecureContext) {
     return;
   }
 
@@ -1852,7 +1852,12 @@ function maybeRequestRenderNotificationPermission() {
 }
 
 function showRenderReadyNotification(job = {}) {
-  if (!("Notification" in window) || !window.isSecureContext || Notification.permission !== "granted") {
+  if (
+    isCompactMobileLayout() ||
+    !("Notification" in window) ||
+    !window.isSecureContext ||
+    Notification.permission !== "granted"
+  ) {
     return;
   }
 
