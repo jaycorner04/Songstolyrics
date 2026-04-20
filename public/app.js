@@ -602,6 +602,26 @@ function decorateLyricLine(text = "") {
     .join(" ");
 }
 
+function getTrailingLyricEmojiText(text = "") {
+  const uniqueEmojis = [...new Set(
+    `${text || ""}`
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => {
+        const token = sanitizeLyricWord(word).replace(/'/g, "");
+        if (!token) {
+          return "";
+        }
+        const match = lyricEmojiRules.find(({ pattern }) => pattern.test(token));
+        return match?.emoji || "";
+      })
+      .filter(Boolean)
+  )];
+
+  return uniqueEmojis.join(" ");
+}
+
 function looksLikeYouTubeUrl(value) {
   const rawValue = `${value || ""}`.trim();
 
@@ -3230,15 +3250,28 @@ function createLyricButton(line, index) {
   button.className = "lyric-line";
   button.dataset.index = String(index);
 
+  const textGroup = document.createElement("span");
+  textGroup.className = "line-text-group";
+
   const text = document.createElement("span");
   text.className = "line-text";
-  text.textContent = decorateLyricLine(line.text);
+  text.textContent = line.text;
+
+  const trailingEmojiText = getTrailingLyricEmojiText(line.text);
+  if (trailingEmojiText) {
+    const emojiTrail = document.createElement("span");
+    emojiTrail.className = "line-emoji-trail";
+    emojiTrail.textContent = trailingEmojiText;
+    textGroup.append(text, emojiTrail);
+  } else {
+    textGroup.append(text);
+  }
 
   const time = document.createElement("span");
   time.className = "line-time";
   time.textContent = formatTime(line.start);
 
-  button.append(text, time);
+  button.append(textGroup, time);
   button.addEventListener("click", () => {
     audioPlayer.currentTime = line.start;
     audioPlayer.play().catch(() => {});

@@ -2462,6 +2462,23 @@ button {
   line-height: 1.6;
 }
 
+.line-text-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.line-emoji-trail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 1rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .line-time {
   display: block;
   margin-top: 8px;
@@ -3216,6 +3233,14 @@ button {
   .line-text {
     font-size: 0.84rem;
     line-height: 1.45;
+  }
+
+  .line-text-group {
+    gap: 6px;
+  }
+
+  .line-emoji-trail {
+    font-size: 0.92rem;
   }
 
   .line-time {

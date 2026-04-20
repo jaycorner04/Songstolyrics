@@ -4108,9 +4108,10 @@ function createAssSubtitleContent(
       );
 
       lineEmojiAnchors.forEach(({ emoji, emojiIndex }) => {
+        const trailingEmojiOffset = emojiSize * (isPortrait ? 1.28 : 1.12);
         const emojiCenterX = Math.round(
           clamp(
-            finalLineEndX + emojiSize * (0.92 + emojiIndex * 0.94),
+            finalLineEndX + trailingEmojiOffset + emojiSize * (emojiIndex * 1.06),
             safeMargin + emojiSize / 2,
             videoSize.width - safeMargin - emojiSize / 2
           )
