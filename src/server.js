@@ -105,7 +105,7 @@ const renderUpload = multer({
       return;
     }
 
-    if (fieldName === "audioFile") {
+    if (fieldName === "audioFile" || fieldName === "audioFallback") {
       if (!/^(audio|video)\//i.test(mimeType)) {
         callback(createError("Only audio files can be uploaded as soundtrack audio.", 400));
         return;
@@ -1361,7 +1361,8 @@ app.post(
   "/api/render",
   renderUpload.fields([
     { name: "backgroundVideo", maxCount: 1 },
-    { name: "audioFile", maxCount: 1 }
+    { name: "audioFile", maxCount: 1 },
+    { name: "audioFallback", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
     const body = parseRenderRequestBody(req);
@@ -1370,7 +1371,9 @@ app.post(
       : null;
     const audioFileUpload = Array.isArray(req.files?.audioFile)
       ? req.files.audioFile[0]
-      : null;
+      : Array.isArray(req.files?.audioFallback)
+        ? req.files.audioFallback[0]
+        : null;
     const inputUrl = `${body?.inputUrl || ""}`.trim();
 
     if (!inputUrl && !audioFileUpload) {
