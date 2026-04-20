@@ -133,6 +133,7 @@ let autoRenderPending = false;
 let lyricFontDropdownOpen = false;
 let lyricPreviewCustomPosition = null;
 let lyricPreviewDragState = null;
+let lyricPreviewResumeAnimationAfterDrag = false;
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
@@ -1692,14 +1693,25 @@ function handleLyricPreviewPointerDown(event) {
 
   lyricPreviewDragState = {
     pointerId: event.pointerId,
-    stageRect,
-    shellRect,
     anchor: getLyricPreviewPlacement().anchor,
+    stageWidth: stageRect.width,
+    stageHeight: stageRect.height,
+    shellWidth: shellRect.width,
+    shellHeight: shellRect.height,
     pointerOffsetX: event.clientX - shellRect.left,
     pointerOffsetY: event.clientY - shellRect.top,
     moved: false
   };
 
+  if (lyricPreviewAnimationTimer) {
+    window.clearInterval(lyricPreviewAnimationTimer);
+    lyricPreviewAnimationTimer = null;
+    lyricPreviewResumeAnimationAfterDrag = true;
+  } else {
+    lyricPreviewResumeAnimationAfterDrag = false;
+  }
+
+  lyricStylePreview?.classList.add("is-user-positioning");
   previewLinesShell.classList.add("is-dragging");
   previewLinesShell.setPointerCapture?.(event.pointerId);
   document.body.style.userSelect = "none";
@@ -1711,18 +1723,24 @@ function handleLyricPreviewPointerMove(event) {
     return;
   }
 
-  const { stageRect, shellRect, pointerOffsetX, pointerOffsetY, anchor } = lyricPreviewDragState;
-  const maxLeft = Math.max(0, stageRect.width - shellRect.width);
-  const maxTop = Math.max(0, stageRect.height - shellRect.height);
+  const stageRect = lyricPreviewDragSurface?.getBoundingClientRect();
+
+  if (!stageRect?.width || !stageRect?.height) {
+    return;
+  }
+
+  const { shellWidth, shellHeight, pointerOffsetX, pointerOffsetY, anchor } = lyricPreviewDragState;
+  const maxLeft = Math.max(0, stageRect.width - shellWidth);
+  const maxTop = Math.max(0, stageRect.height - shellHeight);
   const shellLeft = Math.min(maxLeft, Math.max(0, event.clientX - stageRect.left - pointerOffsetX));
   const shellTop = Math.min(maxTop, Math.max(0, event.clientY - stageRect.top - pointerOffsetY));
   const anchorX =
     anchor === "left"
       ? shellLeft
       : anchor === "right"
-        ? shellLeft + shellRect.width
-        : shellLeft + shellRect.width / 2;
-  const anchorY = shellTop + shellRect.height / 2;
+        ? shellLeft + shellWidth
+        : shellLeft + shellWidth / 2;
+  const anchorY = shellTop + shellHeight / 2;
   const nextPosition = {
     x: clampPreviewPlacement(anchorX / Math.max(1, stageRect.width)),
     y: clampPreviewPlacement(anchorY / Math.max(1, stageRect.height))
@@ -1743,11 +1761,17 @@ function finishLyricPreviewDrag(event) {
     return;
   }
 
+  lyricStylePreview?.classList.remove("is-user-positioning");
   previewLinesShell?.classList.remove("is-dragging");
   previewLinesShell?.releasePointerCapture?.(event.pointerId);
   document.body.style.userSelect = "";
   const wasMoved = lyricPreviewDragState.moved;
   lyricPreviewDragState = null;
+
+  if (lyricPreviewResumeAnimationAfterDrag) {
+    lyricPreviewResumeAnimationAfterDrag = false;
+    updateLyricStylePreview();
+  }
 
   if (wasMoved) {
     notifyLyricPreviewPositionChanged();
