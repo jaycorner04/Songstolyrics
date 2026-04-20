@@ -2572,6 +2572,12 @@ async function handleAudioFallbackUpload() {
           ? `Uploaded audio ready: ${uploadedAudioFallback.name}. Lyrics were generated from the file and the project can render without any YouTube link.`
           : `Audio fallback ready: ${uploadedAudioFallback.name}. It will be used if YouTube audio is blocked.`
     );
+
+    if (autoRenderPending && currentResult && linkNeedsUploadedAudio(currentResult)) {
+      setRenderMessage("Audio uploaded. Starting the render automatically now...");
+      setStatus(`Audio uploaded: ${uploadedAudioFallback.name}. Starting the render automatically now...`);
+      await handleRender();
+    }
   } catch (error) {
     if (uploadedAudioFallback?.file) {
       renderAudioFallbackMeta();
@@ -3411,7 +3417,7 @@ async function handleRender() {
   const hasUploadedAudio = Boolean(uploadedAudioFallback?.file);
 
   if (!isUploadedAudioProject() && audioAccess.mode === "upload-recommended" && !hasUploadedAudio) {
-    autoRenderPending = false;
+    autoRenderPending = true;
     const uploadRequiredMessage = buildUploadedAudioRequiredMessage();
     setStatus(uploadRequiredMessage, true);
     setRenderMessage(
@@ -3462,6 +3468,7 @@ async function handleRender() {
       lines: currentResult.lines,
       song: currentResult.song,
       syncMode: currentResult.syncMode,
+      audioPreviewBlocked: Boolean(currentResult.audioPreviewBlocked),
       poster: currentResult.poster,
       thumbnails: currentResult.thumbnails,
       customBackgrounds: uploadedBackgrounds,
@@ -3694,6 +3701,12 @@ async function handleSubmit(event) {
     }
 
     await renderResult(payload);
+
+    if (linkNeedsUploadedAudio(payload) && !uploadedAudioFallback?.file) {
+      promptRequiredAudioUpload(payload, { scroll: true });
+      return;
+    }
+
     await handleRender();
   } catch (error) {
     autoRenderPending = false;
