@@ -388,6 +388,7 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
     return [];
   }
 
+  const minimumLineDuration = 2.5;
   const segmentEnd = start + duration;
   const wordEntries = normalizeTranscriptWordEntries(rawWordEntries, start, segmentEnd);
 
@@ -408,7 +409,7 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
       timedChunks.push({
         text: chunkText,
         start: chunkStart,
-        duration: Math.max(0.4, chunkEnd - chunkStart)
+        duration: Math.max(minimumLineDuration, chunkEnd - chunkStart)
       });
     }
 
@@ -420,7 +421,7 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
   const words = text.split(/\s+/).filter(Boolean);
 
   if (words.length <= 7 && duration <= 4.8) {
-    return [{ text, start, duration }];
+    return [{ text, start, duration: Math.max(minimumLineDuration, duration) }];
   }
 
   const chunks = [];
@@ -444,8 +445,8 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
   return chunks.map((chunk, index) => {
     const isLast = index === chunks.length - 1;
     const chunkDuration = isLast
-      ? Math.max(0.8, start + duration - cursor)
-      : Math.max(1.1, (duration * chunk.wordCount) / totalWords);
+      ? Math.max(minimumLineDuration, start + duration - cursor)
+      : Math.max(minimumLineDuration, (duration * chunk.wordCount) / totalWords);
     const line = {
       text: chunk.text,
       start: cursor,
