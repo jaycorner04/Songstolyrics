@@ -5482,6 +5482,64 @@ async function createEmergencyBackgroundPlates(
   return outputPaths;
 }
 
+async function createSolidColorBackgroundManifest(
+  job,
+  renderDirectory,
+  backgroundPlan,
+  videoSize,
+  durationSeconds,
+  stageLabel = "Preparing solid fallback background",
+  progressStart = 0.46
+) {
+  updateJob(job, {
+    stage: stageLabel,
+    progress: progressStart
+  });
+
+  const palette = SAFE_BACKGROUND_PALETTE[0];
+  const outputPath = path.join(renderDirectory, "solid-fallback-background.png");
+
+  await runCommand(
+    ffmpegPath,
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${palette.base}:s=${videoSize.width}x${videoSize.height}:d=1`,
+      "-frames:v",
+      "1",
+      "-vf",
+      [
+        "format=rgba",
+        `drawbox=x=0:y=0:w=iw:h=ih:color=${palette.accent}@0.12:t=fill`,
+        `drawbox=x=0:y=ih*0.62:w=iw:h=ih*0.38:color=${palette.glow}@0.1:t=fill`,
+        "eq=contrast=1.01:saturation=0.96:brightness=0.01",
+        "format=rgba"
+      ].join(","),
+      outputPath
+    ],
+    {
+      cwd: renderDirectory,
+      timeoutMs: PANEL_PROCESS_TIMEOUT_MS
+    }
+  );
+
+  const manifestScenes = Array.isArray(backgroundPlan) && backgroundPlan.length
+    ? backgroundPlan
+    : [{ start: 0, end: Math.max(1, roundTimeValue(durationSeconds || 1)) }];
+  const manifestBackgroundPaths = manifestScenes.map(() => outputPath);
+  const manifestPath = path.join(renderDirectory, "backgrounds-solid.concat");
+
+  await fsp.writeFile(
+    manifestPath,
+    createConcatManifest(manifestBackgroundPaths, manifestScenes),
+    "utf8"
+  );
+
+  return manifestPath;
+}
+
 function createConcatManifest(backgroundPaths, backgroundPlan) {
   const lines = [];
 
