@@ -1774,6 +1774,17 @@ app.post(
       renderMode: body?.renderMode === "fast" ? "fast" : "standard",
       lyricStyle: `${body?.lyricStyle || "auto"}`,
       lyricFont: `${body?.lyricFont || "arial"}`,
+      lyricFontZoom: Number(body?.lyricFontZoom || 100),
+      lyricPosition:
+        body?.lyricPosition &&
+        typeof body.lyricPosition === "object" &&
+        !Array.isArray(body.lyricPosition)
+          ? {
+              x: Number(body.lyricPosition.x),
+              y: Number(body.lyricPosition.y),
+              anchor: `${body.lyricPosition.anchor || "center"}`
+            }
+          : null,
       clientViewport:
         body?.clientViewport &&
         typeof body.clientViewport === "object" &&

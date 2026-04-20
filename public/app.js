@@ -1551,6 +1551,243 @@ function buildLyricFontDropdown() {
   updateLyricFontPreview();
 }
 
+function clampPreviewPlacement(value, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, Number(value || 0)));
+}
+
+function getLyricPreviewPlacementDefault(styleValue = "auto") {
+  return lyricPreviewPlacementDefaults[styleValue] || lyricPreviewPlacementDefaults.auto;
+}
+
+function getLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "auto") {
+  const defaults = getLyricPreviewPlacementDefault(styleValue);
+  return {
+    x: lyricPreviewCustomPosition?.x ?? defaults.x,
+    y: lyricPreviewCustomPosition?.y ?? defaults.y,
+    anchor: defaults.anchor || "center"
+  };
+}
+
+function getLyricPreviewAnchorTranslateX(anchor = "center") {
+  if (anchor === "left") {
+    return "0%";
+  }
+
+  if (anchor === "right") {
+    return "-100%";
+  }
+
+  return "-50%";
+}
+
+function updateLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "auto") {
+  if (!lyricStylePreview || !previewLinesShell) {
+    return;
+  }
+
+  const placement = getLyricPreviewPlacement(styleValue);
+  lyricStylePreview.style.setProperty("--preview-lyrics-x", `${(placement.x * 100).toFixed(2)}%`);
+  lyricStylePreview.style.setProperty("--preview-lyrics-y", `${(placement.y * 100).toFixed(2)}%`);
+  lyricStylePreview.style.setProperty("--preview-shell-translate-x", getLyricPreviewAnchorTranslateX(placement.anchor));
+  lyricStylePreview.style.setProperty("--preview-shell-translate-y", "-50%");
+  previewLinesShell.dataset.anchor = placement.anchor;
+
+  if (lyricPreviewResetButton) {
+    lyricPreviewResetButton.disabled = !lyricPreviewCustomPosition;
+  }
+}
+
+function setLyricPreviewCustomPosition(position = null) {
+  if (!position) {
+    lyricPreviewCustomPosition = null;
+  } else {
+    lyricPreviewCustomPosition = {
+      x: clampPreviewPlacement(position.x),
+      y: clampPreviewPlacement(position.y)
+    };
+  }
+
+  updateLyricPreviewPlacement();
+}
+
+function resolveLyricPreviewRenderPosition() {
+  if (!lyricPreviewCustomPosition) {
+    return null;
+  }
+
+  const placement = getLyricPreviewPlacement();
+  return {
+    x: Number(placement.x.toFixed(4)),
+    y: Number(placement.y.toFixed(4)),
+    anchor: placement.anchor
+  };
+}
+
+function notifyLyricPreviewPositionChanged(message = "Lyric position changed. Render again to apply it to the final video.") {
+  if (hasProjectSource()) {
+    markRenderOutputStale(message);
+    return;
+  }
+
+  setStatus("Lyric position updated in the live preview.");
+}
+
+function resetLyricPreviewPosition() {
+  if (!lyricPreviewCustomPosition) {
+    return;
+  }
+
+  setLyricPreviewCustomPosition(null);
+  notifyLyricPreviewPositionChanged("Lyric position reset. Render again to restore the default placement in the final video.");
+}
+
+function updateLyricPreviewBackground() {
+  if (!lyricStylePreview || !lyricStylePreviewImage || !lyricStylePreviewVideo) {
+    return;
+  }
+
+  const previewImage = uploadedBackgrounds[0]?.dataUrl || "";
+  const previewVideo = uploadedBackgroundVideo?.previewUrl || "";
+  const hasCustomBackground = Boolean(previewImage || previewVideo);
+  lyricStylePreview.classList.toggle("is-custom-background", hasCustomBackground);
+
+  if (previewVideo) {
+    lyricStylePreviewImage.hidden = true;
+    lyricStylePreviewImage.removeAttribute("src");
+    lyricStylePreviewVideo.hidden = false;
+
+    if (lyricStylePreviewVideo.src !== previewVideo) {
+      lyricStylePreviewVideo.src = previewVideo;
+      lyricStylePreviewVideo.load();
+    }
+
+    lyricStylePreviewVideo.play().catch(() => {});
+    return;
+  }
+
+  lyricStylePreviewVideo.pause();
+  lyricStylePreviewVideo.hidden = true;
+  lyricStylePreviewVideo.removeAttribute("src");
+  lyricStylePreviewVideo.load();
+  lyricStylePreviewImage.hidden = !previewImage;
+
+  if (previewImage) {
+    lyricStylePreviewImage.src = previewImage;
+  } else {
+    lyricStylePreviewImage.removeAttribute("src");
+  }
+}
+
+function handleLyricPreviewPointerDown(event) {
+  if (!previewLinesShell || !lyricPreviewDragSurface || event.button !== 0) {
+    return;
+  }
+
+  const stageRect = lyricPreviewDragSurface.getBoundingClientRect();
+  const shellRect = previewLinesShell.getBoundingClientRect();
+
+  if (!stageRect.width || !stageRect.height || !shellRect.width || !shellRect.height) {
+    return;
+  }
+
+  lyricPreviewDragState = {
+    pointerId: event.pointerId,
+    stageRect,
+    shellRect,
+    anchor: getLyricPreviewPlacement().anchor,
+    pointerOffsetX: event.clientX - shellRect.left,
+    pointerOffsetY: event.clientY - shellRect.top,
+    moved: false
+  };
+
+  previewLinesShell.classList.add("is-dragging");
+  previewLinesShell.setPointerCapture?.(event.pointerId);
+  document.body.style.userSelect = "none";
+  event.preventDefault();
+}
+
+function handleLyricPreviewPointerMove(event) {
+  if (!lyricPreviewDragState || event.pointerId !== lyricPreviewDragState.pointerId) {
+    return;
+  }
+
+  const { stageRect, shellRect, pointerOffsetX, pointerOffsetY, anchor } = lyricPreviewDragState;
+  const maxLeft = Math.max(0, stageRect.width - shellRect.width);
+  const maxTop = Math.max(0, stageRect.height - shellRect.height);
+  const shellLeft = Math.min(maxLeft, Math.max(0, event.clientX - stageRect.left - pointerOffsetX));
+  const shellTop = Math.min(maxTop, Math.max(0, event.clientY - stageRect.top - pointerOffsetY));
+  const anchorX =
+    anchor === "left"
+      ? shellLeft
+      : anchor === "right"
+        ? shellLeft + shellRect.width
+        : shellLeft + shellRect.width / 2;
+  const anchorY = shellTop + shellRect.height / 2;
+  const nextPosition = {
+    x: clampPreviewPlacement(anchorX / Math.max(1, stageRect.width)),
+    y: clampPreviewPlacement(anchorY / Math.max(1, stageRect.height))
+  };
+
+  if (
+    !lyricPreviewCustomPosition ||
+    Math.abs(nextPosition.x - lyricPreviewCustomPosition.x) > 0.001 ||
+    Math.abs(nextPosition.y - lyricPreviewCustomPosition.y) > 0.001
+  ) {
+    lyricPreviewDragState.moved = true;
+    setLyricPreviewCustomPosition(nextPosition);
+  }
+}
+
+function finishLyricPreviewDrag(event) {
+  if (!lyricPreviewDragState || event.pointerId !== lyricPreviewDragState.pointerId) {
+    return;
+  }
+
+  previewLinesShell?.classList.remove("is-dragging");
+  previewLinesShell?.releasePointerCapture?.(event.pointerId);
+  document.body.style.userSelect = "";
+  const wasMoved = lyricPreviewDragState.moved;
+  lyricPreviewDragState = null;
+
+  if (wasMoved) {
+    notifyLyricPreviewPositionChanged();
+  }
+}
+
+function handleLyricPreviewKeyboardMove(event) {
+  if (!previewLinesShell) {
+    return;
+  }
+
+  const step = event.shiftKey ? 0.05 : 0.025;
+  const currentPlacement = resolveLyricPreviewRenderPosition() || getLyricPreviewPlacement();
+  let nextPosition = null;
+
+  switch (event.key) {
+    case "ArrowLeft":
+      nextPosition = { x: currentPlacement.x - step, y: currentPlacement.y };
+      break;
+    case "ArrowRight":
+      nextPosition = { x: currentPlacement.x + step, y: currentPlacement.y };
+      break;
+    case "ArrowUp":
+      nextPosition = { x: currentPlacement.x, y: currentPlacement.y - step };
+      break;
+    case "ArrowDown":
+      nextPosition = { x: currentPlacement.x, y: currentPlacement.y + step };
+      break;
+    case "Escape":
+      resetLyricPreviewPosition();
+      return;
+    default:
+      return;
+  }
+
+  event.preventDefault();
+  setLyricPreviewCustomPosition(nextPosition);
+  notifyLyricPreviewPositionChanged();
+}
+
 function updateLyricStylePreview() {
   if (
     !lyricStylePreview ||
@@ -1676,6 +1913,8 @@ function updateLyricStylePreview() {
       lyricStylePreview.style.removeProperty("--preview-neon-glow");
     }
   }
+
+  updateLyricPreviewPlacement(styleValue);
 
   if (lyricPreviewAnimationTimer) {
     window.clearInterval(lyricPreviewAnimationTimer);
@@ -2595,6 +2834,7 @@ function updatePostRenderBackgroundStatus() {
   }
 
   updateArtworkVisibility();
+  updateLyricPreviewBackground();
   updateLiveBackgroundPreview();
 }
 
@@ -3767,6 +4007,7 @@ async function handleRender() {
       lyricStyle: lyricStyleInput.value,
       lyricFont: lyricFontInput.value,
       lyricFontZoom: getSelectedLyricZoomValue(),
+      lyricPosition: resolveLyricPreviewRenderPosition(),
       useStyleColor: getSelectedStyleColorSettings().enabled,
       styleColor: getSelectedStyleColorSettings().color,
       neonGlow: getSelectedStyleColorSettings().glowPercent,
@@ -4140,6 +4381,9 @@ if (neonGlowInput) {
     markRenderOutputStale("Glow settings changed. Render again to apply them to the output video.");
   });
 }
+previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
+previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
+lyricPreviewResetButton?.addEventListener("click", resetLyricPreviewPosition);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 deleteUploadedImagesButton.addEventListener("click", () => {
@@ -4229,7 +4473,11 @@ if (localDebugClearButton) {
 
 window.addEventListener("resize", () => {
   syncMobileResultStack();
+  updateLyricPreviewPlacement();
 });
+window.addEventListener("pointermove", handleLyricPreviewPointerMove);
+window.addEventListener("pointerup", finishLyricPreviewDrag);
+window.addEventListener("pointercancel", finishLyricPreviewDrag);
 
 window.addEventListener("error", (event) => {
   reportLocalDebugError({
