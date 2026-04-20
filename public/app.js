@@ -122,6 +122,8 @@ let audioFallbackPopupKey = "";
 let autoRenderPending = false;
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
+const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
+const UPLOADED_AUDIO_JOB_TIMEOUT_MS = 12 * 60 * 1000;
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const ACTIVE_RENDER_STORAGE_KEY = "song-to-lyrics-active-render";
 const LOCAL_DEBUG_REFRESH_MS = 3000;
@@ -825,9 +827,65 @@ async function prepareUploadedAudioProject(audioMeta = uploadedAudioFallback) {
     throw new Error(payload.error || "The uploaded audio could not be analyzed.");
   }
 
+  if (payload?.jobId) {
+    const uploadedAudioJob = await waitForUploadedAudioProjectJob(payload.jobId);
+    audioMeta.preparedProject = uploadedAudioJob;
+    audioMeta.preparedProjectCacheKey = cacheKey;
+    return mergeUploadedAudioProjectResult(uploadedAudioJob, audioMeta);
+  }
+
   audioMeta.preparedProject = payload;
   audioMeta.preparedProjectCacheKey = cacheKey;
   return mergeUploadedAudioProjectResult(payload, audioMeta);
+}
+
+async function waitForUploadedAudioProjectJob(jobId = "") {
+  const safeJobId = `${jobId || ""}`.trim();
+
+  if (!safeJobId) {
+    throw new Error("The uploaded audio job did not return an ID.");
+  }
+
+  const startedAt = Date.now();
+  let lastStatusMessage = "";
+
+  while (Date.now() - startedAt < UPLOADED_AUDIO_JOB_TIMEOUT_MS) {
+    const response = await fetch(`/api/job/${encodeURIComponent(safeJobId)}`);
+    const payload = await readJsonResponseSafely(response, {});
+
+    if (!response.ok) {
+      throw new Error(payload.error || "The uploaded audio job could not be checked.");
+    }
+
+    const status = `${payload.status || ""}`.toLowerCase();
+    const message =
+      payload.message ||
+      (status === "processing"
+        ? "Transcribing audio with Whisper - usually 2 to 3 minutes. Hang tight..."
+        : status === "pending"
+          ? "Queued uploaded audio for lyric analysis."
+          : "");
+
+    if (message && message !== lastStatusMessage) {
+      setStatus(message);
+      setRenderMessage(message);
+      lastStatusMessage = message;
+    }
+
+    if (status === "done") {
+      return payload.result || null;
+    }
+
+    if (status === "error") {
+      throw new Error(payload.error || "The uploaded audio could not be analyzed.");
+    }
+
+    await wait(UPLOADED_AUDIO_JOB_POLL_MS);
+  }
+
+  throw new Error(
+    "Transcribing audio is taking longer than usual. Please wait a moment and try again."
+  );
 }
 
 function persistDismissedAudioPopupKeys() {
