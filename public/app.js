@@ -979,6 +979,37 @@ function scrollToAudioFallbackCard() {
   });
 }
 
+function syncMobileResultStack() {
+  if (!mediaColumn || !trackCard || !posterFrame || !videoOutputCard) {
+    return;
+  }
+
+  const isMobileViewport = window.matchMedia("(max-width: 760px)").matches;
+
+  if (isMobileViewport) {
+    mediaColumn.style.display = "flex";
+    mediaColumn.style.flexDirection = "column";
+    mediaColumn.style.gap = "12px";
+    trackCard.style.order = "1";
+    posterFrame.style.order = "2";
+    if (mobileStageCard) {
+      mobileStageCard.style.order = "3";
+    }
+    videoOutputCard.style.order = "4";
+    return;
+  }
+
+  mediaColumn.style.display = "";
+  mediaColumn.style.flexDirection = "";
+  mediaColumn.style.gap = "";
+  trackCard.style.order = "";
+  posterFrame.style.order = "";
+  if (mobileStageCard) {
+    mobileStageCard.style.order = "";
+  }
+  videoOutputCard.style.order = "";
+}
+
 function buildFallbackAudioAccessState(result = {}) {
   if (!result?.audioPreviewBlocked) {
     return {
@@ -3942,6 +3973,7 @@ renderUploadPreviews();
 renderBackgroundVideoMeta();
 renderAudioFallbackMeta();
 updatePostRenderBackgroundStatus();
+syncMobileResultStack();
 updateLyricFontPreview();
 syncLyricZoomUi();
 updateStyleSpecificControls();
@@ -3983,6 +4015,10 @@ if (localDebugClearButton) {
     clearLocalDebugPanel().catch(() => {});
   });
 }
+
+window.addEventListener("resize", () => {
+  syncMobileResultStack();
+});
 
 window.addEventListener("error", (event) => {
   reportLocalDebugError({
