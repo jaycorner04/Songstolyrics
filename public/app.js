@@ -48,6 +48,10 @@ const lyricStylePreviewVideo = document.getElementById("lyric-style-preview-vide
 const lyricPreviewDragSurface = document.getElementById("lyric-preview-drag-surface");
 const previewLinesShell = document.getElementById("preview-lines-shell");
 const previewLineNodes = Array.from(document.querySelectorAll(".preview-line"));
+const lyricPositionStatus = document.getElementById("lyric-position-status");
+const lyricPositionCenterButton = document.getElementById("lyric-position-center-button");
+const lyricPositionLowerButton = document.getElementById("lyric-position-lower-button");
+const lyricPositionResetButton = document.getElementById("lyric-position-reset-button");
 const uploadPreviewStrip = document.getElementById("upload-preview-strip");
 const changeUploadedImagesButton = document.getElementById("change-uploaded-images-button");
 const deleteUploadedImagesButton = document.getElementById("delete-uploaded-images-button");
@@ -1600,6 +1604,27 @@ function updateLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "aut
   previewLinesShell.dataset.anchor = placement.anchor;
 }
 
+function formatLyricPlacementPercentage(value = 0) {
+  return `${Math.round(clampPreviewPlacement(value) * 100)}%`;
+}
+
+function renderLyricPositionStatus() {
+  if (!lyricPositionStatus) {
+    return;
+  }
+
+  const hasCustomPlacement = Boolean(lyricPreviewCustomPosition);
+  const placement = getLyricPreviewPlacement();
+  const backgroundReady = Boolean(uploadedBackgrounds.length || uploadedBackgroundVideo);
+  const positionText = `${formatLyricPlacementPercentage(placement.x)} from left · ${formatLyricPlacementPercentage(placement.y)} from top`;
+
+  lyricPositionStatus.textContent = hasCustomPlacement
+    ? `Custom lyric placement saved. The render will place the lyrics at ${positionText}.`
+    : backgroundReady
+      ? "The uploaded background is previewing now. Drag the lyrics to a clean area, then render."
+      : "Upload a background, then drag the live preview lyrics where you want them to stay in the final render.";
+}
+
 function setLyricPreviewCustomPosition(position = null) {
   if (!position) {
     lyricPreviewCustomPosition = null;
@@ -1611,6 +1636,7 @@ function setLyricPreviewCustomPosition(position = null) {
   }
 
   updateLyricPreviewPlacement();
+  renderLyricPositionStatus();
 }
 
 function resolveLyricPreviewRenderPosition() {
@@ -1627,16 +1653,22 @@ function resolveLyricPreviewRenderPosition() {
 }
 
 function notifyLyricPreviewPositionChanged(message = "Lyric position changed in the live preview.") {
-  setStatus("Lyric position updated in the live preview.");
+  setStatus(message);
 }
 
 function resetLyricPreviewPosition() {
   if (!lyricPreviewCustomPosition) {
+    renderLyricPositionStatus();
     return;
   }
 
   setLyricPreviewCustomPosition(null);
   notifyLyricPreviewPositionChanged("Lyric position reset. Render again to restore the default placement in the final video.");
+}
+
+function applyLyricPreviewPlacementPreset(position = {}) {
+  setLyricPreviewCustomPosition(position);
+  notifyLyricPreviewPositionChanged("Lyric position updated. The final render will use this placement.");
 }
 
 function updateLyricPreviewBackground() {
@@ -1677,6 +1709,8 @@ function updateLyricPreviewBackground() {
     lyricStylePreview.style.removeProperty("--lyric-preview-uploaded-image");
     lyricStylePreviewImage.removeAttribute("src");
   }
+
+  renderLyricPositionStatus();
 }
 
 function handleLyricPreviewPointerDown(event) {
@@ -4037,6 +4071,7 @@ async function handleRender() {
       lyricStyle: lyricStyleInput.value,
       lyricFont: lyricFontInput.value,
       lyricFontZoom: getSelectedLyricZoomValue(),
+      lyricPlacement: resolveLyricPreviewRenderPosition(),
       useStyleColor: getSelectedStyleColorSettings().enabled,
       styleColor: getSelectedStyleColorSettings().color,
       neonGlow: getSelectedStyleColorSettings().glowPercent,
@@ -4462,6 +4497,7 @@ syncLyricZoomUi();
 updateStyleSpecificControls();
 updateLyricStylePreview();
 updateLyricPreviewBackground();
+renderLyricPositionStatus();
 restoreDismissedAudioPopupKeys();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();
@@ -4507,6 +4543,23 @@ window.addEventListener("resize", () => {
 window.addEventListener("pointermove", handleLyricPreviewPointerMove);
 window.addEventListener("pointerup", finishLyricPreviewDrag);
 window.addEventListener("pointercancel", finishLyricPreviewDrag);
+lyricPositionCenterButton?.addEventListener("click", () => {
+  const defaults = getLyricPreviewPlacementDefault(lyricStyleInput?.value || "auto");
+  applyLyricPreviewPlacementPreset({
+    x: defaults.anchor === "left" ? Math.max(0.12, defaults.x) : defaults.x,
+    y: defaults.y
+  });
+});
+lyricPositionLowerButton?.addEventListener("click", () => {
+  const defaults = getLyricPreviewPlacementDefault(lyricStyleInput?.value || "auto");
+  applyLyricPreviewPlacementPreset({
+    x: lyricPreviewCustomPosition?.x ?? defaults.x,
+    y: clampPreviewPlacement((lyricPreviewCustomPosition?.y ?? defaults.y) + 0.12)
+  });
+});
+lyricPositionResetButton?.addEventListener("click", () => {
+  resetLyricPreviewPosition();
+});
 
 window.addEventListener("error", (event) => {
   reportLocalDebugError({
