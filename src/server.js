@@ -1221,11 +1221,6 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
   );
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
-  const hasTrustedLyricSheet = () =>
-    Array.isArray(lyricResult?.lines) &&
-    lyricResult.lines.length >= 4 &&
-    !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
-    String(lyricResult?.source || "").toLowerCase() !== "unavailable";
 
   try {
     if (startupDiagnostics.transcriptionReady) {
@@ -1251,24 +1246,24 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         );
 
         if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {
-          if (hasTrustedLyricSheet()) {
-            warnings.push(
-              "A lyric match was found from the uploaded filename, so the preview kept the cleaner lyric sheet instead of replacing it with raw audio transcription."
-            );
-          } else {
-            lyricResult = {
-              song: lyricResult?.song || fallbackSong,
-              source: "audio-transcription",
-              syncMode: "transcribed",
-              lines: assessedTranscription.lines
-            };
+          const hadNonAudioLyricSheet =
+            Array.isArray(lyricResult?.lines) &&
+            lyricResult.lines.length >= 4 &&
+            !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
+            String(lyricResult?.source || "").toLowerCase() !== "unavailable";
 
-            if (lyricResult?.song?.title && lyricResult.song.title !== fallbackSong.title) {
-              warnings.push(
-                "A lyric match was found from the uploaded filename, and the preview timing was rebuilt from the uploaded audio."
-              );
-            }
-          }
+          lyricResult = {
+            song: lyricResult?.song || fallbackSong,
+            source: "audio-transcription",
+            syncMode: "transcribed",
+            lines: assessedTranscription.lines
+          };
+
+          warnings.push(
+            hadNonAudioLyricSheet
+              ? "A lyric match was found from the filename, but uploaded-audio projects now use the audio transcript as the main lyric timing source so the final video stays synced to the file you uploaded."
+              : "Lyrics were built directly from the uploaded audio so the final video can stay synced to the same file."
+          );
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
             "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."

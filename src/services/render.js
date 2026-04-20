@@ -6785,13 +6785,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
     const shouldSkipTrustedSyncedLyricVerification =
       payload?.syncMode === "synced-lyrics" ||
-      (isUploadedAudioSource && (renderLinesAreTranscriptDerived || payload?.syncMode === "transcribed"));
+      isUploadedAudioSource;
 
     if (shouldSkipTrustedSyncedLyricVerification) {
       renderNotes.push(
         payload?.syncMode === "synced-lyrics"
           ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
-          : "Final sync verification was skipped because uploaded-audio transcript timing is already based on the same file being rendered."
+          : "Final sync verification was skipped because uploaded-audio renders now trust lyric timing built from the same file being rendered."
       );
     } else if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
