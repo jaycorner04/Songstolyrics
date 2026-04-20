@@ -428,6 +428,98 @@ button {
   }
 }
 
+@keyframes preview-bounce-hit {
+  0% {
+    transform: translateY(14px) scale(0.92);
+    opacity: 0.42;
+  }
+  45% {
+    transform: translateY(-10px) scale(1.1);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(2px) scale(0.98);
+  }
+  100% {
+    transform: translateY(0) scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes preview-spotlight-beam {
+  0% {
+    transform: translate(-18%, -2%) scale(0.88);
+    opacity: 0.18;
+  }
+  50% {
+    transform: translate(10%, 0) scale(1.02);
+    opacity: 0.38;
+  }
+  100% {
+    transform: translate(24%, 4%) scale(0.9);
+    opacity: 0.2;
+  }
+}
+
+@keyframes preview-spotlight-line {
+  0% {
+    letter-spacing: 0.22em;
+    opacity: 0.22;
+    transform: translateY(12px) scale(0.95);
+  }
+  100% {
+    letter-spacing: 0.04em;
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+}
+
+@keyframes preview-typewriter-reveal {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 22ch;
+  }
+}
+
+@keyframes preview-typewriter-caret {
+  0%,
+  49% {
+    border-right-color: rgba(255, 255, 255, 0.9);
+  }
+  50%,
+  100% {
+    border-right-color: transparent;
+  }
+}
+
+@keyframes preview-whisper-float {
+  0% {
+    opacity: 0.22;
+    filter: blur(8px);
+    letter-spacing: 0.2em;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    letter-spacing: 0.08em;
+    transform: translateY(0);
+  }
+}
+
+@keyframes preview-minimal-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .hero-stat-card {
   padding: 18px 16px;
   border-radius: 18px;
@@ -785,7 +877,13 @@ button {
 }
 
 .lyric-style-preview.is-bounce .preview-line.is-active {
+  animation: preview-bounce-hit 0.78s cubic-bezier(0.22, 1, 0.36, 1);
   transform: scale(1.08) translateY(-2px);
+}
+
+.lyric-style-preview.is-bounce .preview-line.is-near {
+  opacity: 0.82;
+  transform: translateY(-2px);
 }
 
 .lyric-style-preview.is-side-by-side .preview-line {
@@ -817,14 +915,34 @@ button {
   overflow: hidden;
   white-space: nowrap;
   border-right: 2px solid rgba(255, 255, 255, 0.86);
-  width: 20ch;
+  width: 22ch;
   margin: 0 auto;
+  animation:
+    preview-typewriter-reveal 1.1s steps(22, end),
+    preview-typewriter-caret 0.7s step-end infinite;
 }
 
 .lyric-style-preview.is-spotlight {
   background:
     radial-gradient(circle at center, rgba(255, 255, 255, 0.08), transparent 34%),
     linear-gradient(180deg, rgba(14, 29, 52, 0.98), rgba(8, 18, 33, 0.92));
+}
+
+.lyric-style-preview.is-spotlight .lyric-style-preview-glow {
+  background:
+    radial-gradient(circle at center, rgba(255, 252, 228, 0.22), transparent 42%);
+  animation: preview-spotlight-beam 1.45s ease-in-out infinite alternate;
+}
+
+.lyric-style-preview.is-spotlight .preview-line {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.16;
+}
+
+.lyric-style-preview.is-spotlight .preview-line.is-active {
+  animation: preview-spotlight-line 0.7s ease forwards;
+  opacity: 1;
 }
 
 .lyric-style-preview.is-magic .preview-lines {
@@ -916,6 +1034,7 @@ button {
   font-size: 1.18rem;
   color: var(--preview-style-color, rgba(255, 255, 255, 0.92));
   transform: translateY(-1px);
+  animation: preview-whisper-float 0.95s ease forwards;
 }
 
 .lyric-style-preview.is-stacked .preview-lines {
@@ -975,6 +1094,27 @@ button {
 .lyric-style-preview.is-fulllength .preview-line.is-active {
   color: var(--preview-style-color, #ffb088);
   font-size: 1.42rem;
+}
+
+.lyric-style-preview.is-minimal .preview-lines {
+  gap: 4px;
+}
+
+.lyric-style-preview.is-minimal .preview-line {
+  opacity: 0.1;
+  letter-spacing: 0;
+  transform: translateY(0);
+}
+
+.lyric-style-preview.is-minimal .preview-line.is-near {
+  opacity: 0.28;
+}
+
+.lyric-style-preview.is-minimal .preview-line.is-active {
+  animation: preview-minimal-fade 0.65s ease forwards;
+  font-size: 1.26rem;
+  letter-spacing: -0.03em;
+  text-shadow: none;
 }
 
 .input-label,
