@@ -1973,6 +1973,7 @@ function updateLyricStylePreview() {
   }
 
   updateLyricPreviewPlacement(styleValue);
+  renderLyricPositionStatus();
 
   if (lyricPreviewAnimationTimer) {
     window.clearInterval(lyricPreviewAnimationTimer);
