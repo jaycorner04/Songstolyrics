@@ -6252,8 +6252,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     let renderLines = limitLyricLines(sanitizeLyricLines(payload.lines, durationSeconds), durationSeconds);
     const romanizedInitialLines = romanizeLyricLines(renderLines);
     renderLines = romanizedInitialLines.lines;
+    const referenceLyricSourceLines = Array.isArray(payload.referenceLyricsLines) && payload.referenceLyricsLines.length
+      ? payload.referenceLyricsLines
+      : payload.lines;
     const sourceLyricReferenceLines = limitLyricLines(
-      romanizeLyricLines(sanitizeLyricLines(payload.lines, durationSeconds)).lines,
+      romanizeLyricLines(sanitizeLyricLines(referenceLyricSourceLines, durationSeconds)).lines,
       durationSeconds
     );
 
@@ -6410,9 +6413,36 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             sanitizeLyricLines(smoothTranscribedLyricGaps(renderLines, durationSeconds), durationSeconds),
             durationSeconds
           );
+          let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
+
+          if (sourceLyricReferenceLines.length) {
+            const alignedReferenceLyrics = alignLyricLinesToTranscription(
+              sourceLyricReferenceLines,
+              stabilizedUploadedTranscriptLines,
+              durationSeconds
+            );
+            const minimumReferenceAnchors = Math.max(
+              2,
+              Math.min(8, Math.round(sourceLyricReferenceLines.length * 0.18))
+            );
+
+            if (
+              alignedReferenceLyrics.anchorCount >= minimumReferenceAnchors &&
+              alignedReferenceLyrics.lines.length >= Math.max(4, Math.round(sourceLyricReferenceLines.length * 0.45))
+            ) {
+              uploadedAudioRenderLines = alignedReferenceLyrics.lines;
+              renderNotes.push(
+                `Uploaded-audio lyrics were rebuilt from the song match and aligned to ${alignedReferenceLyrics.anchorCount} transcript anchors so the final words stay closer to the real lyrics.`
+              );
+            } else {
+              renderNotes.push(
+                "The uploaded-audio lyric match could not be anchored confidently enough, so the render kept the direct transcript wording for timing."
+              );
+            }
+          }
 
           renderLines = limitLyricLines(
-            applyLyricOffset(stabilizedUploadedTranscriptLines, lyricOffsetSeconds, durationSeconds),
+            applyLyricOffset(uploadedAudioRenderLines, lyricOffsetSeconds, durationSeconds),
             durationSeconds
           );
           renderLineSyncSource = "transcribed";
