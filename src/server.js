@@ -1221,6 +1221,11 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
   );
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
+  const hasTrustedLyricSheet = () =>
+    Array.isArray(lyricResult?.lines) &&
+    lyricResult.lines.length >= 4 &&
+    !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
+    String(lyricResult?.source || "").toLowerCase() !== "unavailable";
 
   try {
     if (startupDiagnostics.transcriptionReady) {
@@ -1246,17 +1251,23 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         );
 
         if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {
-          lyricResult = {
-            song: lyricResult?.song || fallbackSong,
-            source: "audio-transcription",
-            syncMode: "transcribed",
-            lines: assessedTranscription.lines
-          };
-
-          if (lyricResult?.song?.title && lyricResult.song.title !== fallbackSong.title) {
+          if (hasTrustedLyricSheet()) {
             warnings.push(
-              "A lyric match was found from the uploaded filename, and the preview timing was rebuilt from the uploaded audio."
+              "A lyric match was found from the uploaded filename, so the preview kept the cleaner lyric sheet instead of replacing it with raw audio transcription."
             );
+          } else {
+            lyricResult = {
+              song: lyricResult?.song || fallbackSong,
+              source: "audio-transcription",
+              syncMode: "transcribed",
+              lines: assessedTranscription.lines
+            };
+
+            if (lyricResult?.song?.title && lyricResult.song.title !== fallbackSong.title) {
+              warnings.push(
+                "A lyric match was found from the uploaded filename, and the preview timing was rebuilt from the uploaded audio."
+              );
+            }
           }
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
