@@ -92,12 +92,30 @@ const renderUpload = multer({
     fieldSize: 80 * 1024 * 1024
   },
   fileFilter(req, file, callback) {
-    if (!/^video\//i.test(file.mimetype || "")) {
-      callback(createError("Only video files can be uploaded as a background video.", 400));
+    const fieldName = `${file.fieldname || ""}`;
+    const mimeType = `${file.mimetype || ""}`;
+
+    if (fieldName === "backgroundVideo") {
+      if (!/^video\//i.test(mimeType)) {
+        callback(createError("Only video files can be uploaded as a background video.", 400));
+        return;
+      }
+
+      callback(null, true);
       return;
     }
 
-    callback(null, true);
+    if (fieldName === "audioFile") {
+      if (!/^(audio|video)\//i.test(mimeType)) {
+        callback(createError("Only audio files can be uploaded as soundtrack audio.", 400));
+        return;
+      }
+
+      callback(null, true);
+      return;
+    }
+
+    callback(createError("That upload field is not supported.", 400));
   }
 });
 
@@ -1341,17 +1359,30 @@ app.post(
 
 app.post(
   "/api/render",
-  renderUpload.single("backgroundVideo"),
+  renderUpload.fields([
+    { name: "backgroundVideo", maxCount: 1 },
+    { name: "audioFile", maxCount: 1 }
+  ]),
   asyncHandler(async (req, res) => {
     const body = parseRenderRequestBody(req);
+    const backgroundVideoFile = Array.isArray(req.files?.backgroundVideo)
+      ? req.files.backgroundVideo[0]
+      : null;
+    const audioFileUpload = Array.isArray(req.files?.audioFile)
+      ? req.files.audioFile[0]
+      : null;
     const inputUrl = `${body?.inputUrl || ""}`.trim();
 
-    if (!inputUrl) {
-      throw createError("A YouTube link is required before rendering.", 400);
+    if (!inputUrl && !audioFileUpload) {
+      throw createError("A YouTube link or uploaded audio file is required before rendering.", 400);
     }
 
     let renderSong = body?.song || null;
     let renderLines = Array.isArray(body?.lines) ? body.lines : [];
+    const customAudioUploadMeta =
+      body?.customAudioUpload && typeof body.customAudioUpload === "object" && !Array.isArray(body.customAudioUpload)
+        ? body.customAudioUpload
+        : null;
 
     if (!renderLines.length && body?.title) {
       const lyricRetry = await withTimeout(
@@ -1383,17 +1414,27 @@ app.post(
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
-      customBackgroundVideo: req.file
+      customBackgroundVideo: backgroundVideoFile
         ? {
-            tempPath: req.file.path,
-            originalName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            size: req.file.size,
+            tempPath: backgroundVideoFile.path,
+            originalName: backgroundVideoFile.originalname,
+            mimeType: backgroundVideoFile.mimetype,
+            size: backgroundVideoFile.size,
             width: Number(body?.customBackgroundVideo?.width || 0),
             height: Number(body?.customBackgroundVideo?.height || 0),
             duration: Number(body?.customBackgroundVideo?.duration || 0)
           }
         : null,
+      customAudioUpload: audioFileUpload
+        ? {
+            tempPath: audioFileUpload.path,
+            originalName: audioFileUpload.originalname,
+            name: `${customAudioUploadMeta?.name || audioFileUpload.originalname || "uploaded-audio"}`,
+            mimeType: audioFileUpload.mimetype,
+            size: audioFileUpload.size,
+            duration: Number(customAudioUploadMeta?.duration || 0)
+          }
+        : customAudioUploadMeta,
       outputFormat: body?.outputFormat || "auto",
       renderMode: body?.renderMode === "fast" ? "fast" : "standard",
       lyricStyle: `${body?.lyricStyle || "auto"}`,
