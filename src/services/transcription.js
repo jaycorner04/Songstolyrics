@@ -490,6 +490,11 @@ function removeLikelyHallucinations(lines) {
   for (let index = 0; index < sourceLines.length; index += 1) {
     const line = sourceLines[index];
     const normalized = normalizeTranscriptKey(line.text);
+
+    if (!normalized || isLikelyTranscriptGarbage(line.text)) {
+      continue;
+    }
+
     const previous = cleaned.at(-1);
     const previousNormalized = previous ? normalizeTranscriptKey(previous.text) : "";
 
@@ -497,8 +502,7 @@ function removeLikelyHallucinations(lines) {
       previous &&
       normalized &&
       normalized === previousNormalized &&
-      line.start < 12 &&
-      previous.start < 12
+      Math.abs(Number(line.start || 0) - Number(previous.start || 0)) <= 6
     ) {
       continue;
     }
@@ -523,7 +527,46 @@ function removeLikelyHallucinations(lines) {
 }
 
 function normalizeTranscriptKey(text) {
-  return `${text || ""}`.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return `${text || ""}`
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}']+/gu, " ")
+    .trim();
+}
+
+function isLikelyTranscriptGarbage(text) {
+  const normalized = normalizeWhitespace(text);
+
+  if (!normalized) {
+    return true;
+  }
+
+  const letters = normalized.match(/\p{L}/gu) || [];
+  const digits = normalized.match(/\p{N}/gu) || [];
+  const words = normalized
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const normalizedWords = words.map((word) =>
+    word
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}']+/gu, "")
+      .trim()
+  );
+  const uniqueWordCount = new Set(normalizedWords.filter(Boolean)).size;
+
+  if (!letters.length && digits.length) {
+    return true;
+  }
+
+  if (digits.length >= 3 && digits.length > letters.length) {
+    return true;
+  }
+
+  if (words.length >= 3 && uniqueWordCount <= 1) {
+    return true;
+  }
+
+  return false;
 }
 
 async function transcribeWithFasterWhisper(audioPath, outputPath, options = {}) {

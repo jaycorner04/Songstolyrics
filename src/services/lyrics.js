@@ -36,6 +36,19 @@ function cleanUploadedFilenameFragment(value = "") {
   );
 }
 
+function stripUploadedMetadataFragments(value = "") {
+  return normalizeWhitespace(
+    `${value || ""}`
+      .replace(/[\[\]\(\)]/g, " ")
+      .replace(
+        /\b(movie|film|album|ost|soundtrack|from|starring|cast|hero|heroine|director|music director|rahul|lavanya|andala rakshasi)\b.*$/i,
+        (match) => (/^andala rakshasi$/i.test(match.trim()) ? match : "")
+      )
+      .replace(/\s+,.*$/g, " ")
+      .replace(/\s{2,}/g, " ")
+  );
+}
+
 function stripFeaturedArtists(value = "") {
   return normalizeWhitespace(
     `${value || ""}`
@@ -190,7 +203,8 @@ function inferSongFromFilename(filename = "") {
     };
   }
 
-  const guessedFromTitle = inferSongFromVideo(cleanedFilename, "Uploaded audio");
+  const trimmedSongTitle = stripUploadedMetadataFragments(cleanedFilename) || cleanedFilename;
+  const guessedFromTitle = inferSongFromVideo(trimmedSongTitle, "Uploaded audio");
   const normalizedArtist =
     /^uploaded audio$/i.test(normalizeWhitespace(guessedFromTitle.artist || "")) ? "" : guessedFromTitle.artist;
 
@@ -198,9 +212,65 @@ function inferSongFromFilename(filename = "") {
     ...guessedFromTitle,
     artist: normalizedArtist,
     searchQuery:
-      normalizeWhitespace(`${normalizedArtist} ${guessedFromTitle.title}`) || cleanedFilename,
-    cleanedVideoTitle: cleanedFilename
+      normalizeWhitespace(`${normalizedArtist} ${guessedFromTitle.title}`) || trimmedSongTitle,
+    cleanedVideoTitle: trimmedSongTitle
   };
+}
+
+function buildTitleSearchVariants(title = "") {
+  const normalizedTitle = normalizeWhitespace(title);
+
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  const variants = new Set([normalizedTitle]);
+  const primaryPhrase = normalizeWhitespace(
+    normalizedTitle
+      .replace(/\b(movie|film|album|ost|soundtrack|from|starring|cast)\b.*$/i, "")
+      .trim()
+  );
+
+  if (primaryPhrase) {
+    variants.add(primaryPhrase);
+  }
+
+  const titleTokens = primaryPhrase.split(/\s+/).filter(Boolean);
+
+  if (titleTokens.length >= 3) {
+    variants.add(titleTokens.slice(0, 3).join(" "));
+  }
+
+  if (titleTokens.length >= 2) {
+    variants.add(titleTokens.slice(0, 2).join(" "));
+  }
+
+  if (titleTokens.length >= 2 && titleTokens[0].length >= 4) {
+    variants.add(titleTokens[0]);
+  }
+
+  return [...variants].filter(Boolean);
+}
+
+function dedupeLrcLibItems(items = []) {
+  const seen = new Set();
+
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const key = normalizeWhitespace(
+      `${item?.artistName || ""}::${item?.trackName || item?.name || ""}::${item?.duration || ""}`
+    ).toLowerCase();
+
+    if (!key) {
+      return false;
+    }
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 async function fetchJson(url) {
@@ -338,15 +408,21 @@ function isRelevantLyricsCandidate(candidate, guessedSong) {
 }
 
 async function searchLrcLib(guessedSong, durationSeconds) {
-  const url = new URL("https://lrclib.net/api/search");
-  url.searchParams.set("track_name", stripFeaturedArtists(guessedSong.title));
+  const titleVariants = buildTitleSearchVariants(stripFeaturedArtists(guessedSong.title));
+  const payloads = await Promise.all(
+    titleVariants.map(async (titleVariant) => {
+      const url = new URL("https://lrclib.net/api/search");
+      url.searchParams.set("track_name", titleVariant);
 
-  if (guessedSong.artist) {
-    url.searchParams.set("artist_name", guessedSong.artist);
-  }
+      if (guessedSong.artist) {
+        url.searchParams.set("artist_name", guessedSong.artist);
+      }
 
-  const payload = await fetchJson(url);
-  const items = Array.isArray(payload) ? payload : [];
+      return fetchJson(url);
+    })
+  );
+
+  const items = dedupeLrcLibItems(payloads.flatMap((payload) => (Array.isArray(payload) ? payload : [])));
 
   return items.sort(
     (left, right) =>
@@ -407,10 +483,11 @@ function parseSyncedLyrics(syncedLyrics, durationSeconds) {
 
 async function searchLyricsCandidates(guessedSong) {
   const baseUrl = toLyricsApiBase();
-  const queries = [guessedSong.searchQuery, guessedSong.title]
+  const queries = [guessedSong.searchQuery, guessedSong.title, ...buildTitleSearchVariants(guessedSong.title)]
     .map((value) => normalizeWhitespace(value))
     .filter(Boolean)
-    .slice(0, 2);
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .slice(0, 4);
 
   const rawCandidates = [
     {
