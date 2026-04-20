@@ -625,8 +625,11 @@ button {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background:
+    var(--lyric-preview-uploaded-image, linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0))),
     radial-gradient(circle at 20% 20%, rgba(255, 122, 69, 0.18), transparent 30%),
     linear-gradient(180deg, rgba(14, 29, 52, 0.98), rgba(8, 18, 33, 0.92));
+  background-size: cover, auto, auto;
+  background-position: center center, center center, center center;
 }
 
 .lyric-style-preview-media {
@@ -1547,7 +1550,8 @@ button {
 }
 
 .font-dropdown-option {
-  display: block;
+  display: grid;
+  gap: 4px;
   width: 100%;
   margin: 0;
   padding: 10px 12px;
@@ -1558,6 +1562,21 @@ button {
   text-align: left;
   font-size: 1rem;
   line-height: 1.25;
+}
+
+.font-dropdown-option-name {
+  display: block;
+  font-family: "Sora", Arial, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.font-dropdown-option-preview {
+  display: block;
+  font-size: 1.12rem;
+  line-height: 1.15;
+  color: #f6f0e8;
 }
 
 .font-dropdown-option:hover {

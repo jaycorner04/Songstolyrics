@@ -1489,6 +1489,7 @@ function buildLyricFontDropdown() {
   }
 
   lyricFontMenu.innerHTML = "";
+  const previewText = "Aa Bb 123";
 
   Array.from(lyricFontInput.children).forEach((groupNode) => {
     if (groupNode.tagName?.toLowerCase() === "optgroup") {
@@ -1514,7 +1515,10 @@ function buildLyricFontDropdown() {
         button.setAttribute("role", "option");
         button.setAttribute("aria-selected", option.selected ? "true" : "false");
         button.style.fontFamily = button.dataset.fontFamily;
-        button.textContent = option.textContent?.trim() || option.value;
+        button.innerHTML = `
+          <span class="font-dropdown-option-name">${option.textContent?.trim() || option.value}</span>
+          <span class="font-dropdown-option-preview" style="font-family: ${button.dataset.fontFamily};">${previewText}</span>
+        `;
         button.addEventListener("click", () => {
           lyricFontInput.value = option.value;
           lyricFontInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1538,7 +1542,10 @@ function buildLyricFontDropdown() {
       button.setAttribute("role", "option");
       button.setAttribute("aria-selected", groupNode.selected ? "true" : "false");
       button.style.fontFamily = button.dataset.fontFamily;
-      button.textContent = groupNode.textContent?.trim() || groupNode.value;
+      button.innerHTML = `
+        <span class="font-dropdown-option-name">${groupNode.textContent?.trim() || groupNode.value}</span>
+        <span class="font-dropdown-option-preview" style="font-family: ${button.dataset.fontFamily};">${previewText}</span>
+      `;
       button.addEventListener("click", () => {
         lyricFontInput.value = groupNode.value;
         lyricFontInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1643,6 +1650,7 @@ function updateLyricPreviewBackground() {
   lyricStylePreview.classList.toggle("is-custom-background", hasCustomBackground);
 
   if (previewVideo) {
+    lyricStylePreview.style.removeProperty("--lyric-preview-uploaded-image");
     lyricStylePreviewImage.hidden = true;
     lyricStylePreviewImage.removeAttribute("src");
     lyricStylePreviewVideo.hidden = false;
@@ -1663,8 +1671,10 @@ function updateLyricPreviewBackground() {
   lyricStylePreviewImage.hidden = !previewImage;
 
   if (previewImage) {
+    lyricStylePreview.style.setProperty("--lyric-preview-uploaded-image", `url("${previewImage}")`);
     lyricStylePreviewImage.src = previewImage;
   } else {
+    lyricStylePreview.style.removeProperty("--lyric-preview-uploaded-image");
     lyricStylePreviewImage.removeAttribute("src");
   }
 }
