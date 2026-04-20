@@ -1337,17 +1337,38 @@ function updateLyricStylePreview() {
   );
   const focusedIndex = Math.min(Math.max(0, Math.floor(previewLineNodes.length / 2)), previewLineNodes.length - 1);
   const animationVersion = ++lyricPreviewAnimationVersion;
+  let previewTick = 0;
 
   const paintPreviewLines = () => {
+    previewLineNodes.forEach((line) => {
+      line.classList.remove("is-active", "is-near", "is-mid", "is-far");
+      line.style.animation = "none";
+    });
+
+    // Force the style-specific CSS animations to restart on each lyric cycle.
+    previewLineNodes.forEach((line) => {
+      void line.offsetWidth;
+      line.style.animation = "";
+    });
+
     previewLineNodes.forEach((line, index) => {
       const depth = Math.abs(index - focusedIndex);
       line.textContent = filledLines[index] || "";
-      line.classList.toggle("is-active", index === focusedIndex);
-      line.classList.toggle("is-near", depth === 1);
-      line.classList.toggle("is-mid", depth === 2);
-      line.classList.toggle("is-far", depth >= 3);
+      if (index === focusedIndex) {
+        line.classList.add("is-active");
+      } else if (depth === 1) {
+        line.classList.add("is-near");
+      } else if (depth === 2) {
+        line.classList.add("is-mid");
+      } else {
+        line.classList.add("is-far");
+      }
       line.dataset.previewDepth = `${depth}`;
+      line.dataset.previewTick = `${previewTick}`;
     });
+
+    lyricStylePreview.dataset.previewStyle = styleValue;
+    lyricStylePreview.dataset.previewTick = `${previewTick}`;
   };
 
   paintPreviewLines();
@@ -1399,8 +1420,9 @@ function updateLyricStylePreview() {
       }
 
       filledLines.push(filledLines.shift());
+      previewTick += 1;
       paintPreviewLines();
-    }, 1150);
+    }, getLyricPreviewAnimationInterval(styleValue));
   }
 }
 
@@ -3713,7 +3735,8 @@ if (lyricFontZoomOutButton) {
     if (!lyricFontZoomInput) {
       return;
     }
-    lyricFontZoomInput.value = String(Math.max(70, getSelectedLyricZoomValue() - 5));
+    const { min, step } = getPreviewZoomBounds();
+    lyricFontZoomInput.value = String(Math.max(min, getSelectedLyricZoomValue() - step));
     syncLyricZoomUi();
     updateLyricStylePreview();
     markRenderOutputStale("Lyrics size changed. Render again to apply the new size to the output video.");
@@ -3724,7 +3747,8 @@ if (lyricFontZoomInButton) {
     if (!lyricFontZoomInput) {
       return;
     }
-    lyricFontZoomInput.value = String(Math.min(145, getSelectedLyricZoomValue() + 5));
+    const { max, step } = getPreviewZoomBounds();
+    lyricFontZoomInput.value = String(Math.min(max, getSelectedLyricZoomValue() + step));
     syncLyricZoomUi();
     updateLyricStylePreview();
     markRenderOutputStale("Lyrics size changed. Render again to apply the new size to the output video.");
