@@ -6761,10 +6761,18 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
     }
 
-    const shouldSkipTrustedSyncedLyricVerification = payload?.syncMode === "synced-lyrics";
+    const isUploadedAudioSource =
+      String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
+    const shouldSkipTrustedSyncedLyricVerification =
+      payload?.syncMode === "synced-lyrics" ||
+      (isUploadedAudioSource && (renderLinesAreTranscriptDerived || payload?.syncMode === "transcribed"));
 
     if (shouldSkipTrustedSyncedLyricVerification) {
-      renderNotes.push("Final sync verification was skipped because synced web lyrics are already trusted as the timing source.");
+      renderNotes.push(
+        payload?.syncMode === "synced-lyrics"
+          ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
+          : "Final sync verification was skipped because uploaded-audio transcript timing is already based on the same file being rendered."
+      );
     } else if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
         stage: "Checking lyric/audio sync",
