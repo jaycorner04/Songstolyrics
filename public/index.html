@@ -297,7 +297,21 @@
 
               <div class="format-field">
                 <label class="input-label" for="lyric-font">Lyrics font</label>
-                <select id="lyric-font">
+                <div id="lyric-font-dropdown" class="font-dropdown">
+                  <button
+                    id="lyric-font-trigger"
+                    type="button"
+                    class="font-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="lyric-font-menu"
+                  >
+                    <span id="lyric-font-trigger-label">Arial</span>
+                    <span class="font-dropdown-chevron" aria-hidden="true">▾</span>
+                  </button>
+                  <div id="lyric-font-menu" class="font-dropdown-menu" role="listbox" hidden></div>
+                </div>
+                <select id="lyric-font" class="font-dropdown-native">
                   <optgroup label="Clean">
                     <option value="arial" data-font-family="Arial, sans-serif">Arial</option>
                     <option value="trebuchet" data-font-family="'Trebuchet MS', sans-serif">Trebuchet MS</option>
