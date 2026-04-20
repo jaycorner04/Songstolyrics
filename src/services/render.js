@@ -3903,6 +3903,41 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   return clamp(Math.min(naturalEnd, safeUpperBound), minimumEnd, safeUpperBound);
 }
 
+function normalizeRenderLyricPlacement(placement = null) {
+  if (!placement || typeof placement !== "object") {
+    return null;
+  }
+
+  const parsedX = Number(placement.x);
+  const parsedY = Number(placement.y);
+
+  if (!Number.isFinite(parsedX) || !Number.isFinite(parsedY)) {
+    return null;
+  }
+
+  const anchor = ["left", "center", "right"].includes(`${placement.anchor || ""}`.toLowerCase())
+    ? `${placement.anchor}`.toLowerCase()
+    : "center";
+
+  return {
+    x: clamp(parsedX, 0.04, 0.96),
+    y: clamp(parsedY, 0.12, 0.9),
+    anchor
+  };
+}
+
+function getRenderLyricAlignmentTag(anchor = "center") {
+  if (anchor === "left") {
+    return "\\an4";
+  }
+
+  if (anchor === "right") {
+    return "\\an6";
+  }
+
+  return "\\an5";
+}
+
 function createAssSubtitleContent(
   lines,
   payload,
