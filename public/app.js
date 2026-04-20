@@ -1262,9 +1262,7 @@ function updateLyricFontPreview() {
 function updateLyricStylePreview() {
   if (
     !lyricStylePreview ||
-    !previewLineOne ||
-    !previewLineTwo ||
-    !previewLineThree ||
+    !previewLineNodes.length ||
     !lyricStyleInput ||
     !lyricFontInput
   ) {
@@ -1305,13 +1303,30 @@ function updateLyricStylePreview() {
   lyricStylePreview.classList.remove(...allPreviewClasses);
   lyricStylePreview.classList.add(`is-${styleValue}`);
 
-  [previewLineOne, previewLineTwo, previewLineThree].forEach((line) => {
+  previewLineNodes.forEach((line) => {
     line.style.fontFamily = fontFamily;
   });
 
-  previewLineOne.textContent = lines[0];
-  previewLineTwo.textContent = lines[1];
-  previewLineThree.textContent = lines[2];
+  const filledLines = Array.from(
+    { length: previewLineNodes.length },
+    (_, index) => lines[index % Math.max(1, lines.length)]
+  );
+  const focusedIndex = Math.min(Math.max(0, Math.floor(previewLineNodes.length / 2)), previewLineNodes.length - 1);
+  const animationVersion = ++lyricPreviewAnimationVersion;
+
+  const paintPreviewLines = () => {
+    previewLineNodes.forEach((line, index) => {
+      const depth = Math.abs(index - focusedIndex);
+      line.textContent = filledLines[index] || "";
+      line.classList.toggle("is-active", index === focusedIndex);
+      line.classList.toggle("is-near", depth === 1);
+      line.classList.toggle("is-mid", depth === 2);
+      line.classList.toggle("is-far", depth >= 3);
+      line.dataset.previewDepth = `${depth}`;
+    });
+  };
+
+  paintPreviewLines();
 
   if (lyricPreviewStyleBadge) {
     lyricPreviewStyleBadge.textContent = styleMeta.label;
@@ -1347,6 +1362,21 @@ function updateLyricStylePreview() {
       lyricStylePreview.style.removeProperty("--preview-neon-rgb");
       lyricStylePreview.style.removeProperty("--preview-neon-glow");
     }
+  }
+
+  if (lyricPreviewAnimationTimer) {
+    window.clearInterval(lyricPreviewAnimationTimer);
+  }
+
+  if (filledLines.length > 1) {
+    lyricPreviewAnimationTimer = window.setInterval(() => {
+      if (animationVersion !== lyricPreviewAnimationVersion) {
+        return;
+      }
+
+      filledLines.push(filledLines.shift());
+      paintPreviewLines();
+    }, 1150);
   }
 }
 
