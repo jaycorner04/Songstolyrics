@@ -2857,8 +2857,8 @@ button {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "poster"
       "track"
+      "poster"
       "stage"
       "video";
     gap: 12px;
@@ -2869,8 +2869,8 @@ button {
 
   .media-column.has-mobile-stage {
     grid-template-areas:
-      "poster"
       "track"
+      "poster"
       "stage"
       "video";
   }
