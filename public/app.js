@@ -39,9 +39,7 @@ const lyricPreviewStyleBadge = document.getElementById("lyric-preview-style-badg
 const lyricPreviewFontLabel = document.getElementById("lyric-preview-font-label");
 const lyricPreviewMotionLabel = document.getElementById("lyric-preview-motion-label");
 const lyricStylePreview = document.getElementById("lyric-style-preview");
-const previewLineOne = document.getElementById("preview-line-1");
-const previewLineTwo = document.getElementById("preview-line-2");
-const previewLineThree = document.getElementById("preview-line-3");
+const previewLineNodes = Array.from(document.querySelectorAll(".preview-line"));
 const uploadPreviewStrip = document.getElementById("upload-preview-strip");
 const changeUploadedImagesButton = document.getElementById("change-uploaded-images-button");
 const deleteUploadedImagesButton = document.getElementById("delete-uploaded-images-button");
@@ -138,22 +136,127 @@ const normalizedLocalDebugBaseUrl =
     : "";
 const effectiveLocalDebugBaseUrl = isLocalDebugMode ? normalizedLocalDebugBaseUrl : "";
 const lyricPreviewSamples = {
-  default: ["City lights in stereo", "You keep running through my mind", "Tonight the echo feels alive"],
-  aa: ["MOST", "PEOPLE LOOKED", "AT HIM WITH TERROR"],
-  comic: ["HEY HEART, STAY LOUD", "YOU KEEP RUNNING THROUGH MY MIND", "TONIGHT THE ECHO FEELS ALIVE"],
-  cinematic: ["city lights in stereo", "you keep running through my mind", "tonight the echo feels alive"],
-  bounce: ["Heartbeats in motion", "You keep running through my mind", "We rise when the chorus lands"],
-  "side-by-side": ["Left side whisper", "You keep running through my mind", "Right side afterglow"],
-  typewriter: ["Signal online", "You keep running through my mind", "Ending scene in slow motion"],
-  spotlight: ["Silence around us", "You keep running through my mind", "Only the chorus remains"],
-  magic: ["Prapancham Telidhe", "Jathai Nuvvu Unte", "Tonight the feeling stays soft"],
-  neon: ["AFTER DARK WE GLOW", "You keep running through my mind", "Neon pulses through the haze"],
-  glitch: ["SIGNAL CUT", "You keep running through my mind", "Static sparks behind the beat"],
-  karaoke: ["Sing it back", "You keep running through my mind", "Tonight the whole room knows"],
-  whisper: ["soft lights flicker", "you keep running through my mind", "the silence leans closer"],
-  stacked: ["Before the drop", "You keep running through my mind", "After the echo"],
-  minimal: ["In one frame", "You keep running through my mind", "Nothing else is needed"],
-  fulllength: ["AND THE", "CLOSER I", "GET TO YOU"]
+  default: [
+    "City lights in stereo",
+    "Street drums wake the silence",
+    "You keep running through my mind",
+    "Every shadow turns to color",
+    "Tonight the echo feels alive",
+    "We hold the hook a little longer"
+  ],
+  aa: ["MOST", "PEOPLE LOOKED", "AT HIM", "WITH", "TERROR", "TODAY"],
+  comic: [
+    "HEY HEART, STAY LOUD",
+    "THE PANELS SNAP OPEN",
+    "YOU KEEP RUNNING THROUGH MY MIND",
+    "EVERY FRAME HITS HARDER",
+    "TONIGHT THE ECHO FEELS ALIVE",
+    "THE LAST BOX HOLDS THE HOOK"
+  ],
+  cinematic: [
+    "city lights in stereo",
+    "wide shot on the skyline",
+    "you keep running through my mind",
+    "slow drift into the chorus",
+    "tonight the echo feels alive",
+    "credits land in gold dust"
+  ],
+  bounce: [
+    "Heartbeats in motion",
+    "Kick drums lift the floor",
+    "You keep running through my mind",
+    "The chorus jumps on impact",
+    "We rise when the chorus lands",
+    "Everything hits on the drop"
+  ],
+  "side-by-side": [
+    "Left side whisper",
+    "Static through the hallway",
+    "You keep running through my mind",
+    "Mirrors answer on the right",
+    "Right side afterglow",
+    "Two voices cross in rhythm"
+  ],
+  typewriter: [
+    "Signal online",
+    "Cursor waits for the hook",
+    "You keep running through my mind",
+    "Letters land with the snare",
+    "Ending scene in slow motion",
+    "Final line types itself"
+  ],
+  spotlight: [
+    "Silence around us",
+    "Only the center stays lit",
+    "You keep running through my mind",
+    "Dust hangs inside the beam",
+    "Only the chorus remains",
+    "The room fades behind the line"
+  ],
+  magic: [
+    "Prapancham Telidhe",
+    "Jathai Nuvvu Unte",
+    "Velugulu Chuttu Cherai",
+    "You keep running through my mind",
+    "Tonight the feeling stays soft",
+    "Madhuramaina hook niliche"
+  ],
+  neon: [
+    "AFTER DARK WE GLOW",
+    "MIDNIGHT SIGNS KEEP FLICKERING",
+    "YOU KEEP RUNNING THROUGH MY MIND",
+    "THE ALLEY FILLS WITH COLOR",
+    "NEON PULSES THROUGH THE HAZE",
+    "EVERY BEAT LEAVES A TRACE"
+  ],
+  glitch: [
+    "SIGNAL CUT",
+    "FRAME SKIPS ACROSS THE WALL",
+    "YOU KEEP RUNNING THROUGH MY MIND",
+    "STATIC SPARKS BEHIND THE BEAT",
+    "SYSTEM HEART STILL HOLDS THE HOOK",
+    "REBOOT INSIDE THE CHORUS"
+  ],
+  karaoke: [
+    "Sing it back",
+    "Hands rise on the pre-chorus",
+    "You keep running through my mind",
+    "The room turns into one voice",
+    "Tonight the whole room knows",
+    "Everyone lands on the last word"
+  ],
+  whisper: [
+    "soft lights flicker",
+    "the room leans into the hush",
+    "you keep running through my mind",
+    "the silence bends around it",
+    "the night breathes even slower",
+    "the final word stays close"
+  ],
+  stacked: [
+    "Before the drop",
+    "A second line leans in",
+    "You keep running through my mind",
+    "The next phrase stacks below",
+    "After the echo",
+    "The chorus keeps its trail"
+  ],
+  minimal: [
+    "In one frame",
+    "Just enough to hold the beat",
+    "You keep running through my mind",
+    "Nothing distracts the line",
+    "Nothing else is needed",
+    "The silence finishes the scene"
+  ],
+  fulllength: [
+    "AND THE",
+    "FURTHER",
+    "WE RUN INTO THE NIGHT",
+    "THE CLOSER I",
+    "GET TO YOU",
+    "THE LONGER THE HOOK LASTS"
+  ]
 };
 const lyricStylePreviewMeta = {
   auto: { label: "Auto mix", motion: "Balanced" },
@@ -174,6 +277,8 @@ const lyricStylePreviewMeta = {
   minimal: { label: "Minimal", motion: "Clean fade" },
   fulllength: { label: "Fulllength", motion: "Poster stack" }
 };
+let lyricPreviewAnimationTimer = null;
+let lyricPreviewAnimationVersion = 0;
 const DEFAULT_NEON_COLOR = "#7fe8ff";
 const DEFAULT_NEON_GLOW = 70;
 const musicBulletins = [
