@@ -6704,11 +6704,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
-        stage: "Validating final lyric sync",
+        stage: "Checking lyric/audio sync",
         progress: 0.3
       });
 
-      let validationTranscription = null;
       const canUseStrongSourceValidationFallback =
         !renderLinesAreTranscriptDerived &&
         ["synced-lyrics", "caption-aligned", "captions"].includes(renderLineSyncSource);
@@ -6731,68 +6730,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         validationOptions.downloadTimeoutMs = 75 * 1000;
       }
 
-      try {
-        validationTranscription = await getTranscription(
-          "Validating final lyric sync",
-          0.3,
-          validationOptions
-        );
-      } catch (error) {
-        if (
-          canProceedWithStrongSourceAfterValidationFailure({
-            lines: renderLines,
-            syncMode: renderLineSyncSource,
-            transcriptDerived: renderLinesAreTranscriptDerived,
-            durationSeconds,
-            error
-          })
-        ) {
-          renderNotes.push(
-            "Final audio verification timed out, so the render continued with the strong synced lyric source instead of failing the export."
-          );
-          await recordAdaptiveSignalSafely({
-            channelTitle: payload.channelTitle,
-            title: payload.title || payload.song?.title || "",
-            category: "validation_timeout_source_fallback",
-            message: "Fresh validation transcription timed out, so the render used the strong source timing."
-          });
-        } else {
-          throw error;
-        }
-      }
-
-      if (validationTranscription) {
-        if (
-          validationOptions.preview &&
-          canUseStrongSourceValidationFallback &&
-          shouldDeepenValidationTranscription(validationTranscription, durationSeconds)
-        ) {
-          renderNotes.push(
-            "Quick sync validation was too sparse across the song, so the render reran a deeper audio check before export."
-          );
-
-          validationTranscription = await getTranscription(
-            "Deepening final lyric sync check",
-            0.32,
-            {
-              task: validationOptions.task,
-              language: validationOptions.language,
-              modelName:
-                process.env.WHISPER_ADAPTIVE_MODEL ||
-                process.env.WHISPER_MODEL ||
-                "base",
-              beamSize: 1,
-              vadFilter: false,
-              conditionOnPreviousText: false,
-              timeoutMs: Math.max(Number(validationOptions.timeoutMs || 0), 90 * 1000),
-              downloadTimeoutMs: Math.max(
-                Number(validationOptions.downloadTimeoutMs || 0),
-                90 * 1000
-              )
-            }
-          );
-        }
-
+      async function evaluateStrictSyncValidationPass(validationTranscription) {
         const normalizedValidationTranscript = limitLyricLines(
           sanitizeLyricLines(
             smoothTranscribedLyricGaps(
@@ -6820,7 +6758,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 ? `Intro timing was tightened before render by trimming ${introTightening.trimmedIntroCount} unsupported opening ad-lib line${introTightening.trimmedIntroCount === 1 ? "" : "s"} and snapping the opening lyrics by ${roundTimeValue(introTightening.appliedShift)}s to match the detected vocals.`
                 : introTightening.trimmedIntroCount > 0
                   ? `Intro timing was tightened before render by trimming ${introTightening.trimmedIntroCount} unsupported opening ad-lib line${introTightening.trimmedIntroCount === 1 ? "" : "s"}.`
-                : `Intro timing was tightened before render by snapping the opening lyrics by ${roundTimeValue(introTightening.appliedShift)}s to match the detected vocals.`
+                  : `Intro timing was tightened before render by snapping the opening lyrics by ${roundTimeValue(introTightening.appliedShift)}s to match the detected vocals.`
           );
         }
 
@@ -6951,8 +6889,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             transcriptWords: validationTranscription.words,
             durationSeconds,
             syncMode: "transcribed",
-                  transcriptDerived: true,
-                  referenceLines: sourceLyricReferenceLines
+            transcriptDerived: true,
+            referenceLines: sourceLyricReferenceLines
           });
           const transcriptCandidateLines =
             directTranscriptCandidateReport.approved && introPreservedTranscriptCandidate.applied
@@ -6973,22 +6911,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               : directTranscriptCandidateReport.approved
                 ? directTranscriptCandidateReport
                 : wordTimedTranscriptCandidateReport;
-          const emergencyTranscriptCandidateMetrics = getSourceTimingMetrics(
-            transcriptCandidateLines,
-            durationSeconds
-          );
-          const canUseEmergencyTranscriptFallback =
-            !transcriptCandidateReport.approved &&
-            !renderLinesAreTranscriptDerived &&
-            (renderLineSyncSource === "estimated" ||
-              renderLineSyncSource === "caption-aligned" ||
-              renderLineSyncSource === "captions") &&
-            validationTranscriptMetrics.reliableForWindowFit &&
-            emergencyTranscriptCandidateMetrics.meaningfulCount >=
-              Math.max(3, Math.min(8, Math.round(durationSeconds / 48))) &&
-            emergencyTranscriptCandidateMetrics.coverageRatio >= 0.08 &&
-            emergencyTranscriptCandidateMetrics.lastEnd >
-              emergencyTranscriptCandidateMetrics.firstStart + 6;
 
           if (
             transcriptCandidateReport.approved &&
@@ -7006,84 +6928,81 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 ? `Strict sync verification preserved ${introPreservedTranscriptCandidate.preservedIntroCount} trusted intro lyric line${introPreservedTranscriptCandidate.preservedIntroCount === 1 ? "" : "s"} and rebuilt the rest from the audio before rendering.`
                 : "Strict sync verification replaced the original lyric sheet with audio-built lyrics before rendering."
             );
-          } else if (canUseEmergencyTranscriptFallback) {
-            renderLines = transcriptCandidateLines;
-            renderLineSyncSource = "transcribed";
-            renderLinesAreTranscriptDerived = true;
-            strictSyncReport = {
-              ...transcriptCandidateReport,
-              approved: true,
-              reason: "",
-              approvalMode: "validation-transcript-safe-fallback",
-              transcriptDerived: true,
-              candidateMetrics: emergencyTranscriptCandidateMetrics,
-              transcriptMetrics: validationTranscriptMetrics
-            };
-            renderNotes.push(
-              "Strict sync verification recovered the render by switching from a weak estimated lyric sheet to the safer audio transcript timing."
-            );
           }
         }
 
-        if (!strictSyncReport.approved) {
-          const allowSoftStrictSyncFailure =
-            payload.syncMode === "estimated" ||
-            payload.syncMode === "captions" ||
-            payload.syncMode === "caption-aligned" ||
-            payload.syncMode === "transcribed" ||
-            String(payload.videoId || "").startsWith("upload-");
-
-          if (
-            validationOptions.preview &&
-            canKeepStrongSourceAfterSparseValidationReport({
-              report: strictSyncReport,
-              syncMode: renderLineSyncSource,
-              transcriptDerived: renderLinesAreTranscriptDerived
-            })
-          ) {
-            renderNotes.push(
-              "The quick validation transcript was too sparse to overrule the strong synced lyric source, so the render kept the source timing and continued."
-            );
-            await recordAdaptiveSignalSafely({
-              channelTitle: payload.channelTitle,
-              title: payload.title || payload.song?.title || "",
-              category: "sparse_validation_preview",
-              message: "Quick validation transcript was too sparse, so the render kept the strong source timing."
-            });
-          } else if (allowSoftStrictSyncFailure) {
-            if (!renderLines.length) {
-              renderLines = buildFallbackLines(payload, durationSeconds);
-            }
-
-            strictSyncReport = {
-              ...strictSyncReport,
-              approved: true,
-              reason: "",
-              approvalMode: "transcribed-soft-bypass"
-            };
-            renderNotes.push(
-              "Strict sync validation stayed conservative, so this transcribed or uploaded-audio render continued with fallback-safe lyric timing."
-            );
-          } else {
-            renderLines = renderLines?.length >= 2
-              ? renderLines
-              : buildFallbackLines(payload, durationSeconds);
-          }
-        }
-
-        if (strictSyncReport.approved && strictSyncReport.approvalMode === "structured-source-fallback") {
-          await recordAdaptiveSignalSafely({
-            channelTitle: payload.channelTitle,
-            title: payload.title || payload.song?.title || "",
-            category: "sparse_transcript",
-            message: "Kept the full lyric sheet because the detected transcript was too sparse."
-          });
-        }
-
-        if (strictSyncReport.approved) {
-          renderNotes.push(formatStrictSyncApprovalSummary(strictSyncReport));
-        }
+        return {
+          strictSyncReport
+        };
       }
+
+      async function runDeeperSyncRetry(baseOptions, reasonMessage = "") {
+        updateJob(job, {
+          stage: "Retrying deeper sync pass",
+          progress: 0.32
+        });
+
+        renderNotes.push(
+          reasonMessage ||
+            "Checking lyric/audio sync stayed weak, so the render is retrying a deeper sync pass before export."
+        );
+
+        return getTranscription(
+          "Retrying deeper sync pass",
+          0.32,
+          buildDeeperSyncRetryOptions(baseOptions, adaptiveProfile)
+        );
+      }
+
+      let validationTranscription = null;
+      let strictSyncReport = null;
+      let usedDeeperSyncRetry = false;
+
+      try {
+        validationTranscription = await getTranscription(
+          "Checking lyric/audio sync",
+          0.3,
+          validationOptions
+        );
+      } catch (error) {
+        validationTranscription = await runDeeperSyncRetry(
+          validationOptions,
+          `Initial lyric/audio sync check failed (${summarizeErrorMessage(error)}), so the render is retrying a deeper sync pass before export.`
+        );
+        usedDeeperSyncRetry = true;
+      }
+
+      if (
+        validationOptions.preview &&
+        canUseStrongSourceValidationFallback &&
+        shouldDeepenValidationTranscription(validationTranscription, durationSeconds)
+      ) {
+        validationTranscription = await runDeeperSyncRetry(
+          validationOptions,
+          "Quick sync validation was too sparse across the song, so the render reran a deeper audio check before export."
+        );
+        usedDeeperSyncRetry = true;
+      }
+
+      ({ strictSyncReport } = await evaluateStrictSyncValidationPass(validationTranscription));
+
+      if (!strictSyncReport.approved && !usedDeeperSyncRetry) {
+        validationTranscription = await runDeeperSyncRetry(
+          validationOptions,
+          `The first lyric/audio sync pass stayed too weak because ${normalizeWhitespace(strictSyncReport.reason || "the timing could not be verified")}, so the render is retrying a deeper sync pass before export.`
+        );
+        usedDeeperSyncRetry = true;
+        ({ strictSyncReport } = await evaluateStrictSyncValidationPass(validationTranscription));
+      }
+
+      if (!strictSyncReport.approved) {
+        renderNotes.push(
+          "Render stopped because lyrics did not match the audio closely enough after the deeper sync pass."
+        );
+        throw createStrictSyncValidationError(strictSyncReport);
+      }
+
+      renderNotes.push(formatStrictSyncApprovalSummary(strictSyncReport));
     }
 
     if (payload.requireVerifiedSync !== false && !canUseAudioTranscription) {
