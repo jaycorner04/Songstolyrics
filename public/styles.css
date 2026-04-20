@@ -2854,11 +2854,11 @@ button {
   }
 
   .lyric-style-preview {
-    min-height: 248px;
+    min-height: 300px;
   }
 
   .lyric-style-preview-frame {
-    min-height: 248px;
+    min-height: 300px;
     padding: 14px;
   }
 
