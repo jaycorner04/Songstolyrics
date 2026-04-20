@@ -4294,16 +4294,23 @@ function createAssSubtitleContent(
     if (selectedVariant === "spotlight") {
       const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
         emojiAssetMap,
-        baseTextHex: customStyleColorHex || "#ffffff"
+        baseTextHex: customStyleColorHex || "#ffffff",
+        disableHighlight: true
       });
+      const glowTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
+        LYRIC_REVEAL_MS * 1.15
+      )})\\fad(${fadeInMs},${fadeOutMs})\\fscx112\\fscy112\\bord0\\shad0\\blur10\\fsp1.1\\b1\\1a&H58&\\c${hexToAssColor(
+        customStyleColorHex || "#fff7d6"
+      )}}`;
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
         LYRIC_REVEAL_MS * 1.15
-      )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord1.2\\shad0\\blur0.2\\fsp1.1\\b1\\c${hexToAssColor(
+      )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord2.2\\shad0\\blur0.6\\fsp1.1\\b1\\c${hexToAssColor(
         customStyleColorHex || "#ffffff"
-      )}\\3c${hexToAssColor(customStyleColorHex || "#ffffff")}}`;
+      )}\\3c${hexToAssColor("#11203a")}}`;
 
       return [
-        `Dialogue: 0,${start},${end},SpotlightText,,0,0,0,,${textTag}${styledText}`
+        `Dialogue: 0,${start},${end},SpotlightGlowText,,0,0,0,,${glowTag}${styledText}`,
+        `Dialogue: 1,${start},${end},SpotlightText,,0,0,0,,${textTag}${styledText}`
       ];
     }
 
@@ -4508,7 +4515,8 @@ function createAssSubtitleContent(
     `Style: WordBuildText,${lyricFontName},${Math.round(baseFontSize * 0.98)},&H00FFFFFF,&H008A8A8A,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.58).toFixed(2)},0,1,3.0,0,5,0,0,0,1`,
     `Style: ComicText,${lyricFontName},${Math.round(baseFontSize * 1.02)},${hexToAssColor(customStyleColorHex || "#111111")},${hexToAssColor(customStyleColorHex || "#111111")},${hexToAssColor(customStyleColorHex || "#111111")},&H00F4F4F4,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.48).toFixed(2)},0,3,10,0,5,36,36,40,1`,
     `Style: AAText,${lyricFontName},${Math.round(baseFontSize * 1.04)},${hexToAssColor(customStyleColorHex || "#ef8c43")},${hexToAssColor(customStyleColorHex || "#ef8c43")},&H00161B33,&H00000000,-1,0,0,0,88,108,-0.24,0,1,1.0,0,7,34,34,34,1`,
-    `Style: SpotlightText,${lyricFontName},${Math.round(baseFontSize * 1.05)},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},&H88202020,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 1.02).toFixed(2)},0,3,14,0,5,46,46,38,1`,
+    `Style: SpotlightGlowText,${lyricFontName},${Math.round(baseFontSize * 1.08)},${hexToAssColor(customStyleColorHex || "#fff7d6")},${hexToAssColor(customStyleColorHex || "#fff7d6")},&H00000000,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 1.02).toFixed(2)},0,1,0,0,5,46,46,38,1`,
+    `Style: SpotlightText,${lyricFontName},${Math.round(baseFontSize * 1.05)},${hexToAssColor(customStyleColorHex || "#ffffff")},${hexToAssColor(customStyleColorHex || "#ffffff")},&H003A2011,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.72).toFixed(2)},0,1,2.6,0,5,46,46,38,1`,
     `Style: MagicText,${lyricFontName},${Math.round(baseFontSize * 0.98)},&H00FFFFFF,&H00FFFFFF,&H00151515,&H00000000,-1,-1,0,0,${Math.round(fontScaleX * 0.98)},${Math.round(fontScaleY * 1.04)},${(fontBaseSpacing + 0.18).toFixed(2)},0,1,2.2,0,5,0,0,0,1`,
     `Style: NeonText,${lyricFontName},${Math.round(baseFontSize * 1.04)},${hexToAssColor(neonColorHex)},${hexToAssColor(neonColorHex)},${hexToAssColor(neonColorHex)},&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.3 + neonGlowStrength * 1.2).toFixed(2)},0,1,${(0.7 + neonGlowStrength * 1.7).toFixed(2)},0,5,0,0,0,1`,
     `Style: GlitchBaseText,${lyricFontName},${Math.round(baseFontSize * 1.02)},&H00FFFFFF,&H00FFFFFF,&H00111111,&H00000000,-1,0,0,0,${fontScaleX},${fontScaleY},${(fontBaseSpacing + 0.6).toFixed(2)},0,1,2.4,0,5,0,0,0,1`,
