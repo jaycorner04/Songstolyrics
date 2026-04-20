@@ -126,14 +126,12 @@ const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const ACTIVE_RENDER_STORAGE_KEY = "song-to-lyrics-active-render";
-const LOCAL_DEBUG_REFRESH_MS = 350;
+const LOCAL_DEBUG_REFRESH_MS = 3000;
 const LOCAL_DEBUG_REQUEST_TIMEOUT_MS = 4500;
-const isLocalDebugMode = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname || "");
 const configuredLocalDebugBaseUrl = (
   document.querySelector('meta[name="local-debug-base-url"]')?.getAttribute("content") || ""
 ).trim();
-const effectiveLocalDebugBaseUrl =
-  isLocalDebugMode && configuredLocalDebugBaseUrl ? configuredLocalDebugBaseUrl.replace(/\/+$/g, "") : "";
+const effectiveLocalDebugBaseUrl = configuredLocalDebugBaseUrl.replace(/\/+$/g, "");
 const lyricPreviewSamples = {
   default: ["City lights in stereo", "You keep running through my mind", "Tonight the echo feels alive"],
   aa: ["MOST", "PEOPLE LOOKED", "AT HIM WITH TERROR"],
@@ -1429,10 +1427,6 @@ function persistLocalDebugCache({
   lastRefreshedAt = "",
   connected = false
 } = {}) {
-  if (!isLocalDebugMode) {
-    return;
-  }
-
   try {
     window.localStorage.setItem(
       LOCAL_DEBUG_CACHE_STORAGE_KEY,
@@ -1447,10 +1441,6 @@ function persistLocalDebugCache({
 }
 
 function restoreLocalDebugCache() {
-  if (!isLocalDebugMode) {
-    return null;
-  }
-
   try {
     const raw = window.localStorage.getItem(LOCAL_DEBUG_CACHE_STORAGE_KEY);
     const parsed = JSON.parse(raw || "null");
@@ -1592,9 +1582,9 @@ function renderLocalDebugPanel(entries = []) {
     return;
   }
 
-  localDebugCard.hidden = !isLocalDebugMode;
+  localDebugCard.hidden = false;
   if (localDebugShell) {
-    localDebugShell.hidden = !isLocalDebugMode;
+    localDebugShell.hidden = false;
   }
   localDebugList.innerHTML = "";
 
@@ -1658,7 +1648,7 @@ function renderLocalDebugStatus({
   runtimeRoot = "",
   lastRefreshedAt = ""
 } = {}) {
-  if ((!localDebugStatus && !localDebugBanner) || !isLocalDebugMode) {
+  if (!localDebugStatus && !localDebugBanner) {
     return;
   }
 
@@ -1701,7 +1691,7 @@ function renderLocalDebugStatus({
 }
 
 async function refreshLocalDebugPanel(options = {}) {
-  if (!isLocalDebugMode || !localDebugCard || !localDebugList) {
+  if (!localDebugCard || !localDebugList) {
     return;
   }
 
@@ -1761,10 +1751,6 @@ async function refreshLocalDebugPanel(options = {}) {
 }
 
 function scheduleLocalDebugRefresh() {
-  if (!isLocalDebugMode) {
-    return;
-  }
-
   if (localDebugPollTimer) {
     window.clearTimeout(localDebugPollTimer);
   }
@@ -1788,7 +1774,7 @@ function closeLocalDebugStream() {
 }
 
 function connectLocalDebugStream() {
-  if (!isLocalDebugMode || typeof window.EventSource !== "function" || localDebugEventSource) {
+  if (typeof window.EventSource !== "function" || localDebugEventSource) {
     return;
   }
 
@@ -1816,10 +1802,6 @@ function connectLocalDebugStream() {
 }
 
 async function reportLocalDebugError(payload = {}) {
-  if (!isLocalDebugMode) {
-    return;
-  }
-
   try {
     await fetch(buildLocalDebugUrl("/api/local-debug/errors"), {
       method: "POST",
@@ -1836,10 +1818,6 @@ async function reportLocalDebugError(payload = {}) {
 }
 
 async function clearLocalDebugPanel() {
-  if (!isLocalDebugMode) {
-    return;
-  }
-
   renderLocalDebugPanel([]);
   persistLocalDebugCache({
     entries: [],
@@ -1860,7 +1838,7 @@ async function clearLocalDebugPanel() {
 }
 
 async function deleteLocalDebugEntry(id) {
-  if (!isLocalDebugMode || !id) {
+  if (!id) {
     return;
   }
 
@@ -3688,10 +3666,6 @@ window.addEventListener("beforeunload", () => {
 window.addEventListener("focus", () => {
   resumeRenderPollingIfNeeded();
 
-  if (!isLocalDebugMode) {
-    return;
-  }
-
   refreshLocalDebugPanel().catch(() => {});
   scheduleLocalDebugRefresh();
   connectLocalDebugStream();
@@ -3702,7 +3676,7 @@ document.addEventListener("visibilitychange", () => {
     resumeRenderPollingIfNeeded();
   }
 
-  if (!isLocalDebugMode || document.hidden) {
+  if (document.hidden) {
     return;
   }
 
