@@ -18,37 +18,71 @@ $remoteCookiePath = "$RemoteAppDir/runtime/youtube-cookies.txt"
 function Resolve-CookieSourcePath {
   param([string]$RequestedPath)
 
-  $candidatePaths = @()
+  $candidatePaths = New-Object System.Collections.Generic.List[string]
   if ($RequestedPath) {
-    $candidatePaths += $RequestedPath
+    $candidatePaths.Add($RequestedPath)
   }
 
-  $candidatePaths += @(
-    (Join-Path $env:USERPROFILE "Downloads\cookies.txt"),
-    (Join-Path $env:USERPROFILE "Downloads\youtube-cookies.txt"),
-    (Join-Path $repoRoot "runtime\youtube-cookies.txt")
-  )
-
-  foreach ($candidate in $candidatePaths) {
-    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
-      return (Resolve-Path -LiteralPath $candidate).Path
-    }
-  }
+  $candidatePaths.Add((Join-Path $repoRoot "runtime\youtube-cookies.txt"))
+  $candidatePaths.Add((Join-Path $env:USERPROFILE "Downloads\cookies.txt"))
+  $candidatePaths.Add((Join-Path $env:USERPROFILE "Downloads\youtube-cookies.txt"))
 
   $downloadMatches = Get-ChildItem (Join-Path $env:USERPROFILE "Downloads") -Filter "*cookies*.txt" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending
 
-  if ($downloadMatches) {
-    return $downloadMatches[0].FullName
+  foreach ($match in $downloadMatches) {
+    $candidatePaths.Add($match.FullName)
   }
 
-  throw "No cookie file was found. Put a YouTube cookies export in Downloads or pass -CookieSourcePath."
+  $resolved = New-Object System.Collections.Generic.List[string]
+  $seen = @{}
+
+  foreach ($candidate in $candidatePaths) {
+    if (-not $candidate -or -not (Test-Path -LiteralPath $candidate)) {
+      continue
+    }
+
+    $resolvedPath = (Resolve-Path -LiteralPath $candidate).Path
+    if ($seen.ContainsKey($resolvedPath)) {
+      continue
+    }
+
+    $seen[$resolvedPath] = $true
+    $resolved.Add($resolvedPath)
+  }
+
+  if (-not $resolved.Count) {
+    throw "No cookie file was found. Put a YouTube cookies export in Downloads or pass -CookieSourcePath."
+  }
+
+  return $resolved
 }
 
 function Invoke-SshCommand {
   param([string]$Command)
 
   & $sshExe -o StrictHostKeyChecking=accept-new -i $sshKeyPath "$RemoteUser@$RemoteHost" $Command
+}
+
+function Test-VerificationOutput {
+  param([string[]]$Lines)
+
+  $joinedOutput = ($Lines -join "`n")
+  $invalidPatterns = @(
+    "cookies are no longer valid",
+    "Sign in to confirm",
+    "There are no video formats",
+    "HTTP Error 403",
+    "Requested format is not available"
+  )
+
+  foreach ($pattern in $invalidPatterns) {
+    if ($joinedOutput -match [Regex]::Escape($pattern)) {
+      return $false
+    }
+  }
+
+  return ($joinedOutput -match "\[info\]" -or $joinedOutput -match "Downloading webpage")
 }
 
 if (-not (Test-Path -LiteralPath $sshExe)) {
@@ -63,21 +97,35 @@ if (-not (Test-Path -LiteralPath $sshKeyPath)) {
   throw "SSH key not found at $sshKeyPath"
 }
 
-$resolvedCookieSourcePath = Resolve-CookieSourcePath -RequestedPath $CookieSourcePath
-$cookieFile = Get-Item -LiteralPath $resolvedCookieSourcePath
+$resolvedCookieSourcePaths = Resolve-CookieSourcePath -RequestedPath $CookieSourcePath
+$verifiedCookiePath = $null
 
-if ($cookieFile.Length -le 0) {
-  throw "Cookie file is empty: $resolvedCookieSourcePath"
+foreach ($candidatePath in $resolvedCookieSourcePaths) {
+  $cookieFile = Get-Item -LiteralPath $candidatePath
+
+  if ($cookieFile.Length -le 0) {
+    continue
+  }
+
+  Write-Output "Uploading cookie file candidate: $candidatePath"
+  & $scpExe -o StrictHostKeyChecking=accept-new -i $sshKeyPath $candidatePath "${RemoteUser}@${RemoteHost}:${remoteCookiePath}" | Out-Null
+
+  Write-Output "Verifying candidate on server..."
+  $verificationLines = @(Invoke-SshCommand "sudo docker exec song-to-lyrics /opt/venv/bin/python -m yt_dlp --cookies /data/youtube-cookies.txt --skip-download '$VerifyUrl' 2>&1 | head -20")
+  $verificationLines | ForEach-Object { Write-Output $_ }
+
+  if (Test-VerificationOutput -Lines $verificationLines) {
+    $verifiedCookiePath = $candidatePath
+    break
+  }
+
+  Write-Output "Candidate was uploaded but did not verify cleanly. Trying the next cookie file..."
 }
 
-Write-Output "Uploading cookie file: $resolvedCookieSourcePath"
+if (-not $verifiedCookiePath) {
+  throw "No valid cookie file verified successfully. Export fresh YouTube cookies and rerun the sync."
+}
 
-& $scpExe -o StrictHostKeyChecking=accept-new -i $sshKeyPath $resolvedCookieSourcePath "${RemoteUser}@${RemoteHost}:${remoteCookiePath}"
-
-Write-Output "Verifying cookie file on server..."
+Write-Output "Verified cookie source: $verifiedCookiePath"
 Invoke-SshCommand "ls -l '$remoteCookiePath'"
-
-Write-Output "Running yt-dlp verification inside the live container..."
-Invoke-SshCommand "sudo docker exec song-to-lyrics /opt/venv/bin/python -m yt_dlp --cookies /data/youtube-cookies.txt --skip-download '$VerifyUrl' 2>&1 | head -20"
-
 Write-Output "Cookie sync complete."
