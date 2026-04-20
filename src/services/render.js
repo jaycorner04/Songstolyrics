@@ -6412,79 +6412,99 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         renderLinesAreTranscriptDerived = false;
         renderNotes.push("Using synced web lyrics as the primary timing source.");
       } else if (payload.syncMode === "transcribed" && canUseAudioTranscription) {
-        try {
-          const transcription = await getTranscription(
-            "Re-transcribing audio to lock final lyric timing",
-            0.16,
-            {
-              task: "transcribe"
-            }
-          );
-          const refinedTranscriptLines = limitLyricLines(
-            sanitizeLyricLines(
-              smoothTranscribedLyricGaps(romanizeLyricLines(transcription.lines).lines, durationSeconds),
-              durationSeconds
-            ),
-            durationSeconds
-          );
-          updateJob(job, {
-            stage: "Checking sync quality",
-            progress: 0.22
-          });
-          const transcriptTimingMetrics = getTranscriptTimingMetrics(
-            refinedTranscriptLines,
-            transcription.words,
-            durationSeconds
-          );
-          const wordTimedTranscription = transcriptTimingMetrics.reliableForFullAlignment
-            ? alignLyricLinesToWordTimeline(
-                refinedTranscriptLines,
-                refinedTranscriptLines,
-                transcription.words,
-                durationSeconds
-              )
-            : {
-                lines: refinedTranscriptLines,
-                applied: false,
-                wordCount: transcriptTimingMetrics.wordCount,
-                appliedShift: 0,
-                appliedScale: 1
-              };
-          const finalTranscribedLines = wordTimedTranscription.applied
-            ? wordTimedTranscription.lines
-            : refinedTranscriptLines;
+        const isUploadedAudioSource =
+          String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
 
-          if (finalTranscribedLines.length) {
-            renderLines = limitLyricLines(
-              applyLyricOffset(finalTranscribedLines, lyricOffsetSeconds, durationSeconds),
+        if (isUploadedAudioSource) {
+          const stabilizedUploadedTranscriptLines = limitLyricLines(
+            sanitizeLyricLines(smoothTranscribedLyricGaps(renderLines, durationSeconds), durationSeconds),
+            durationSeconds
+          );
+
+          renderLines = limitLyricLines(
+            applyLyricOffset(stabilizedUploadedTranscriptLines, lyricOffsetSeconds, durationSeconds),
+            durationSeconds
+          );
+          renderLineSyncSource = "transcribed";
+          renderLinesAreTranscriptDerived = true;
+          renderNotes.push(
+            "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
+          );
+        } else {
+          try {
+            const transcription = await getTranscription(
+              "Re-transcribing audio to lock final lyric timing",
+              0.16,
+              {
+                task: "transcribe"
+              }
+            );
+            const refinedTranscriptLines = limitLyricLines(
+              sanitizeLyricLines(
+                smoothTranscribedLyricGaps(romanizeLyricLines(transcription.lines).lines, durationSeconds),
+                durationSeconds
+              ),
               durationSeconds
             );
-            renderLineSyncSource = "transcribed";
-            renderLinesAreTranscriptDerived = true;
-            renderNotes.push(
-              wordTimedTranscription.applied
-                ? `The render re-transcribed the audio and repaced the lyric lines across ${wordTimedTranscription.wordCount} detected sung words.`
-                : transcriptTimingMetrics.reliableForWindowFit
-                  ? "The render re-transcribed the audio and kept the direct lyric timings because the transcript was too sparse to safely repace the whole song."
-                  : "The render re-transcribed the audio with full timing so the final video stays closer to the vocals than the quick website preview."
+            updateJob(job, {
+              stage: "Checking sync quality",
+              progress: 0.22
+            });
+            const transcriptTimingMetrics = getTranscriptTimingMetrics(
+              refinedTranscriptLines,
+              transcription.words,
+              durationSeconds
             );
-          } else {
+            const wordTimedTranscription = transcriptTimingMetrics.reliableForFullAlignment
+              ? alignLyricLinesToWordTimeline(
+                  refinedTranscriptLines,
+                  refinedTranscriptLines,
+                  transcription.words,
+                  durationSeconds
+                )
+              : {
+                  lines: refinedTranscriptLines,
+                  applied: false,
+                  wordCount: transcriptTimingMetrics.wordCount,
+                  appliedShift: 0,
+                  appliedScale: 1
+                };
+            const finalTranscribedLines = wordTimedTranscription.applied
+              ? wordTimedTranscription.lines
+              : refinedTranscriptLines;
+
+            if (finalTranscribedLines.length) {
+              renderLines = limitLyricLines(
+                applyLyricOffset(finalTranscribedLines, lyricOffsetSeconds, durationSeconds),
+                durationSeconds
+              );
+              renderLineSyncSource = "transcribed";
+              renderLinesAreTranscriptDerived = true;
+              renderNotes.push(
+                wordTimedTranscription.applied
+                  ? `The render re-transcribed the audio and repaced the lyric lines across ${wordTimedTranscription.wordCount} detected sung words.`
+                  : transcriptTimingMetrics.reliableForWindowFit
+                    ? "The render re-transcribed the audio and kept the direct lyric timings because the transcript was too sparse to safely repace the whole song."
+                    : "The render re-transcribed the audio with full timing so the final video stays closer to the vocals than the quick website preview."
+              );
+            } else {
+              renderLines = limitLyricLines(
+                applyLyricOffset(renderLines, lyricOffsetSeconds, durationSeconds),
+                durationSeconds
+              );
+              renderLineSyncSource = payload.syncMode;
+              renderLinesAreTranscriptDerived = false;
+              renderNotes.push("The final render could not refine the preview timing, so it kept the website lyric timings.");
+            }
+          } catch (error) {
             renderLines = limitLyricLines(
               applyLyricOffset(renderLines, lyricOffsetSeconds, durationSeconds),
               durationSeconds
             );
             renderLineSyncSource = payload.syncMode;
             renderLinesAreTranscriptDerived = false;
-            renderNotes.push("The final render could not refine the preview timing, so it kept the website lyric timings.");
+            renderNotes.push(`Final audio timing refinement was unavailable: ${error.message}`);
           }
-        } catch (error) {
-          renderLines = limitLyricLines(
-            applyLyricOffset(renderLines, lyricOffsetSeconds, durationSeconds),
-            durationSeconds
-          );
-          renderLineSyncSource = payload.syncMode;
-          renderLinesAreTranscriptDerived = false;
-          renderNotes.push(`Final audio timing refinement was unavailable: ${error.message}`);
         }
       } else if (canUseAudioTranscription) {
         try {
