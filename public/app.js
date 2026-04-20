@@ -43,6 +43,11 @@ const lyricPreviewStyleBadge = document.getElementById("lyric-preview-style-badg
 const lyricPreviewFontLabel = document.getElementById("lyric-preview-font-label");
 const lyricPreviewMotionLabel = document.getElementById("lyric-preview-motion-label");
 const lyricStylePreview = document.getElementById("lyric-style-preview");
+const lyricStylePreviewImage = document.getElementById("lyric-style-preview-image");
+const lyricStylePreviewVideo = document.getElementById("lyric-style-preview-video");
+const lyricPreviewDragSurface = document.getElementById("lyric-preview-drag-surface");
+const previewLinesShell = document.getElementById("preview-lines-shell");
+const lyricPreviewResetButton = document.getElementById("lyric-preview-reset-button");
 const previewLineNodes = Array.from(document.querySelectorAll(".preview-line"));
 const uploadPreviewStrip = document.getElementById("upload-preview-strip");
 const changeUploadedImagesButton = document.getElementById("change-uploaded-images-button");
@@ -126,6 +131,8 @@ let renderSettingsDirty = false;
 let audioFallbackPopupKey = "";
 let autoRenderPending = false;
 let lyricFontDropdownOpen = false;
+let lyricPreviewCustomPosition = null;
+let lyricPreviewDragState = null;
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
@@ -289,6 +296,25 @@ const lyricStylePreviewMeta = {
   stacked: { label: "Stacked", motion: "Layered rise" },
   minimal: { label: "Minimal", motion: "Clean fade" },
   fulllength: { label: "Fulllength", motion: "Poster stack" }
+};
+const lyricPreviewPlacementDefaults = {
+  auto: { x: 0.5, y: 0.56, anchor: "center" },
+  aa: { x: 0.16, y: 0.72, anchor: "left" },
+  comic: { x: 0.5, y: 0.54, anchor: "center" },
+  "line-by-line": { x: 0.5, y: 0.58, anchor: "center" },
+  cinematic: { x: 0.5, y: 0.47, anchor: "center" },
+  bounce: { x: 0.5, y: 0.58, anchor: "center" },
+  "side-by-side": { x: 0.5, y: 0.54, anchor: "center" },
+  typewriter: { x: 0.14, y: 0.56, anchor: "left" },
+  spotlight: { x: 0.5, y: 0.44, anchor: "center" },
+  magic: { x: 0.5, y: 0.62, anchor: "center" },
+  neon: { x: 0.5, y: 0.54, anchor: "center" },
+  glitch: { x: 0.5, y: 0.56, anchor: "center" },
+  karaoke: { x: 0.5, y: 0.75, anchor: "center" },
+  whisper: { x: 0.5, y: 0.48, anchor: "center" },
+  stacked: { x: 0.14, y: 0.52, anchor: "left" },
+  minimal: { x: 0.5, y: 0.72, anchor: "center" },
+  fulllength: { x: 0.18, y: 0.58, anchor: "left" }
 };
 let lyricPreviewAnimationTimer = null;
 let lyricPreviewAnimationVersion = 0;
