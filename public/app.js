@@ -1773,7 +1773,11 @@ function updateLyricPreviewBackground() {
 }
 
 function handleLyricPreviewPointerDown(event) {
-  if (!previewLinesShell || !lyricPreviewDragSurface || event.button !== 0) {
+  if (!previewLinesShell || !lyricPreviewDragSurface || lyricPreviewDragState) {
+    return;
+  }
+
+  if (event.pointerType === "mouse" && event.button !== 0) {
     return;
   }
 
@@ -1784,6 +1788,8 @@ function handleLyricPreviewPointerDown(event) {
     return;
   }
 
+  const targetInsideShell = previewLinesShell.contains(event.target);
+
   lyricPreviewDragState = {
     pointerId: event.pointerId,
     anchor: getLyricPreviewPlacement().anchor,
@@ -1791,8 +1797,8 @@ function handleLyricPreviewPointerDown(event) {
     stageHeight: stageRect.height,
     shellWidth: shellRect.width,
     shellHeight: shellRect.height,
-    pointerOffsetX: event.clientX - shellRect.left,
-    pointerOffsetY: event.clientY - shellRect.top,
+    pointerOffsetX: targetInsideShell ? event.clientX - shellRect.left : shellRect.width / 2,
+    pointerOffsetY: targetInsideShell ? event.clientY - shellRect.top : shellRect.height / 2,
     moved: false
   };
 
@@ -4506,7 +4512,7 @@ if (neonGlowInput) {
     markRenderOutputStale("Glow settings changed. Render again to apply them to the output video.");
   });
 }
-previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
+lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
