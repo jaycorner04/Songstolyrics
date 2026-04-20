@@ -7335,41 +7335,78 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             `Backup render with the original background scenes also failed (${summarizeErrorMessage(backupRenderError)}), so the app is generating emergency fallback backgrounds.`
           );
 
-          const safeBackgroundPaths = await createEmergencyBackgroundPlates(
-            job,
-            renderDirectory,
-            backgroundPlan,
-            videoSize,
-            "Preparing backup render backgrounds",
-            0.4
-          );
-          const safeManifestPath = path.join(renderDirectory, "backgrounds-safe.concat");
-          await fsp.writeFile(
-            safeManifestPath,
-            createConcatManifest(safeBackgroundPaths, backgroundPlan),
-            "utf8"
-          );
+          try {
+            const safeBackgroundPaths = await createEmergencyBackgroundPlates(
+              job,
+              renderDirectory,
+              backgroundPlan,
+              videoSize,
+              "Preparing backup render backgrounds",
+              0.4
+            );
+            const safeManifestPath = path.join(renderDirectory, "backgrounds-safe.concat");
+            await fsp.writeFile(
+              safeManifestPath,
+              createConcatManifest(safeBackgroundPaths, backgroundPlan),
+              "utf8"
+            );
 
-          outputVideoPath = await renderVideo(
-            job,
-            safeManifestPath,
-            audioUrl,
-            renderDirectory,
-            durationSeconds,
-            videoSize,
-            {
-              stageLabel: "Rendering emergency fallback lyric video",
-              progressStart: 0.52,
-              progressSpan: 0.44,
-              filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
-              forceSoftwareEncoder: true,
-              emojiOverlays: subtitleBuild.emojiOverlays,
-              emojiAssetEntries,
-              fontsDirRelative,
-              renderProfile
-            }
-          );
-          renderNotes.push("Emergency fallback render completed successfully.");
+            outputVideoPath = await renderVideo(
+              job,
+              safeManifestPath,
+              audioUrl,
+              renderDirectory,
+              durationSeconds,
+              videoSize,
+              {
+                stageLabel: "Rendering emergency fallback lyric video",
+                progressStart: 0.52,
+                progressSpan: 0.44,
+                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+                forceSoftwareEncoder: true,
+                emojiOverlays: subtitleBuild.emojiOverlays,
+                emojiAssetEntries,
+                fontsDirRelative,
+                renderProfile
+              }
+            );
+            renderNotes.push("Emergency fallback render completed successfully.");
+          } catch (safeBackgroundError) {
+            renderNotes.push(
+              `Emergency fallback backgrounds still failed (${summarizeErrorMessage(safeBackgroundError)}), so the app is switching to a solid-color background to keep the render alive.`
+            );
+
+            const solidBackgroundManifestPath = await createSolidColorBackgroundManifest(
+              job,
+              renderDirectory,
+              backgroundPlan,
+              videoSize,
+              durationSeconds,
+              "Preparing solid fallback background",
+              0.5
+            );
+
+            outputVideoPath = await renderVideo(
+              job,
+              solidBackgroundManifestPath,
+              audioUrl,
+              renderDirectory,
+              durationSeconds,
+              videoSize,
+              {
+                stageLabel: "Rendering solid fallback lyric video",
+                progressStart: 0.56,
+                progressSpan: 0.4,
+                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+                forceSoftwareEncoder: true,
+                emojiOverlays: subtitleBuild.emojiOverlays,
+                emojiAssetEntries,
+                fontsDirRelative,
+                renderProfile
+              }
+            );
+            renderNotes.push("Solid fallback render completed successfully after the background concat path failed.");
+          }
         }
       }
     }

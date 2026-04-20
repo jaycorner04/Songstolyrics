@@ -844,6 +844,43 @@ function buildUploadedAudioRequiredMessage(result = currentResult) {
     : "This link needs uploaded audio to build synced lyrics and keep sound in the final video.";
 }
 
+function promptRequiredAudioUpload(result = currentResult, options = {}) {
+  if (!result || isUploadedAudioProject(result) || uploadedAudioFallback?.file) {
+    return false;
+  }
+
+  const audioAccess = getCurrentAudioAccessState(result);
+  const uploadRequired =
+    audioAccess?.recommendedAction === "upload-audio" ||
+    audioAccess?.mode === "upload-recommended" ||
+    result?.audioPreviewBlocked === true;
+
+  if (!uploadRequired) {
+    return false;
+  }
+
+  const statusMessage = "This video needs audio - upload MP3 to continue";
+
+  promptAudioFallbackRecovery(
+    `${statusMessage}. Add the song file in the audio card below, then the render can start.`,
+    { scroll: false }
+  );
+  setStatus(statusMessage, true);
+  setRenderMessage(statusMessage);
+
+  if (renderButton) {
+    renderButton.disabled = true;
+    renderButton.textContent = "Add Audio To Render";
+  }
+
+  if (options.scroll !== false) {
+    scrollToAudioFallbackCard();
+  }
+
+  spotlightAudioFallbackInput({ scroll: false });
+  return true;
+}
+
 function updateAudioFallbackStateUi(result = currentResult) {
   if (!audioFallbackField || !audioFallbackState) {
     return;
@@ -2902,6 +2939,7 @@ async function renderResult(result) {
   updatePostRenderBackgroundStatus();
   updateArtworkVisibility();
   applyAudioAccessState(result);
+  promptRequiredAudioUpload(result, { scroll: false });
   await applyAudioPlayerWithRecovery(result);
 
   if (shareButton) {
@@ -2912,7 +2950,7 @@ async function renderResult(result) {
   updateQueryString(isShareableProject(result) ? result.inputUrl : "");
   if (isUploadedAudioProject(result)) {
     hideAudioFallbackRecovery();
-  } else if (getCurrentAudioAccessState(result).mode !== "available") {
+  } else if (getCurrentAudioAccessState(result).mode !== "available" && !linkNeedsUploadedAudio(result)) {
     promptAudioFallbackRecovery(
       getCurrentAudioAccessState(result).mode === "recovery"
         ? "This link is in protected recovery mode. The server will try its stronger soundtrack path during render, and you can still upload audio now for guaranteed sound."
@@ -2937,14 +2975,7 @@ async function renderResult(result) {
   const uploadRequiredBeforeRender = linkNeedsUploadedAudio(result) && !uploadedAudioFallback?.file;
 
   if (uploadRequiredBeforeRender) {
-    const uploadRequiredMessage = buildUploadedAudioRequiredMessage(result);
-    promptAudioFallbackRecovery(
-      `${uploadRequiredMessage} Add the song file in the audio card below, then the render can start.`,
-      { scroll: false }
-    );
-    setStatus(uploadRequiredMessage, true);
-    scrollToAudioFallbackCard();
-    spotlightAudioFallbackInput({ scroll: false });
+    promptRequiredAudioUpload(result);
     return;
   }
 
