@@ -132,7 +132,10 @@ function asyncHandler(handler) {
 
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
-  const renderedHtml = html.replace(/__BUILD_MARKER__/g, buildMarker);
+  const localDebugBaseUrl = `${process.env.LOCAL_DEBUG_BASE_URL || ""}`.trim().replace(/\/+$/g, "");
+  const renderedHtml = html
+    .replace(/__BUILD_MARKER__/g, buildMarker)
+    .replace(/__LOCAL_DEBUG_BASE_URL__/g, localDebugBaseUrl);
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
