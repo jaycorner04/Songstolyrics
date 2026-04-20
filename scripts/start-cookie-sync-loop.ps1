@@ -35,19 +35,13 @@ Set-Content -Path $pidFile -Value $PID -Encoding ascii
 
 try {
   while ($true) {
-    $argumentList = @(
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      $syncScript
-    )
-
+    $argumentText = "-ExecutionPolicy Bypass -File `"$syncScript`""
     if ($CookieSourcePath) {
-      $argumentList += @("-CookieSourcePath", $CookieSourcePath)
+      $argumentText += " -CookieSourcePath `"$CookieSourcePath`""
     }
 
     $process = Start-Process powershell.exe `
-      -ArgumentList $argumentList `
+      -ArgumentList $argumentText `
       -NoNewWindow `
       -RedirectStandardOutput $stdoutLog `
       -RedirectStandardError $stderrLog `
