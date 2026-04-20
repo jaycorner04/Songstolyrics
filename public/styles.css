@@ -562,6 +562,7 @@ button {
 .converter-card {
   padding: 24px;
   border-radius: var(--radius-xl);
+  overflow: visible;
 }
 
 .style-preview-card {
@@ -652,8 +653,8 @@ button {
 
 .lyric-style-preview.is-custom-background .lyric-style-preview-backdrop {
   background:
-    linear-gradient(180deg, rgba(5, 10, 18, 0.38), rgba(5, 10, 18, 0.8)),
-    linear-gradient(135deg, rgba(255, 122, 69, 0.16), rgba(127, 232, 255, 0.1));
+    linear-gradient(180deg, rgba(5, 10, 18, 0.14), rgba(5, 10, 18, 0.42)),
+    linear-gradient(135deg, rgba(255, 122, 69, 0.08), rgba(127, 232, 255, 0.05));
 }
 
 .lyric-style-preview-glow {
@@ -702,6 +703,7 @@ button {
   right: 0;
   bottom: 0;
   z-index: 3;
+  pointer-events: none;
   padding: 7px 10px;
   border-radius: 999px;
   border: 1px solid rgba(127, 232, 255, 0.2);
@@ -718,7 +720,7 @@ button {
   left: var(--preview-lyrics-x, 50%);
   top: var(--preview-lyrics-y, 56%);
   z-index: 1;
-  width: min(88%, 360px);
+  width: min(78%, 420px);
   max-width: calc(100% - 18px);
   transform: translate(var(--preview-shell-translate-x, -50%), var(--preview-shell-translate-y, -50%));
   cursor: grab;
@@ -787,6 +789,20 @@ button {
   opacity: 1;
   transform: scale(1.02);
   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.32);
+}
+
+.lyric-style-preview.is-custom-background .preview-line {
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(0, 0, 0, 0.18);
+}
+
+.lyric-style-preview.is-custom-background .preview-line.is-active {
+  color: var(--preview-style-color, #ffffff);
+  text-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.52),
+    0 6px 30px rgba(0, 0, 0, 0.26);
 }
 
 .style-preview-meta {
@@ -897,7 +913,7 @@ button {
 
 .preview-position-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -1531,6 +1547,7 @@ button {
 
 .font-dropdown {
   position: relative;
+  z-index: 40;
 }
 
 .font-dropdown-native {
@@ -1580,7 +1597,7 @@ button {
 
 .font-dropdown-menu {
   position: absolute;
-  z-index: 30;
+  z-index: 80;
   top: calc(100% + 8px);
   left: 0;
   right: 0;
