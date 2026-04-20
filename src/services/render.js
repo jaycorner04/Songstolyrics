@@ -6182,6 +6182,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       : resolveAudioInput(payload.videoId, {
           outputDirectory: audioInputDirectory,
           allowDownloadFallback: true,
+          preferLocal: true,
           preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
         }).then(
           (audioSource) => ({
