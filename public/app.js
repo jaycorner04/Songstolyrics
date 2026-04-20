@@ -1451,6 +1451,20 @@ function updateLyricFontPreview() {
   }
 }
 
+function ensureLyricFontDropdownReady() {
+  if (!lyricFontInput) {
+    return;
+  }
+
+  if (lyricFontCount && /loading/i.test(`${lyricFontCount.textContent || ""}`)) {
+    lyricFontCount.textContent = `Fonts available: ${lyricFontInput.options.length}`;
+  }
+
+  if (lyricFontMenu && !lyricFontMenu.children.length) {
+    buildLyricFontDropdown();
+  }
+}
+
 function closeLyricFontDropdown() {
   lyricFontDropdownOpen = false;
 
@@ -1472,6 +1486,7 @@ function openLyricFontDropdown() {
     return;
   }
 
+  ensureLyricFontDropdownReady();
   lyricFontDropdownOpen = true;
   lyricFontDropdown.dataset.open = "true";
   lyricFontTrigger.setAttribute("aria-expanded", "true");
@@ -1621,8 +1636,8 @@ function renderLyricPositionStatus() {
   lyricPositionStatus.textContent = hasCustomPlacement
     ? `Custom lyric placement saved. The render will place the lyrics at ${positionText}.`
     : backgroundReady
-      ? "The uploaded background is previewing now. Drag the lyrics to a clean area, then render."
-      : "Upload a background, then drag the live preview lyrics where you want them to stay in the final render.";
+      ? "The uploaded background is previewing now. Drag the lyrics anywhere you want before rendering."
+      : "Upload a background, then drag the live preview lyrics anywhere you want them to stay in the final render.";
 }
 
 function setLyricPreviewCustomPosition(position = null) {
@@ -4374,7 +4389,8 @@ lyricFontInput.addEventListener("change", () => {
   updateLyricStylePreview();
   markRenderOutputStale("Lyrics font changed. Render again to apply the new font to the output video.");
 });
-lyricFontTrigger?.addEventListener("click", () => {
+lyricFontTrigger?.addEventListener("click", (event) => {
+  event.preventDefault();
   toggleLyricFontDropdown();
 });
 document.addEventListener("click", (event) => {
@@ -4544,20 +4560,6 @@ window.addEventListener("resize", () => {
 window.addEventListener("pointermove", handleLyricPreviewPointerMove);
 window.addEventListener("pointerup", finishLyricPreviewDrag);
 window.addEventListener("pointercancel", finishLyricPreviewDrag);
-lyricPositionCenterButton?.addEventListener("click", () => {
-  const defaults = getLyricPreviewPlacementDefault(lyricStyleInput?.value || "auto");
-  applyLyricPreviewPlacementPreset({
-    x: defaults.anchor === "left" ? Math.max(0.12, defaults.x) : defaults.x,
-    y: defaults.y
-  });
-});
-lyricPositionLowerButton?.addEventListener("click", () => {
-  const defaults = getLyricPreviewPlacementDefault(lyricStyleInput?.value || "auto");
-  applyLyricPreviewPlacementPreset({
-    x: lyricPreviewCustomPosition?.x ?? defaults.x,
-    y: clampPreviewPlacement((lyricPreviewCustomPosition?.y ?? defaults.y) + 0.12)
-  });
-});
 lyricPositionResetButton?.addEventListener("click", () => {
   resetLyricPreviewPosition();
 });
