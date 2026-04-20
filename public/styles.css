@@ -163,6 +163,11 @@ button {
   min-height: 100%;
 }
 
+.hero-preview-card {
+  margin-top: 20px;
+  flex: 1;
+}
+
 .hero-title-wrap {
   display: flex;
   flex-direction: column;
@@ -627,7 +632,7 @@ button {
 .lyric-style-preview {
   position: relative;
   overflow: hidden;
-  min-height: 320px;
+  min-height: 420px;
   margin-top: 14px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -684,7 +689,7 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 320px;
+  min-height: 420px;
   padding: 16px;
 }
 
@@ -2974,6 +2979,11 @@ button {
   }
 
   .hero-copy {
+    display: flex;
+    gap: 10px;
+  }
+
+  .hero-copy > :not(.hero-preview-card) {
     display: none;
   }
 
@@ -3079,12 +3089,12 @@ button {
   }
 
   .lyric-style-preview {
-    min-height: 214px;
+    min-height: 250px;
     margin-top: 10px;
   }
 
   .lyric-style-preview-frame {
-    min-height: 214px;
+    min-height: 250px;
     padding: 12px;
   }
 
