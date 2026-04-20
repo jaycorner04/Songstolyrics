@@ -25,7 +25,6 @@ const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
 const lyricFontInput = document.getElementById("lyric-font");
 const lyricFontCount = document.getElementById("lyric-font-count");
-const lyricFontMobileGrid = document.getElementById("lyric-font-mobile-grid");
 const lyricFontZoomInput = document.getElementById("lyric-font-zoom");
 const lyricFontZoomValue = document.getElementById("lyric-font-zoom-value");
 const lyricFontZoomOutButton = document.getElementById("lyric-font-zoom-out");
@@ -1345,78 +1344,6 @@ function updateLyricFontPreview() {
   if (lyricFontCount) {
     lyricFontCount.textContent = `Fonts available: ${lyricFontInput.options.length}`;
   }
-
-  syncMobileLyricFontPicker();
-}
-
-function renderMobileLyricFontPicker() {
-  if (!lyricFontInput || !lyricFontMobileGrid) {
-    return;
-  }
-
-  const optionButtons = Array.from(lyricFontInput.querySelectorAll("option"))
-    .map((option) => {
-      const value = option.value || "";
-      const label = option.textContent?.trim() || value;
-      const fontFamily =
-        option.dataset.fontFamily || lyricFontFamilies[value] || lyricFontFamilies.arial;
-
-      if (!value || !label) {
-        return "";
-      }
-
-      return `
-        <button
-          type="button"
-          class="lyric-font-mobile-option"
-          data-font-value="${value}"
-          data-font-family="${fontFamily.replace(/"/g, "&quot;")}"
-          aria-pressed="${lyricFontInput.value === value ? "true" : "false"}"
-        >
-          <span class="lyric-font-mobile-sample" style="font-family:${fontFamily}">Aa</span>
-          <span class="lyric-font-mobile-label" style="font-family:${fontFamily}">${label}</span>
-        </button>
-      `;
-    })
-    .filter(Boolean)
-    .join("");
-
-  lyricFontMobileGrid.innerHTML = optionButtons;
-  lyricFontMobileGrid.hidden = !optionButtons;
-
-  Array.from(lyricFontMobileGrid.querySelectorAll(".lyric-font-mobile-option")).forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextValue = button.dataset.fontValue || "arial";
-
-      if (lyricFontInput.value === nextValue) {
-        return;
-      }
-
-      lyricFontInput.value = nextValue;
-      updateLyricFontPreview();
-      updateLyricStylePreview();
-      markRenderOutputStale("Lyrics font changed. Render again to apply the new font to the output video.");
-    });
-  });
-}
-
-function syncMobileLyricFontPicker() {
-  if (!lyricFontInput || !lyricFontMobileGrid) {
-    return;
-  }
-
-  const hasButtons = lyricFontMobileGrid.querySelector(".lyric-font-mobile-option");
-
-  if (!hasButtons) {
-    renderMobileLyricFontPicker();
-    return;
-  }
-
-  Array.from(lyricFontMobileGrid.querySelectorAll(".lyric-font-mobile-option")).forEach((button) => {
-    const isActive = button.dataset.fontValue === lyricFontInput.value;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-pressed", isActive ? "true" : "false");
-  });
 }
 
 function updateLyricStylePreview() {
