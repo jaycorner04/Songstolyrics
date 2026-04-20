@@ -1219,6 +1219,13 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       lines: []
     }
   );
+  const matchedReferenceLyrics =
+    Array.isArray(lyricResult?.lines) &&
+    lyricResult.lines.length >= 4 &&
+    !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
+    String(lyricResult?.source || "").toLowerCase() !== "unavailable"
+      ? lyricResult.lines
+      : [];
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
 
@@ -1340,6 +1347,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       lyricsSource: lyricResult.source,
       syncMode: lyricResult.syncMode,
       lines: lyricResult.lines,
+      referenceLyricsLines: matchedReferenceLyrics,
       warnings: [
         ...buildWarnings(lyricResult),
         ...warnings,
@@ -1670,6 +1678,7 @@ app.post(
       channelTitle: body?.channelTitle,
       durationSeconds: body?.durationSeconds,
       lines: renderLines,
+      referenceLyricsLines: Array.isArray(body?.referenceLyricsLines) ? body.referenceLyricsLines : [],
       song: renderSong,
       syncMode: body?.syncMode || "none",
       poster: body?.poster || "",

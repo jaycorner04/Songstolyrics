@@ -3514,6 +3514,7 @@ async function handleRender() {
       channelTitle: currentResult.channelTitle,
       durationSeconds: currentResult.durationSeconds,
       lines: currentResult.lines,
+      referenceLyricsLines: currentResult.referenceLyricsLines,
       song: currentResult.song,
       syncMode: currentResult.syncMode,
       audioPreviewBlocked: Boolean(currentResult.audioPreviewBlocked),
