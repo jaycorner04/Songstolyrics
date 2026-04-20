@@ -65,20 +65,24 @@ const STREAM_ATTEMPTS = {
     }
   ]
 };
+const COOKIE_FILE_PATH = resolveCookieFilePath();
+
 const AUDIO_DOWNLOAD_ATTEMPTS = [
   {
     formatSelector: "bestaudio[ext=m4a]/bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
-    fallbackClients: "android,web,ios"
+    fallbackClients: "android,web,ios",
+    extraArgs: COOKIE_FILE_PATH ? ["--cookies", COOKIE_FILE_PATH] : []
   },
   {
     formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
-    fallbackClients: "android,web,mweb"
+    fallbackClients: "android,web,mweb",
+    extraArgs: COOKIE_FILE_PATH ? ["--cookies", COOKIE_FILE_PATH] : []
   },
   {
     formatSelector: "bestaudio[acodec!=none]/bestaudio/best",
     fallbackClients: "web,mweb,tv,tv_simply",
     profile: "bgutil",
-    extraArgs: []
+    extraArgs: COOKIE_FILE_PATH ? ["--cookies", COOKIE_FILE_PATH] : []
   }
 ];
 
