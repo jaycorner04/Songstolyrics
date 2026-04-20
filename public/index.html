@@ -57,77 +57,96 @@
             </article>
           </div>
 
-          <section class="music-lore-card" aria-label="Music news panel">
-            <div class="music-bulletin-topline">
-              <p class="eyebrow">Music briefing</p>
-              <span id="music-bulletin-stamp" class="music-bulletin-stamp">History pulse</span>
+          <section class="style-preview-card hero-preview-card" aria-label="Lyrics preview panel">
+            <div class="style-preview-topline">
+              <p class="eyebrow">Live preview</p>
+              <span id="lyric-preview-style-badge" class="style-preview-badge">Auto mix</span>
             </div>
 
-            <div class="music-lore-copy">
-              <h2 id="music-bulletin-headline">Every hook leaves a trail through music history.</h2>
-              <p id="music-bulletin-text" class="music-lore-text">
-                From notation to streaming, songs keep changing shape. This panel rotates through
-                music history, headline records, and giant YouTube milestones.
-              </p>
+            <div class="style-preview-copy">
+              <h2>See the lyric look before you render.</h2>
+              <p>Animated sample lyrics cycle through a real multi-line flow when users change the style or font.</p>
             </div>
 
-            <div class="music-bulletin-tabs" role="tablist" aria-label="Music bulletin topics">
-              <button
-                type="button"
-                class="music-bulletin-tab is-active"
-                data-bulletin-index="0"
-                role="tab"
-                aria-selected="true"
-              >
-                History
-              </button>
-              <button
-                type="button"
-                class="music-bulletin-tab"
-                data-bulletin-index="1"
-                role="tab"
-                aria-selected="false"
-              >
-                Records
-              </button>
-              <button
-                type="button"
-                class="music-bulletin-tab"
-                data-bulletin-index="2"
-                role="tab"
-                aria-selected="false"
-              >
-                YouTube
-              </button>
-              <button
-                type="button"
-                class="music-bulletin-tab"
-                data-bulletin-index="3"
-                role="tab"
-                aria-selected="false"
-              >
-                Trending
-              </button>
-              <button
-                type="button"
-                class="music-bulletin-tab"
-                data-bulletin-index="4"
-                role="tab"
-                aria-selected="false"
-              >
-                Top links
-              </button>
+            <div id="lyric-style-preview" class="lyric-style-preview is-auto">
+              <img
+                id="lyric-style-preview-image"
+                class="lyric-style-preview-media"
+                alt="Live lyric preview background"
+                hidden
+              />
+              <video
+                id="lyric-style-preview-video"
+                class="lyric-style-preview-media"
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                hidden
+              ></video>
+              <div class="lyric-style-preview-backdrop" aria-hidden="true"></div>
+              <div class="lyric-style-preview-glow" aria-hidden="true"></div>
+              <div class="lyric-style-preview-frame">
+                <span class="preview-chip">Preview output</span>
+                <div id="lyric-preview-drag-surface" class="lyric-preview-drag-surface">
+                  <div class="preview-drag-tip" aria-hidden="true">Drag lyrics to the safe area</div>
+                  <div
+                    id="preview-lines-shell"
+                    class="preview-lines-shell"
+                    tabindex="0"
+                    aria-label="Drag lyric preview to place the lyrics"
+                  >
+                    <div class="preview-lines">
+                      <p id="preview-line-1" class="preview-line preview-line-1">City lights in stereo</p>
+                      <p id="preview-line-2" class="preview-line preview-line-2">Street drums wake the silence</p>
+                      <p id="preview-line-3" class="preview-line preview-line-3 is-active">You keep running through my mind</p>
+                      <p id="preview-line-4" class="preview-line preview-line-4">Every shadow turns to color</p>
+                      <p id="preview-line-5" class="preview-line preview-line-5">Tonight the echo feels alive</p>
+                      <p id="preview-line-6" class="preview-line preview-line-6">We hold the hook a little longer</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div class="music-symbol-band" aria-hidden="true">
-              <span>&#9834;</span>
-              <span>&#9835;</span>
-              <span>&#9836;</span>
-              <span>&#9833;</span>
-              <span>&#9834;</span>
+            <div class="style-preview-meta">
+              <div class="style-preview-pill">
+                <span>Font</span>
+                <strong id="lyric-preview-font-label">Arial</strong>
+              </div>
+              <div class="style-preview-pill">
+                <span>Motion</span>
+                <strong id="lyric-preview-motion-label">Balanced</strong>
+              </div>
             </div>
 
-            <div id="music-bulletin-grid" class="music-era-grid" aria-live="polite"></div>
+            <div class="preview-position-card">
+              <div class="preview-position-copy">
+                <span>Placement</span>
+                <strong>Move lyrics away from faces</strong>
+                <p id="lyric-position-status">
+                  Upload a background, then drag the live preview lyrics where you want them to sit in the final render.
+                </p>
+              </div>
+              <div class="preview-position-actions">
+                <button id="lyric-position-reset-button" type="button" class="mini-action-button">
+                  Reset position
+                </button>
+              </div>
+            </div>
+
+            <div class="preview-insight-strip" aria-label="Preview insights">
+              <article class="preview-insight-card">
+                <span>Live</span>
+                <strong>Style updates instantly</strong>
+                <p>Change font, motion, or color and preview the look before you render.</p>
+              </article>
+              <article class="preview-insight-card">
+                <span>Output</span>
+                <strong>Readable by default</strong>
+                <p>The final export keeps lyrics bold and centered even when styles get more dramatic.</p>
+              </article>
+            </div>
           </section>
         </div>
 
@@ -370,97 +389,6 @@
             </div>
           </form>
 
-          <section class="style-preview-card" aria-label="Lyrics preview panel">
-            <div class="style-preview-topline">
-              <p class="eyebrow">Live preview</p>
-              <span id="lyric-preview-style-badge" class="style-preview-badge">Auto mix</span>
-            </div>
-
-            <div class="style-preview-copy">
-              <h2>See the lyric look before you render.</h2>
-              <p>Animated sample lyrics cycle through a real multi-line flow when users change the style or font.</p>
-            </div>
-
-            <div id="lyric-style-preview" class="lyric-style-preview is-auto">
-              <img
-                id="lyric-style-preview-image"
-                class="lyric-style-preview-media"
-                alt="Live lyric preview background"
-                hidden
-              />
-              <video
-                id="lyric-style-preview-video"
-                class="lyric-style-preview-media"
-                muted
-                loop
-                playsinline
-                preload="metadata"
-                hidden
-              ></video>
-              <div class="lyric-style-preview-backdrop" aria-hidden="true"></div>
-              <div class="lyric-style-preview-glow" aria-hidden="true"></div>
-              <div class="lyric-style-preview-frame">
-                <span class="preview-chip">Preview output</span>
-                <div id="lyric-preview-drag-surface" class="lyric-preview-drag-surface">
-                  <div class="preview-drag-tip" aria-hidden="true">Drag lyrics to the safe area</div>
-                  <div
-                    id="preview-lines-shell"
-                    class="preview-lines-shell"
-                    tabindex="0"
-                    aria-label="Drag lyric preview to place the lyrics"
-                  >
-                    <div class="preview-lines">
-                      <p id="preview-line-1" class="preview-line preview-line-1">City lights in stereo</p>
-                      <p id="preview-line-2" class="preview-line preview-line-2">Street drums wake the silence</p>
-                      <p id="preview-line-3" class="preview-line preview-line-3 is-active">You keep running through my mind</p>
-                      <p id="preview-line-4" class="preview-line preview-line-4">Every shadow turns to color</p>
-                      <p id="preview-line-5" class="preview-line preview-line-5">Tonight the echo feels alive</p>
-                      <p id="preview-line-6" class="preview-line preview-line-6">We hold the hook a little longer</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="style-preview-meta">
-              <div class="style-preview-pill">
-                <span>Font</span>
-                <strong id="lyric-preview-font-label">Arial</strong>
-              </div>
-              <div class="style-preview-pill">
-                <span>Motion</span>
-                <strong id="lyric-preview-motion-label">Balanced</strong>
-              </div>
-            </div>
-
-            <div class="preview-position-card">
-              <div class="preview-position-copy">
-                <span>Placement</span>
-                <strong>Move lyrics away from faces</strong>
-                <p id="lyric-position-status">
-                  Upload a background, then drag the live preview lyrics where you want them to sit in the final render.
-                </p>
-              </div>
-              <div class="preview-position-actions">
-                <button id="lyric-position-reset-button" type="button" class="mini-action-button">
-                  Reset position
-                </button>
-              </div>
-            </div>
-
-            <div class="preview-insight-strip" aria-label="Preview insights">
-              <article class="preview-insight-card">
-                <span>Live</span>
-                <strong>Style updates instantly</strong>
-                <p>Change font, motion, or color and preview the look before you render.</p>
-              </article>
-              <article class="preview-insight-card">
-                <span>Output</span>
-                <strong>Readable by default</strong>
-                <p>The final export keeps lyrics bold and centered even when styles get more dramatic.</p>
-              </article>
-            </div>
-          </section>
         </div>
       </header>
 
