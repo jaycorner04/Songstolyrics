@@ -1365,6 +1365,9 @@ app.post(
   "/api/convert-audio",
   renderUpload.single("audioFile"),
   asyncHandler(async (req, res) => {
+    req.socket.setTimeout(115000);
+    res.setTimeout(115000);
+
     const audioFile = req.file;
 
     if (!audioFile) {
