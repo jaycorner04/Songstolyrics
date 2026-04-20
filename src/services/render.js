@@ -6821,8 +6821,46 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
+          if (sourceLyricReferenceLines.length) {
+            const tightenedUploadedLyrics = tightenIntroLyricTiming(
+              uploadedAudioRenderLines,
+              stabilizedUploadedTranscriptLines,
+              durationSeconds
+            );
+
+            if (tightenedUploadedLyrics.changed) {
+              uploadedAudioRenderLines = tightenedUploadedLyrics.lines;
+              renderNotes.push(
+                tightenedUploadedLyrics.correctionMode === "opening-anchor-fit" ||
+                tightenedUploadedLyrics.correctionMode === "isolated-opening-snap" ||
+                tightenedUploadedLyrics.correctionMode === "single-anchor-snap"
+                  ? `Uploaded-audio lyric timing was tightened around the opening vocal entry using ${tightenedUploadedLyrics.openingAnchorCount} intro anchor${tightenedUploadedLyrics.openingAnchorCount === 1 ? "" : "s"}.`
+                  : "Uploaded-audio lyric timing was tightened around the opening vocal entry before export."
+              );
+            }
+
+            const calibratedUploadedLyrics = calibrateLyricTimingAgainstTranscript(
+              uploadedAudioRenderLines,
+              stabilizedUploadedTranscriptLines,
+              durationSeconds,
+              {
+                minimumAnchorScore: 0.34
+              }
+            );
+
+            if (calibratedUploadedLyrics.changed) {
+              uploadedAudioRenderLines = calibratedUploadedLyrics.lines;
+              renderNotes.push(
+                `Uploaded-audio lyric timing was calibrated against the transcript using ${calibratedUploadedLyrics.inlierAnchorCount} stable anchor${calibratedUploadedLyrics.inlierAnchorCount === 1 ? "" : "s"} so the final lines stay closer to the sung words.`
+              );
+            }
+          }
+
+          const uploadedAudioLyricOffsetSeconds =
+            sourceLyricReferenceLines.length && !renderLinesAreTranscriptDerived ? 0 : lyricOffsetSeconds;
+
           renderLines = limitLyricLines(
-            applyLyricOffset(uploadedAudioRenderLines, lyricOffsetSeconds, durationSeconds),
+            applyLyricOffset(uploadedAudioRenderLines, uploadedAudioLyricOffsetSeconds, durationSeconds),
             durationSeconds
           );
           renderLineSyncSource = "transcribed";
