@@ -37,12 +37,12 @@ const MAX_RENDER_ATTEMPTS = 2;
 const MIN_RENDER_DURATION_SECONDS = 12;
 const MAX_UPLOADED_BACKGROUNDS = 5;
 const MIN_LYRIC_DURATION_SECONDS = 0.8;
-const MAX_LYRIC_HOLD_SECONDS = 4.2;
-const MAX_SMART_LYRIC_DISPLAY_SECONDS = 6.2;
+const MAX_LYRIC_HOLD_SECONDS = 5.8;
+const MAX_SMART_LYRIC_DISPLAY_SECONDS = 7.8;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
-const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
-const LYRIC_AUDIO_OFFSET_SECONDS = -0.15;
+const LYRIC_TRANSITION_GAP_SECONDS = 0.04;
+const LYRIC_AUDIO_OFFSET_SECONDS = -0.02;
 const LYRIC_FADE_MS = 180;
 const LYRIC_REVEAL_MS = 220;
 const LYRIC_ACCENT_COLORS = ["#d7d7d7", "#8fc8ff", "#f2f2f2", "#c6d0ff"];
@@ -3962,15 +3962,15 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
   const teluguRomanized = Boolean(options?.teluguRomanized);
 
   if (syncMode === "synced-lyrics") {
-    return 0.03;
+    return 0.05;
   }
 
   if (syncMode === "caption-aligned" || syncMode === "captions") {
-    return 0.02;
+    return 0.04;
   }
 
   if (syncMode === "transcribed") {
-    return teluguRomanized ? -0.72 : 0;
+    return teluguRomanized ? -0.28 : 0.03;
   }
 
   return LYRIC_AUDIO_OFFSET_SECONDS;
@@ -4024,11 +4024,11 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   const nextStart = Math.max(start + 0.12, Number(nextLine?.start || start + MIN_LYRIC_DURATION_SECONDS));
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
   const smartDisplayDuration = resolveSmartLyricDisplayDuration(line, safeUpperBound - start);
-  const preferredEnd = Math.min(start + smartDisplayDuration, safeUpperBound);
-  const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.92, 0.12, 0.72);
-  const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.12, safeUpperBound - start));
+  const preferredEnd = Math.min(Math.max(naturalEnd, start + smartDisplayDuration), safeUpperBound);
+  const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.97, 0.18, 0.94);
+  const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.18, safeUpperBound - start));
 
-  return clamp(Math.max(Math.min(naturalEnd, safeUpperBound), preferredEnd), minimumEnd, safeUpperBound);
+  return clamp(preferredEnd, minimumEnd, safeUpperBound);
 }
 
 function normalizeRenderLyricPlacement(placement = null) {
@@ -4081,9 +4081,9 @@ function resolveSmartLyricDisplayDuration(line = {}, availableSeconds = 0) {
 
   const pacingTargetSeconds = clamp(
     wordCount <= 2
-      ? wordCount * 0.95 + punctuationPause
-      : wordCount * 0.62 + Math.min(1.1, characterCount / 22) + punctuationPause,
-    1.2,
+      ? wordCount * 1.08 + punctuationPause
+      : wordCount * 0.74 + Math.min(1.35, characterCount / 20) + punctuationPause,
+    1.45,
     MAX_SMART_LYRIC_DISPLAY_SECONDS
   );
 
