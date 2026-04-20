@@ -24,6 +24,10 @@ const outputFormatInput = document.getElementById("output-format");
 const renderModeInput = document.getElementById("render-mode");
 const lyricStyleInput = document.getElementById("lyric-style");
 const lyricFontInput = document.getElementById("lyric-font");
+const lyricFontDropdown = document.getElementById("lyric-font-dropdown");
+const lyricFontTrigger = document.getElementById("lyric-font-trigger");
+const lyricFontTriggerLabel = document.getElementById("lyric-font-trigger-label");
+const lyricFontMenu = document.getElementById("lyric-font-menu");
 const lyricFontCount = document.getElementById("lyric-font-count");
 const lyricFontZoomInput = document.getElementById("lyric-font-zoom");
 const lyricFontZoomValue = document.getElementById("lyric-font-zoom-value");
@@ -121,6 +125,7 @@ let activeMusicBulletinIndex = 0;
 let renderSettingsDirty = false;
 let audioFallbackPopupKey = "";
 let autoRenderPending = false;
+let lyricFontDropdownOpen = false;
 const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
@@ -1374,9 +1379,130 @@ function updateLyricFontPreview() {
       option.dataset.fontFamily || lyricFontFamilies[option.value] || lyricFontFamilies.arial;
   });
 
+  if (lyricFontTriggerLabel) {
+    lyricFontTriggerLabel.textContent = selectedOption?.textContent?.trim() || "Arial";
+    lyricFontTriggerLabel.style.fontFamily = fontFamily;
+  }
+
+  if (lyricFontTrigger) {
+    lyricFontTrigger.style.fontFamily = fontFamily;
+  }
+
+  if (lyricFontMenu) {
+    Array.from(lyricFontMenu.querySelectorAll(".font-dropdown-option")).forEach((optionButton) => {
+      const isSelected = optionButton.dataset.value === selectedValue;
+      optionButton.classList.toggle("is-selected", isSelected);
+      optionButton.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+  }
+
   if (lyricFontCount) {
     lyricFontCount.textContent = `Fonts available: ${lyricFontInput.options.length}`;
   }
+}
+
+function closeLyricFontDropdown() {
+  lyricFontDropdownOpen = false;
+
+  if (lyricFontDropdown) {
+    lyricFontDropdown.dataset.open = "false";
+  }
+
+  if (lyricFontTrigger) {
+    lyricFontTrigger.setAttribute("aria-expanded", "false");
+  }
+
+  if (lyricFontMenu) {
+    lyricFontMenu.hidden = true;
+  }
+}
+
+function openLyricFontDropdown() {
+  if (!lyricFontDropdown || !lyricFontTrigger || !lyricFontMenu) {
+    return;
+  }
+
+  lyricFontDropdownOpen = true;
+  lyricFontDropdown.dataset.open = "true";
+  lyricFontTrigger.setAttribute("aria-expanded", "true");
+  lyricFontMenu.hidden = false;
+}
+
+function toggleLyricFontDropdown() {
+  if (lyricFontDropdownOpen) {
+    closeLyricFontDropdown();
+    return;
+  }
+
+  openLyricFontDropdown();
+}
+
+function buildLyricFontDropdown() {
+  if (!lyricFontInput || !lyricFontMenu) {
+    return;
+  }
+
+  lyricFontMenu.innerHTML = "";
+
+  Array.from(lyricFontInput.children).forEach((groupNode) => {
+    if (groupNode.tagName?.toLowerCase() === "optgroup") {
+      const section = document.createElement("div");
+      section.className = "font-dropdown-group";
+
+      const heading = document.createElement("div");
+      heading.className = "font-dropdown-group-label";
+      heading.textContent = groupNode.label || "Fonts";
+      section.appendChild(heading);
+
+      Array.from(groupNode.children).forEach((option) => {
+        if (option.tagName?.toLowerCase() !== "option") {
+          return;
+        }
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "font-dropdown-option";
+        button.dataset.value = option.value;
+        button.dataset.fontFamily =
+          option.dataset.fontFamily || lyricFontFamilies[option.value] || lyricFontFamilies.arial;
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", option.selected ? "true" : "false");
+        button.style.fontFamily = button.dataset.fontFamily;
+        button.textContent = option.textContent?.trim() || option.value;
+        button.addEventListener("click", () => {
+          lyricFontInput.value = option.value;
+          lyricFontInput.dispatchEvent(new Event("change", { bubbles: true }));
+          closeLyricFontDropdown();
+        });
+
+        section.appendChild(button);
+      });
+
+      lyricFontMenu.appendChild(section);
+      return;
+    }
+
+    if (groupNode.tagName?.toLowerCase() === "option") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "font-dropdown-option";
+      button.dataset.value = groupNode.value;
+      button.dataset.fontFamily =
+        groupNode.dataset.fontFamily || lyricFontFamilies[groupNode.value] || lyricFontFamilies.arial;
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", groupNode.selected ? "true" : "false");
+      button.style.fontFamily = button.dataset.fontFamily;
+      button.textContent = groupNode.textContent?.trim() || groupNode.value;
+      button.addEventListener("click", () => {
+        lyricFontInput.value = groupNode.value;
+        lyricFontInput.dispatchEvent(new Event("change", { bubbles: true }));
+        closeLyricFontDropdown();
+      });
+      lyricFontMenu.appendChild(button);
+    }
+  });
+
+  updateLyricFontPreview();
 }
 
 function updateLyricStylePreview() {
