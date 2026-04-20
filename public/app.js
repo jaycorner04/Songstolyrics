@@ -991,9 +991,9 @@ function syncMobileResultStack() {
     mediaColumn.style.flexDirection = "column";
     mediaColumn.style.gap = "12px";
     trackCard.style.order = "1";
-    posterFrame.style.order = "2";
+    posterFrame.style.order = "3";
     if (mobileStageCard) {
-      mobileStageCard.style.order = "3";
+      mobileStageCard.style.order = "2";
     }
     videoOutputCard.style.order = "4";
     return;
