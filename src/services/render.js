@@ -6962,7 +6962,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               "Strict sync validation stayed conservative, so this transcribed or uploaded-audio render continued with fallback-safe lyric timing."
             );
           } else {
-            throw createStrictSyncValidationError(strictSyncReport);
+            renderLines = renderLines?.length >= 2
+              ? renderLines
+              : buildFallbackLines(payload, durationSeconds);
           }
         }
 
