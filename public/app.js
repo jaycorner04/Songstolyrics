@@ -1577,6 +1577,50 @@ function buildLyricFontDropdown() {
   updateLyricFontPreview();
 }
 
+function ensureLyricFontDropdownReady() {
+  if (!lyricFontInput || !lyricFontMenu) {
+    return;
+  }
+
+  if (lyricFontCount) {
+    lyricFontCount.textContent = `Fonts available: ${lyricFontInput.options.length}`;
+  }
+
+  if (!lyricFontMenu.children.length) {
+    buildLyricFontDropdown();
+  }
+}
+
+function openLyricFontDropdown() {
+  if (!lyricFontDropdown || !lyricFontTrigger || !lyricFontMenu) {
+    return;
+  }
+
+  ensureLyricFontDropdownReady();
+  lyricFontDropdown.scrollIntoView({ block: "nearest", inline: "nearest" });
+  lyricFontDropdownOpen = true;
+  lyricFontDropdown.dataset.open = "true";
+  lyricFontTrigger.setAttribute("aria-expanded", "true");
+  lyricFontMenu.hidden = false;
+}
+
+function renderLyricPositionStatus() {
+  if (!lyricPositionStatus) {
+    return;
+  }
+
+  const hasCustomPlacement = Boolean(lyricPreviewCustomPosition);
+  const placement = getLyricPreviewPlacement();
+  const backgroundReady = Boolean(uploadedBackgrounds.length || uploadedBackgroundVideo);
+  const positionText = `${formatLyricPlacementPercentage(placement.x)} from left - ${formatLyricPlacementPercentage(placement.y)} from top`;
+
+  lyricPositionStatus.textContent = hasCustomPlacement
+    ? `Custom lyric placement saved. The render will place the lyrics at ${positionText}.`
+    : backgroundReady
+      ? "The uploaded background is previewing now. Drag the lyrics anywhere you want before rendering."
+      : "Upload a background, then drag the live preview lyrics anywhere you want them to stay in the final render.";
+}
+
 function clampPreviewPlacement(value, min = 0, max = 1) {
   return Math.min(max, Math.max(min, Number(value || 0)));
 }

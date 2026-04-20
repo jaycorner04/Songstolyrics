@@ -560,13 +560,19 @@ button {
 }
 
 .converter-card {
+  z-index: 8;
   padding: 24px;
   border-radius: var(--radius-xl);
   overflow: visible;
 }
 
+.converter-card:focus-within {
+  z-index: 14;
+}
+
 .style-preview-card {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -653,8 +659,13 @@ button {
 
 .lyric-style-preview.is-custom-background .lyric-style-preview-backdrop {
   background:
-    linear-gradient(180deg, rgba(5, 10, 18, 0.14), rgba(5, 10, 18, 0.42)),
-    linear-gradient(135deg, rgba(255, 122, 69, 0.08), rgba(127, 232, 255, 0.05));
+    linear-gradient(180deg, rgba(5, 10, 18, 0.08), rgba(5, 10, 18, 0.24)),
+    linear-gradient(135deg, rgba(255, 122, 69, 0.04), rgba(127, 232, 255, 0.03));
+}
+
+.lyric-style-preview.is-custom-background .lyric-style-preview-glow {
+  opacity: 0.3;
+  filter: blur(14px);
 }
 
 .lyric-style-preview-glow {
@@ -1610,6 +1621,10 @@ button {
     linear-gradient(180deg, rgba(10, 22, 38, 0.98), rgba(7, 17, 31, 0.98)),
     rgba(7, 17, 31, 0.98);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
+}
+
+.font-dropdown-menu[hidden] {
+  display: none !important;
 }
 
 .font-dropdown-group + .font-dropdown-group {
