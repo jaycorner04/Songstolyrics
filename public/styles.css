@@ -697,6 +697,22 @@ button {
   touch-action: none;
 }
 
+.preview-drag-tip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 232, 255, 0.2);
+  background: rgba(8, 18, 33, 0.78);
+  color: rgba(246, 240, 232, 0.78);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(10px);
+}
+
 .preview-lines-shell {
   position: absolute;
   left: var(--preview-lyrics-x, 50%);
@@ -843,6 +859,51 @@ button {
   color: var(--text);
   font-size: 0.95rem;
   line-height: 1.2;
+}
+
+.preview-position-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.preview-position-copy span {
+  display: block;
+  color: var(--mint);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.preview-position-copy strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--text);
+  font-size: 0.96rem;
+  line-height: 1.2;
+}
+
+.preview-position-copy p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.preview-position-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.preview-position-actions .mini-action-button {
+  width: 100%;
+  justify-content: center;
 }
 
 .lyric-style-preview.is-auto .preview-line.is-active,
@@ -3010,6 +3071,14 @@ button {
     font-size: 0.6rem;
   }
 
+  .preview-drag-tip {
+    left: 0;
+    right: auto;
+    bottom: 2px;
+    max-width: calc(100% - 18px);
+    font-size: 0.62rem;
+  }
+
   .preview-lines {
     gap: 6px;
     margin-top: 10px;
@@ -3028,6 +3097,16 @@ button {
   .preview-insight-strip {
     gap: 8px;
     margin-top: 10px;
+  }
+
+  .preview-position-card {
+    gap: 10px;
+    margin-top: 10px;
+    padding: 12px;
+  }
+
+  .preview-position-actions {
+    grid-template-columns: 1fr;
   }
 
   .style-preview-meta {
