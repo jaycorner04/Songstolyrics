@@ -3854,26 +3854,6 @@ function resolveLyricFontZoomValue(value = 100) {
   return clamp(Number(value || 100), 60, 200) / 100;
 }
 
-function resolveManualLyricPosition(position = null) {
-  if (!position || typeof position !== "object" || Array.isArray(position)) {
-    return null;
-  }
-
-  const x = Number(position.x);
-  const y = Number(position.y);
-
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return null;
-  }
-
-  const anchor = `${position.anchor || "center"}`.trim().toLowerCase();
-  return {
-    x: clamp(x, 0.05, 0.95),
-    y: clamp(y, 0.12, 0.88),
-    anchor: anchor === "left" || anchor === "right" ? anchor : "center"
-  };
-}
-
 function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_PRESETS.auto) {
   const normalizedText = normalizeWhitespace(text);
 
@@ -3947,7 +3927,6 @@ function createAssSubtitleContent(
   const neonGlowValue = resolveNeonGlowValue(payload?.neonGlow || 70);
   const neonGlowStrength = neonGlowValue / 100;
   const lyricFontZoom = resolveLyricFontZoomValue(payload?.lyricFontZoom || 100);
-  const manualLyricPosition = resolveManualLyricPosition(payload?.lyricPosition);
   const fontZoomBoost = Math.max(0.84, lyricFontZoom);
   const baseFontSize = clamp(
     Math.round(
@@ -4091,19 +4070,6 @@ function createAssSubtitleContent(
         break;
     }
 
-    if (manualLyricPosition) {
-      targetCenterX = Math.round(videoSize.width * manualLyricPosition.x);
-      targetCenterY = Math.round(videoSize.height * manualLyricPosition.y);
-
-      if (manualLyricPosition.anchor === "left") {
-        alignmentTag = selectedVariant === "aa" ? "\\an7" : "\\an4";
-      } else if (manualLyricPosition.anchor === "right") {
-        alignmentTag = selectedVariant === "aa" ? "\\an9" : "\\an6";
-      } else {
-        alignmentTag = "\\an5";
-      }
-    }
-
     const centerX = Math.round(
       clamp(targetCenterX, safeMargin + boxWidth / 2, videoSize.width - safeMargin - boxWidth / 2)
     );
@@ -4207,25 +4173,21 @@ function createAssSubtitleContent(
     if (selectedVariant === "aa") {
       const aaLines = buildAaWordLines(displayText, isPortrait).slice(0, isPortrait ? 5 : 4);
       const preferredSide = placementMap[index]?.side || "left";
-      const isLeftSide = manualLyricPosition ? manualLyricPosition.anchor !== "right" : preferredSide !== "right";
-      const anchorX = manualLyricPosition
-        ? centerX
-        : Math.round(
-            clamp(
-              videoSize.width * (isLeftSide ? (isPortrait ? 0.16 : 0.18) : (isPortrait ? 0.84 : 0.82)),
-              safeMargin + 24,
-              videoSize.width - safeMargin - 24
-            )
-          );
-      const anchorY = manualLyricPosition
-        ? centerY
-        : Math.round(
-            clamp(
-              videoSize.height * (isPortrait ? 0.61 : 0.57),
-              safeMargin + baseFontSize,
-              videoSize.height - safeMargin - baseFontSize
-            )
-          );
+      const isLeftSide = preferredSide !== "right";
+      const anchorX = Math.round(
+        clamp(
+          videoSize.width * (isLeftSide ? (isPortrait ? 0.16 : 0.18) : (isPortrait ? 0.84 : 0.82)),
+          safeMargin + 24,
+          videoSize.width - safeMargin - 24
+        )
+      );
+      const anchorY = Math.round(
+        clamp(
+          videoSize.height * (isPortrait ? 0.61 : 0.57),
+          safeMargin + baseFontSize,
+          videoSize.height - safeMargin - baseFontSize
+        )
+      );
       const aaMajorHex = customStyleColorHex || "#ef8c43";
       const aaSupportHex = customStyleColorHex || "#d97d46";
       const aaMinorHex = "#253056";
