@@ -36,11 +36,11 @@ const OUTPUT_FPS = 24;
 const MAX_RENDER_ATTEMPTS = 2;
 const MIN_RENDER_DURATION_SECONDS = 12;
 const MAX_UPLOADED_BACKGROUNDS = 5;
-const MIN_LYRIC_DURATION_SECONDS = 0.8;
-const MAX_LYRIC_HOLD_SECONDS = 4.2;
+const MIN_LYRIC_DURATION_SECONDS = 1.2;
+const MAX_LYRIC_HOLD_SECONDS = 8;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
-const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
+const LYRIC_TRANSITION_GAP_SECONDS = 0.04;
 const LYRIC_AUDIO_OFFSET_SECONDS = 0;
 const LYRIC_FADE_MS = 180;
 const LYRIC_REVEAL_MS = 220;
@@ -3897,8 +3897,8 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
 
   const nextStart = Math.max(start + 0.12, Number(nextLine?.start || start + MIN_LYRIC_DURATION_SECONDS));
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
-  const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.92, 0.12, 0.72);
-  const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.12, safeUpperBound - start));
+  const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.97, 0.22, 1.15);
+  const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.22, safeUpperBound - start));
 
   return clamp(Math.min(naturalEnd, safeUpperBound), minimumEnd, safeUpperBound);
 }
@@ -4130,7 +4130,7 @@ function createAssSubtitleContent(
     if (selectedVariant === "typewriter" || selectedVariant === "word-by-word") {
       const styledText = buildWordByWordLyricText(
         displayText,
-        Math.min(lineDurationSeconds * 0.82, MAX_LYRIC_HOLD_SECONDS),
+        Math.min(lineDurationSeconds * 0.92, MAX_LYRIC_HOLD_SECONDS),
         wrapLength,
         {
           emojiAssetMap,
