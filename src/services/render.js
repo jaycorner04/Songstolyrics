@@ -4150,9 +4150,7 @@ function createAssSubtitleContent(
   const emojiOverlays = [];
   const lyricEvents = lines.flatMap((line, index) => {
     const nextLine = lines[index + 1];
-    const start = formatAssTime(line.start);
     const endSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
-    const end = formatAssTime(endSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
     const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
     const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
@@ -4282,8 +4280,25 @@ function createAssSubtitleContent(
       clamp(targetCenterY, safeMargin + boxHeight / 2, videoSize.height - safeMargin - boxHeight / 2)
     );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
-    const fadeInMs = Math.round(LYRIC_FADE_MS * 0.72);
-    const fadeOutMs = Math.round(LYRIC_FADE_MS * 0.92);
+    const motionProfile = buildAdaptiveLyricMotionProfile(
+      {
+        ...line,
+        duration: lineDurationSeconds
+      },
+      selectedVariant,
+      textLines
+    );
+    const dialogueStartSeconds = roundTimeValue(
+      Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
+    );
+    const start = formatAssTime(dialogueStartSeconds);
+    const end = formatAssTime(endSeconds);
+    const revealMs = motionProfile.revealMs;
+    const fadeInMs = motionProfile.fadeInMs;
+    const fadeOutMs = motionProfile.fadeOutMs;
+    const travelX = Math.round(cinematicTravelX * motionProfile.movementMultiplier);
+    const travelY = Math.round(cinematicTravelY * motionProfile.movementMultiplier);
+    const bounceY = Math.round(bounceTravelY * motionProfile.movementMultiplier);
     const lineEmojiAnchors = [...new Set(
       plainWords
         .map((word) => getLyricEmojiForWord(word))
