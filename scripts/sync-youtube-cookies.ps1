@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$CookieSourcePath = "",
   [string]$RemoteHost = "15.206.23.118",
@@ -7,6 +5,8 @@ param(
   [string]$RemoteAppDir = "/home/ec2-user/Songstolyrics",
   [string]$VerifyUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 )
+
+$ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $defaultKeyPath = Join-Path $env:USERPROFILE "Downloads\song-to-lyrics-key.pem"
