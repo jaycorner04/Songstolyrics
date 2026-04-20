@@ -47,7 +47,6 @@ const lyricStylePreviewImage = document.getElementById("lyric-style-preview-imag
 const lyricStylePreviewVideo = document.getElementById("lyric-style-preview-video");
 const lyricPreviewDragSurface = document.getElementById("lyric-preview-drag-surface");
 const previewLinesShell = document.getElementById("preview-lines-shell");
-const lyricPreviewResetButton = document.getElementById("lyric-preview-reset-button");
 const previewLineNodes = Array.from(document.querySelectorAll(".preview-line"));
 const uploadPreviewStrip = document.getElementById("upload-preview-strip");
 const changeUploadedImagesButton = document.getElementById("change-uploaded-images-button");
@@ -1592,10 +1591,6 @@ function updateLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "aut
   lyricStylePreview.style.setProperty("--preview-shell-translate-x", getLyricPreviewAnchorTranslateX(placement.anchor));
   lyricStylePreview.style.setProperty("--preview-shell-translate-y", "-50%");
   previewLinesShell.dataset.anchor = placement.anchor;
-
-  if (lyricPreviewResetButton) {
-    lyricPreviewResetButton.disabled = !lyricPreviewCustomPosition;
-  }
 }
 
 function setLyricPreviewCustomPosition(position = null) {
@@ -1624,12 +1619,7 @@ function resolveLyricPreviewRenderPosition() {
   };
 }
 
-function notifyLyricPreviewPositionChanged(message = "Lyric position changed. Render again to apply it to the final video.") {
-  if (hasProjectSource()) {
-    markRenderOutputStale(message);
-    return;
-  }
-
+function notifyLyricPreviewPositionChanged(message = "Lyric position changed in the live preview.") {
   setStatus("Lyric position updated in the live preview.");
 }
 
@@ -2967,6 +2957,7 @@ async function handleBackgroundUpload() {
   try {
     uploadedBackgrounds = await Promise.all(files.map((file) => compressImageFile(file)));
     renderUploadPreviews();
+    updateLyricPreviewBackground();
     updatePostRenderBackgroundStatus();
     setStatus(
       videoOutputCard.hidden
@@ -2976,6 +2967,7 @@ async function handleBackgroundUpload() {
   } catch (error) {
     uploadedBackgrounds = [];
     renderUploadPreviews();
+    updateLyricPreviewBackground();
     updatePostRenderBackgroundStatus();
     setStatus(error.message || "Could not prepare the uploaded images.", true);
   }
@@ -2986,6 +2978,7 @@ async function handleBackgroundVideoUpload() {
   revokeUploadedBackgroundVideoPreview();
   uploadedBackgroundVideo = null;
   renderBackgroundVideoMeta();
+  updateLyricPreviewBackground();
   updatePostRenderBackgroundStatus();
 
   if (!file) {
@@ -2998,6 +2991,7 @@ async function handleBackgroundVideoUpload() {
     uploadedBackgroundVideo = await readVideoFileMetadata(file);
     uploadedBackgroundVideo.previewUrl = URL.createObjectURL(file);
     renderBackgroundVideoMeta();
+    updateLyricPreviewBackground();
     updatePostRenderBackgroundStatus();
     setStatus(
       videoOutputCard.hidden
@@ -3008,6 +3002,7 @@ async function handleBackgroundVideoUpload() {
     revokeUploadedBackgroundVideoPreview();
     uploadedBackgroundVideo = null;
     renderBackgroundVideoMeta();
+    updateLyricPreviewBackground();
     updatePostRenderBackgroundStatus();
     setStatus(error.message || "Could not prepare the background video.", true);
   }
@@ -3273,6 +3268,7 @@ function clearCustomBackgroundSelection() {
   backgroundVideoInput.value = "";
   renderUploadPreviews();
   renderBackgroundVideoMeta();
+  updateLyricPreviewBackground();
   updatePostRenderBackgroundStatus();
 }
 
@@ -4031,7 +4027,6 @@ async function handleRender() {
       lyricStyle: lyricStyleInput.value,
       lyricFont: lyricFontInput.value,
       lyricFontZoom: getSelectedLyricZoomValue(),
-      lyricPosition: resolveLyricPreviewRenderPosition(),
       useStyleColor: getSelectedStyleColorSettings().enabled,
       styleColor: getSelectedStyleColorSettings().color,
       neonGlow: getSelectedStyleColorSettings().glowPercent,
@@ -4407,7 +4402,6 @@ if (neonGlowInput) {
 }
 previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
-lyricPreviewResetButton?.addEventListener("click", resetLyricPreviewPosition);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 deleteUploadedImagesButton.addEventListener("click", () => {
@@ -4457,6 +4451,7 @@ updateLyricFontPreview();
 syncLyricZoomUi();
 updateStyleSpecificControls();
 updateLyricStylePreview();
+updateLyricPreviewBackground();
 restoreDismissedAudioPopupKeys();
 renderMusicBulletin(0);
 scheduleMusicBulletinRotation();

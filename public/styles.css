@@ -673,14 +673,8 @@ button {
   padding: 16px;
 }
 
-.preview-chip-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .preview-chip {
+  align-self: flex-start;
   padding: 7px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
@@ -690,27 +684,6 @@ button {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.preview-reset-button {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  background: rgba(6, 11, 20, 0.5);
-  color: var(--text);
-  font-size: 0.76rem;
-  font-weight: 800;
-  padding: 7px 12px;
-  transition: border-color 0.2s ease, background 0.2s ease, opacity 0.2s ease;
-}
-
-.preview-reset-button:hover:not(:disabled) {
-  border-color: rgba(127, 232, 255, 0.42);
-  background: rgba(127, 232, 255, 0.12);
-}
-
-.preview-reset-button:disabled {
-  opacity: 0.48;
-  cursor: default;
 }
 
 .lyric-preview-drag-surface {
@@ -802,13 +775,6 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
-}
-
-.preview-drag-help {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.45;
 }
 
 .preview-insight-strip {
