@@ -5954,7 +5954,26 @@ async function createSilentAudioFallback(outputPath, durationSeconds) {
 }
 
 async function runRenderWorkflow(job, payload, attemptNumber = 1) {
-    const renderDirectory = path.join(rendersRoot, job.id);
+  const hasAudio = Boolean(payload?.audioFilePath || payload?.uploadedAudioPath) ||
+    !payload?.audioPreviewBlocked;
+  const hasLines = Array.isArray(payload?.lines) && payload.lines.length >= 4;
+  const hasSyncedLines = payload?.syncMode !== "none";
+
+  if (!hasAudio) {
+    throw createRenderError(
+      "No audio available for this video. Upload the MP3 to render with sound.",
+      422
+    );
+  }
+
+  if (!hasLines || !hasSyncedLines) {
+    throw createRenderError(
+      "No lyrics or transcript found for this video. The render would have no text to show.",
+      422
+    );
+  }
+
+  const renderDirectory = path.join(rendersRoot, job.id);
   await ensureDirectory(renderDirectory);
   const adaptiveProfile = await getAdaptiveProfile({
     channelTitle: payload.channelTitle,
