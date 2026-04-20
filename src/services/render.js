@@ -3757,7 +3757,7 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
 }
 
 function resolveLyricFontZoomValue(value = 100) {
-  return clamp(Number(value || 100), 70, 145) / 100;
+  return clamp(Number(value || 100), 60, 200) / 100;
 }
 
 function transformLyricTextForPreset(text = "", lyricStylePreset = LYRIC_STYLE_PRESETS.auto) {
@@ -3833,6 +3833,7 @@ function createAssSubtitleContent(
   const neonGlowValue = resolveNeonGlowValue(payload?.neonGlow || 70);
   const neonGlowStrength = neonGlowValue / 100;
   const lyricFontZoom = resolveLyricFontZoomValue(payload?.lyricFontZoom || 100);
+  const fontZoomBoost = Math.max(0.84, lyricFontZoom);
   const baseFontSize = clamp(
     Math.round(
         Math.min(videoSize.width, videoSize.height) *
@@ -3841,8 +3842,8 @@ function createAssSubtitleContent(
         renderFontPreset.sizeScale *
         lyricFontZoom
     ),
-    isPortrait ? 40 : 48,
-    isPortrait ? 58 : 84
+    Math.round((isPortrait ? 40 : 48) * Math.min(1, fontZoomBoost)),
+    Math.round((isPortrait ? 58 : 84) * Math.max(1, fontZoomBoost))
   );
   const fontScaleX = Math.round(renderFontPreset.scaleX || 100);
   const fontScaleY = Math.round(renderFontPreset.scaleY || 100);
@@ -3984,51 +3985,40 @@ function createAssSubtitleContent(
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
     const fadeInMs = Math.round(LYRIC_FADE_MS * 0.72);
     const fadeOutMs = Math.round(LYRIC_FADE_MS * 0.92);
-    const lineEmojiAnchors = plainWords
-      .map((word, wordIndex) => ({
-        emoji: getLyricEmojiForWord(word),
-        wordIndex,
-        word
-      }))
-      .filter((item) => item.emoji && emojiAssetMap[item.emoji]);
+    const lineEmojiAnchors = [...new Set(
+      plainWords
+        .map((word) => getLyricEmojiForWord(word))
+        .filter((emoji) => emoji && emojiAssetMap[emoji])
+    )].map((emoji, emojiIndex) => ({
+      emoji,
+      emojiIndex
+    }));
 
     if (lineEmojiAnchors.length && selectedVariant !== "aa") {
       const emojiSize = clamp(Math.round(baseFontSize * (isPortrait ? 0.72 : 0.66)), 26, 46);
       const estimatedCharWidth = baseFontSize * 0.56;
       const blockTopY = centerY - ((wrappedWordLines.length - 1) * baseFontSize * 0.92) / 2;
+      const finalWordLine = wrappedWordLines[wrappedWordLines.length - 1] || [];
+      const finalLineLength = finalWordLine.reduce(
+        (sum, item, itemIndex) => sum + item.word.length + (itemIndex > 0 ? 1 : 0),
+        0
+      );
+      const finalLineStartX = centerX - (finalLineLength * estimatedCharWidth) / 2;
+      const finalLineEndX = finalLineStartX + finalLineLength * estimatedCharWidth;
+      const emojiBaselineY = Math.round(
+        clamp(
+          blockTopY + Math.max(0, wrappedWordLines.length - 1) * baseFontSize * 0.92 - baseFontSize * 0.04,
+          safeMargin + emojiSize / 2,
+          videoSize.height - safeMargin - emojiSize / 2
+        )
+      );
 
-      lineEmojiAnchors.forEach(({ emoji, wordIndex }) => {
-        const targetLine = wrappedWordLines.find((wordLine) =>
-          wordLine.some((item) => item.index === wordIndex)
-        );
-
-        if (!targetLine?.length) {
-          return;
-        }
-
-        const targetLineIndex = wrappedWordLines.findIndex((wordLine) => wordLine === targetLine);
-        const targetWordPosition = targetLine.findIndex((item) => item.index === wordIndex);
-        const charsBeforeWord = targetLine
-          .slice(0, targetWordPosition)
-          .reduce((sum, item, itemIndex) => sum + item.word.length + (itemIndex > 0 ? 1 : 0), 0);
-        const lineTextLength = targetLine.reduce(
-          (sum, item, itemIndex) => sum + item.word.length + (itemIndex > 0 ? 1 : 0),
-          0
-        );
-        const targetWordLength = targetLine[targetWordPosition]?.word.length || 0;
-        const lineStartX = centerX - (lineTextLength * estimatedCharWidth) / 2;
+      lineEmojiAnchors.forEach(({ emoji, emojiIndex }) => {
         const emojiCenterX = Math.round(
           clamp(
-            lineStartX + (charsBeforeWord + targetWordLength) * estimatedCharWidth + emojiSize * 1.16,
+            finalLineEndX + emojiSize * (0.92 + emojiIndex * 0.94),
             safeMargin + emojiSize / 2,
             videoSize.width - safeMargin - emojiSize / 2
-          )
-        );
-        const emojiCenterY = Math.round(
-          clamp(
-            blockTopY + targetLineIndex * baseFontSize * 0.92 - baseFontSize * 0.04,
-            safeMargin + emojiSize / 2,
-            videoSize.height - safeMargin - emojiSize / 2
           )
         );
 
@@ -4038,7 +4028,7 @@ function createAssSubtitleContent(
           end: Math.max(line.start + 0.84, endSeconds),
           size: emojiSize,
           x: emojiCenterX,
-          y: emojiCenterY
+          y: emojiBaselineY
         });
       });
     }
