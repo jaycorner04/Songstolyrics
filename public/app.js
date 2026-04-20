@@ -279,6 +279,30 @@ const lyricStylePreviewMeta = {
 };
 let lyricPreviewAnimationTimer = null;
 let lyricPreviewAnimationVersion = 0;
+
+function getPreviewZoomBounds() {
+  if (!lyricFontZoomInput) {
+    return { min: 70, max: 200, step: 5 };
+  }
+
+  return {
+    min: Number(lyricFontZoomInput.min || 70),
+    max: Number(lyricFontZoomInput.max || 200),
+    step: Number(lyricFontZoomInput.step || 5)
+  };
+}
+
+function getLyricPreviewAnimationInterval(styleValue = "auto") {
+  const intervals = {
+    bounce: 880,
+    spotlight: 1400,
+    typewriter: 1600,
+    whisper: 1500,
+    minimal: 1450
+  };
+
+  return intervals[styleValue] || 1150;
+}
 const DEFAULT_NEON_COLOR = "#7fe8ff";
 const DEFAULT_NEON_GLOW = 70;
 const musicBulletins = [
