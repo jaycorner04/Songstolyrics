@@ -10,7 +10,7 @@ $sshKeyPath = if ($env:LIVE_DEBUG_SSH_KEY_PATH) {
   Join-Path $env:USERPROFILE "Downloads\song-to-lyrics-key.pem"
 }
 $remoteUser = if ($env:LIVE_DEBUG_REMOTE_USER) { $env:LIVE_DEBUG_REMOTE_USER } else { "ec2-user" }
-$remoteAddress = if ($env:LIVE_DEBUG_REMOTE_HOST) { $env:LIVE_DEBUG_REMOTE_HOST } else { "3.110.128.0" }
+$remoteAddress = if ($env:LIVE_DEBUG_REMOTE_HOST) { $env:LIVE_DEBUG_REMOTE_HOST } else { "15.206.23.118" }
 $remoteHost = "${remoteUser}@${remoteAddress}"
 $localPort = if ($env:LIVE_DEBUG_LOCAL_PORT) { [int]$env:LIVE_DEBUG_LOCAL_PORT } else { 3000 }
 $remotePort = if ($env:LIVE_DEBUG_REMOTE_PORT) { [int]$env:LIVE_DEBUG_REMOTE_PORT } else { 3000 }
