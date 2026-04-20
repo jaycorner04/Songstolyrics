@@ -402,6 +402,7 @@
               <div class="lyric-style-preview-frame">
                 <span class="preview-chip">Preview output</span>
                 <div id="lyric-preview-drag-surface" class="lyric-preview-drag-surface">
+                  <div class="preview-drag-tip" aria-hidden="true">Drag lyrics to the safe area</div>
                   <div
                     id="preview-lines-shell"
                     class="preview-lines-shell"
@@ -429,6 +430,27 @@
               <div class="style-preview-pill">
                 <span>Motion</span>
                 <strong id="lyric-preview-motion-label">Balanced</strong>
+              </div>
+            </div>
+
+            <div class="preview-position-card">
+              <div class="preview-position-copy">
+                <span>Placement</span>
+                <strong>Move lyrics away from faces</strong>
+                <p id="lyric-position-status">
+                  Upload a background, then drag the live preview lyrics where you want them to sit in the final render.
+                </p>
+              </div>
+              <div class="preview-position-actions">
+                <button id="lyric-position-center-button" type="button" class="mini-action-button is-muted">
+                  Center
+                </button>
+                <button id="lyric-position-lower-button" type="button" class="mini-action-button is-muted">
+                  Lower
+                </button>
+                <button id="lyric-position-reset-button" type="button" class="mini-action-button">
+                  Reset
+                </button>
               </div>
             </div>
 
