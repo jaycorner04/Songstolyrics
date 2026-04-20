@@ -106,6 +106,7 @@ let lyricButtons = [];
 let activeLineIndex = -1;
 let renderPollTimer = null;
 let activeRenderJobId = "";
+let renderPollFailureCount = 0;
 let localDebugPollTimer = null;
 let localDebugEventSource = null;
 let localDebugStreamRetryTimer = null;
@@ -124,6 +125,9 @@ const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
 const UPLOADED_AUDIO_JOB_TIMEOUT_MS = 12 * 60 * 1000;
+const RENDER_POLL_REQUEST_TIMEOUT_MS = 12000;
+const RENDER_POLL_RETRY_BASE_MS = 2500;
+const MAX_TRANSIENT_RENDER_POLL_FAILURES = 8;
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
 const ACTIVE_RENDER_STORAGE_KEY = "song-to-lyrics-active-render";
 const LOCAL_DEBUG_REFRESH_MS = 3000;
@@ -2805,6 +2809,22 @@ function clearRenderPolling() {
   }
 }
 
+async function fetchRenderJobStatus(jobId) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, RENDER_POLL_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(`/api/render/${jobId}`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function resetRenderedVideo() {
   renderedVideo.removeAttribute("src");
   renderedVideo.load();
@@ -3348,45 +3368,72 @@ async function pollRenderJob(jobId) {
   clearRenderPolling();
 
   try {
-    const response = await fetch(`/api/render/${jobId}`);
+    const response = await fetchRenderJobStatus(jobId);
     const payload = await readJsonResponseSafely(response, {});
 
     if (!response.ok) {
-      throw new Error(payload.error || "Could not read render progress.");
+      const responseError = new Error(payload.error || "Could not read render progress.");
+      responseError.statusCode = response.status;
+      throw responseError;
     }
 
+    renderPollFailureCount = 0;
     updateRenderJobUi(payload);
 
     if (payload.status === "queued" || payload.status === "running") {
-      renderPollTimer = window.setTimeout(() => pollRenderJob(jobId), 2500);
+      renderPollTimer = window.setTimeout(() => pollRenderJob(jobId), RENDER_POLL_RETRY_BASE_MS);
     }
   } catch (error) {
-    reportLocalDebugError({
-      source: "client-render-poll",
-      title: "Render polling failed",
-      userMessage: simplifyUiMessage(
-        error.message || "Could not monitor render progress.",
-        "Could not monitor render progress."
-      ),
-      errorMessage: error.message || "",
-      cause: activeRenderJobId || jobId,
-      stack: error.stack || "",
-      details: {
-        jobId: activeRenderJobId || jobId,
-        resultVideoId: currentResult?.videoId || ""
-      }
-    });
     const message = simplifyUiMessage(
       error.message || "Could not monitor render progress.",
       "Could not monitor render progress."
     );
     const expiredSession = /render job could not be found/i.test(message);
+    const transientPollFailure = !expiredSession && isTransientRenderStartError({
+      ...error,
+      message
+    });
+
+    if (transientPollFailure && renderPollFailureCount < MAX_TRANSIENT_RENDER_POLL_FAILURES) {
+      renderPollFailureCount += 1;
+      renderButton.disabled = true;
+      renderButton.textContent = "Rendering...";
+      setRenderMessage(
+        "The render is still running on the server. Reconnecting to live progress now...",
+        false
+      );
+      setStatus(
+        "Connection dropped for a moment, but the render is still active. Reconnecting...",
+        false
+      );
+      renderPollTimer = window.setTimeout(
+        () => pollRenderJob(jobId),
+        Math.min(12000, RENDER_POLL_RETRY_BASE_MS * (renderPollFailureCount + 1))
+      );
+      return;
+    }
+
+    reportLocalDebugError({
+      source: "client-render-poll",
+      title: "Render polling failed",
+      userMessage: message,
+      errorMessage: error.message || "",
+      cause: activeRenderJobId || jobId,
+      stack: error.stack || "",
+      details: {
+        jobId: activeRenderJobId || jobId,
+        resultVideoId: currentResult?.videoId || "",
+        renderPollFailureCount,
+        expiredSession
+      }
+    });
 
     if (expiredSession) {
       activeRenderJobId = "";
       clearPersistedActiveRenderJob();
     }
 
+    renderPollFailureCount = 0;
     renderButton.disabled = false;
     renderButton.textContent = expiredSession
       ? "Create Downloadable Lyric Video"
@@ -3436,6 +3483,7 @@ async function handleRender() {
 
   autoRenderPending = false;
   clearRenderPolling();
+  renderPollFailureCount = 0;
   resetRenderedVideo();
   renderSettingsDirty = false;
   maybeRequestRenderNotificationPermission();
