@@ -4448,7 +4448,7 @@ function createAssSubtitleContent(
         cursorY += item.verticalStep;
 
         const textTag = `{${aaAlignmentTag}\\move(${startX},${lineY + 10},${anchorX},${lineY},0,${Math.round(
-          LYRIC_REVEAL_MS * 0.9
+          revealMs * 0.9
         )})\\fad(${Math.round(fadeInMs * 0.78)},${Math.round(fadeOutMs * 0.78)})\\fs${fontSize}\\fscx88\\fscy108\\bord0.9\\shad0\\blur0.05\\fsp${lineSpacing.toFixed(
           2
         )}\\b1\\c${hexToAssColor(
@@ -4530,12 +4530,12 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const glowTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.15
+        revealMs * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx112\\fscy112\\bord0\\shad0\\blur10\\fsp1.1\\b1\\1a&H58&\\c${hexToAssColor(
         customStyleColorHex || "#fff7d6"
       )}}`;
       const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 1.2)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.15
+        revealMs * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx104\\fscy104\\bord2.2\\shad0\\blur0.6\\fsp1.1\\b1\\c${hexToAssColor(
         customStyleColorHex || "#ffffff"
       )}\\3c${hexToAssColor("#11203a")}}`;
@@ -4553,9 +4553,9 @@ function createAssSubtitleContent(
         baseTextHex: "#ffffff",
         disableHighlight: false
       });
-      const magicTravelY = Math.round(isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45);
+      const magicTravelY = Math.round((isPortrait ? baseFontSize * 0.65 : baseFontSize * 0.45) * motionProfile.movementMultiplier);
       const textTag = `{\\an5\\move(${centerX},${centerY + magicTravelY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+        revealMs * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 0.78)})\\fscx96\\fscy96\\bord1.6\\shad0\\blur0.7\\fsp0.3\\i1\\c${hexToAssColor(
         "#ffffff"
       )}\\3c${hexToAssColor("#171717")}\\t(0,150,\\fscx104\\fscy104)\\t(150,260,\\fscx100\\fscy100)}`;
@@ -4572,8 +4572,8 @@ function createAssSubtitleContent(
         baseTextHex: neonHex,
         disableHighlight: true
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(cinematicTravelY * 0.95)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(travelY * 0.95)},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx102\\fscy102\\bord1.1\\shad0\\blur${(0.45 + neonGlowStrength * 2.4).toFixed(2)}\\fsp${(
         0.8 + neonGlowStrength * 1.2
       ).toFixed(2)}\\b1\\c${hexToAssColor(
@@ -4595,7 +4595,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const baseTag = `{\\an5\\move(${centerX + 8},${centerY + 12},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS
+        revealMs
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.6\\shad0\\blur0.25\\fsp0.9\\b1\\c${hexToAssColor(
         glitchPrimaryHex
       )}\\3c${hexToAssColor("#0f1015")}}`;
@@ -4621,7 +4621,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 18},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 0.9
+        revealMs * 0.9
       )})\\fad(${Math.round(fadeInMs * 0.82)},${Math.round(fadeOutMs * 0.86)})\\fscx100\\fscy100\\bord0\\shad0\\blur0\\fsp0.6\\b1\\c${hexToAssColor(
         "#111111"
       )}\\3c${hexToAssColor("#111111")}}`;
@@ -4639,7 +4639,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{\\an5\\move(${centerX},${centerY + 14},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+        revealMs * 1.05
       )})\\fad(${Math.round(fadeInMs * 0.9)},${Math.round(fadeOutMs * 1.05)})\\1a&H18&\\fscx100\\fscy100\\bord1.2\\shad0\\blur0.7\\fsp2.1\\c${hexToAssColor(
         whisperHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4661,7 +4661,7 @@ function createAssSubtitleContent(
         disableHighlight: true
       });
       const textTag = `{${alignmentTag}\\move(${startPosterX},${centerY},${arrivalX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 0.95
+        revealMs * 0.95
       )})\\fad(${Math.round(fadeInMs * 0.8)},${Math.round(fadeOutMs * 0.82)})\\fscx98\\fscy98\\bord1.4\\shad0.4\\blur0.05\\fsp-0.25\\b1\\c${hexToAssColor(
         posterTextHex
       )}\\3c${hexToAssColor(posterOutlineHex)}}`;
@@ -4694,9 +4694,9 @@ function createAssSubtitleContent(
         baseTextHex: primaryTextHex
       });
       const slideDirection = index % 2 === 0 ? -1 : 1;
-      const slideStartX = centerX + slideDirection * Math.round(cinematicTravelX * 0.95);
+      const slideStartX = centerX + slideDirection * Math.round(travelX * 0.95);
       const textTag = `{${alignmentTag}\\move(${slideStartX},${centerY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.1
+        revealMs * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.2\\shad0\\blur0.38\\fsp0.55\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4712,17 +4712,17 @@ function createAssSubtitleContent(
         : selectedVariant === "cinematic"
           ? (index % 2 === 0 ? -1 : 1)
           : -1;
-    const startX = centerX + cinematicDirection * cinematicTravelX;
-    const startY = centerY + cinematicTravelY;
+    const startX = centerX + cinematicDirection * travelX;
+    const startY = centerY + travelY;
     const styledText = buildStyledLyricText(displayText, accentHex, wrapLength, {
       emojiAssetMap,
       baseTextHex: primaryTextHex
     });
     const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-      LYRIC_REVEAL_MS * 1.4
+      revealMs * 1.4
     )})\\fad(${fadeInMs},${fadeOutMs})\\fscx106\\fscy106\\bord3\\shad0\\blur1.05\\fsp1.3\\frz${
       cinematicDirection * -1.2
-    }\\t(0,${Math.round(LYRIC_REVEAL_MS * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
+    }\\t(0,${Math.round(revealMs * 1.4)},\\fscx100\\fscy100\\blur0.36\\frz0)\\b1\\c${hexToAssColor(
       primaryTextHex
     )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
 
