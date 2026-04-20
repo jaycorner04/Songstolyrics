@@ -6763,32 +6763,34 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             durationSeconds
           );
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
+          let preservedUploadedIntroCount = 0;
 
           if (sourceLyricReferenceLines.length) {
-            const alignedReferenceLyrics = alignLyricLinesToTranscription(
+            const wordTimedReferenceLyrics = alignLyricLinesToWordTimeline(
               sourceLyricReferenceLines,
               stabilizedUploadedTranscriptLines,
+              [],
               durationSeconds
             );
-            const minimumReferenceAnchors = Math.max(
-              2,
-              Math.min(8, Math.round(sourceLyricReferenceLines.length * 0.18))
+            const minimumReferenceWordTimedLines = Math.max(
+              4,
+              Math.round(sourceLyricReferenceLines.length * 0.55)
             );
 
             if (
-              alignedReferenceLyrics.anchorCount >= minimumReferenceAnchors &&
-              alignedReferenceLyrics.lines.length >= Math.max(4, Math.round(sourceLyricReferenceLines.length * 0.45))
+              wordTimedReferenceLyrics.applied &&
+              wordTimedReferenceLyrics.lines.length >= minimumReferenceWordTimedLines
             ) {
               const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
                 transcriptLines: stabilizedUploadedTranscriptLines,
-                lyricLines: alignedReferenceLyrics.lines,
-                anchors: alignedReferenceLyrics.anchors,
+                lyricLines: wordTimedReferenceLyrics.lines,
                 durationSeconds
               });
 
               uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
+              preservedUploadedIntroCount = introMergedReferenceLyrics.preservedIntroCount;
               renderNotes.push(
-                `Uploaded-audio lyrics were rebuilt from the song match and aligned to ${alignedReferenceLyrics.anchorCount} transcript anchors so the final words stay closer to the real lyrics.`
+                `Uploaded-audio lyrics were placed against the transcript word timeline (${wordTimedReferenceLyrics.wordCount} detected word slots) so the final lines stay closer to the vocal pacing.`
               );
               if (introMergedReferenceLyrics.applied) {
                 renderNotes.push(
@@ -6797,27 +6799,93 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               }
               renderLinesAreTranscriptDerived = false;
             } else {
-              const fittedReferenceLyrics = fitLyricLinesToTranscriptWindow(
+              const alignedReferenceLyrics = alignLyricLinesToTranscription(
                 sourceLyricReferenceLines,
                 stabilizedUploadedTranscriptLines,
                 durationSeconds
               );
-              const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
-                transcriptLines: stabilizedUploadedTranscriptLines,
-                lyricLines: fittedReferenceLyrics.lines,
-                durationSeconds
-              });
-
-              uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
-              renderNotes.push(
-                "The uploaded-audio lyric match could not be anchored confidently enough for line-by-line snapping, so the render kept the matched song words and only fit them to the transcript timing window."
+              const minimumReferenceAnchors = Math.max(
+                2,
+                Math.min(8, Math.round(sourceLyricReferenceLines.length * 0.18))
               );
-              if (introMergedReferenceLyrics.applied) {
+
+              if (
+                alignedReferenceLyrics.anchorCount >= minimumReferenceAnchors &&
+                alignedReferenceLyrics.lines.length >= Math.max(4, Math.round(sourceLyricReferenceLines.length * 0.45))
+              ) {
+                const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
+                  transcriptLines: stabilizedUploadedTranscriptLines,
+                  lyricLines: alignedReferenceLyrics.lines,
+                  anchors: alignedReferenceLyrics.anchors,
+                  durationSeconds
+                });
+
+                uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
+                preservedUploadedIntroCount = introMergedReferenceLyrics.preservedIntroCount;
                 renderNotes.push(
-                  `Readable spoken intro lines were kept for the first ${introMergedReferenceLyrics.preservedIntroCount} subtitle card${introMergedReferenceLyrics.preservedIntroCount === 1 ? "" : "s"} before the matched song lyrics begin.`
+                  `Uploaded-audio lyrics were rebuilt from the song match and aligned to ${alignedReferenceLyrics.anchorCount} transcript anchors so the final words stay closer to the real lyrics.`
+                );
+                if (introMergedReferenceLyrics.applied) {
+                  renderNotes.push(
+                    `Readable spoken intro lines were kept for the first ${introMergedReferenceLyrics.preservedIntroCount} subtitle card${introMergedReferenceLyrics.preservedIntroCount === 1 ? "" : "s"} before the matched song lyrics take over.`
+                  );
+                }
+                renderLinesAreTranscriptDerived = false;
+              } else {
+                const fittedReferenceLyrics = fitLyricLinesToTranscriptWindow(
+                  sourceLyricReferenceLines,
+                  stabilizedUploadedTranscriptLines,
+                  durationSeconds
+                );
+                const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
+                  transcriptLines: stabilizedUploadedTranscriptLines,
+                  lyricLines: fittedReferenceLyrics.lines,
+                  durationSeconds
+                });
+
+                uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
+                preservedUploadedIntroCount = introMergedReferenceLyrics.preservedIntroCount;
+                renderNotes.push(
+                  "The uploaded-audio lyric match could not be anchored confidently enough for line-by-line snapping, so the render kept the matched song words and fit them to the transcript timing window."
+                );
+                if (introMergedReferenceLyrics.applied) {
+                  renderNotes.push(
+                    `Readable spoken intro lines were kept for the first ${introMergedReferenceLyrics.preservedIntroCount} subtitle card${introMergedReferenceLyrics.preservedIntroCount === 1 ? "" : "s"} before the matched song lyrics begin.`
+                  );
+                }
+                renderLinesAreTranscriptDerived = false;
+              }
+            }
+          }
+
+          if (sourceLyricReferenceLines.length) {
+            const firstTranscriptMeaningfulLine = stabilizedUploadedTranscriptLines.find(
+              (line) => getAlignmentWords(line.text).length >= 2
+            );
+            const firstMatchedLyricLine =
+              uploadedAudioRenderLines
+                .slice(Math.min(preservedUploadedIntroCount, uploadedAudioRenderLines.length))
+                .find((line) => getAlignmentWords(line.text).length >= 2) || null;
+
+            if (
+              firstTranscriptMeaningfulLine &&
+              firstMatchedLyricLine &&
+              preservedUploadedIntroCount === 0
+            ) {
+              const openingLeadSeconds = roundTimeValue(
+                Number(firstTranscriptMeaningfulLine.start || 0) - Number(firstMatchedLyricLine.start || 0)
+              );
+
+              if (openingLeadSeconds > 0.18 && openingLeadSeconds < 8) {
+                uploadedAudioRenderLines = shiftLyricLines(
+                  uploadedAudioRenderLines,
+                  openingLeadSeconds,
+                  durationSeconds
+                );
+                renderNotes.push(
+                  `Uploaded-audio opening lyrics were delayed by ${openingLeadSeconds}s so the first sung line lands closer to the detected vocal entry.`
                 );
               }
-              renderLinesAreTranscriptDerived = false;
             }
           }
 
