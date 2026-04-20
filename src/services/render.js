@@ -2292,6 +2292,85 @@ function buildIntroPreservedTranscriptCandidate({
   };
 }
 
+function looksLikeGarbageTranscriptIntroLine(text = "") {
+  const normalized = normalizeWhitespace(text);
+
+  if (!normalized) {
+    return true;
+  }
+
+  const letters = normalized.match(/\p{L}/gu) || [];
+  const digits = normalized.match(/\p{N}/gu) || [];
+  const compactLength = normalized.replace(/\s+/g, "").length;
+  const letterDensity = letters.length / Math.max(1, compactLength);
+
+  if (!letters.length && digits.length) {
+    return true;
+  }
+
+  if (/^(?:[\p{N}]+[^\p{L}]*)+$/u.test(normalized)) {
+    return true;
+  }
+
+  return digits.length >= 1 && (letters.length <= 2 || letterDensity < 0.42);
+}
+
+function mergeUploadedAudioIntroTranscript({
+  transcriptLines = [],
+  lyricLines = [],
+  anchors = [],
+  durationSeconds = 0
+} = {}) {
+  const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds).filter(
+    (line) =>
+      !looksLikeGarbageTranscriptIntroLine(line.text) &&
+      getAlignmentWords(line.text).length >= 2
+  );
+  const sanitizedLyricLines = sanitizeLyricLines(lyricLines, durationSeconds);
+
+  if (!sanitizedLyricLines.length) {
+    return {
+      applied: false,
+      lines: sanitizedTranscript,
+      preservedIntroCount: 0,
+      introBoundary: 0
+    };
+  }
+
+  const firstLyricStart = Number(sanitizedLyricLines[0]?.start || 0);
+  const firstAnchorStart = Number(anchors[0]?.transcriptStart || firstLyricStart);
+  const introBoundary = Math.max(0, roundTimeValue(Math.min(firstLyricStart, firstAnchorStart) - 0.35));
+
+  if (!sanitizedTranscript.length || introBoundary < 1.2) {
+    return {
+      applied: false,
+      lines: sanitizedLyricLines,
+      preservedIntroCount: 0,
+      introBoundary
+    };
+  }
+
+  const introLines = sanitizedTranscript.filter(
+    (line) => Number(line.start || 0) < introBoundary
+  );
+
+  if (!introLines.length) {
+    return {
+      applied: false,
+      lines: sanitizedLyricLines,
+      preservedIntroCount: 0,
+      introBoundary
+    };
+  }
+
+  return {
+    applied: true,
+    lines: sanitizeLyricLines([...introLines, ...sanitizedLyricLines], durationSeconds),
+    preservedIntroCount: introLines.length,
+    introBoundary
+  };
+}
+
 function buildTranscriptionCacheKey(options = {}) {
   const task = options.task === "translate" ? "translate" : "transcribe";
   const language = normalizeWhitespace(options.language || "") || "auto";
@@ -2751,7 +2830,7 @@ function normalizeAlignmentText(text = "") {
     .toLowerCase()
     .replace(/\[[^\]]*]/g, " ")
     .replace(/&/g, " and ")
-    .replace(/[^a-z0-9']+/g, " ")
+    .replace(/[^\p{L}\p{N}']+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -2869,7 +2948,8 @@ function alignLyricLinesToTranscription(sourceLines = [], transcriptLines = [], 
   if (!sanitizedSource.length || !sanitizedTranscript.length) {
     return {
       lines: sanitizedSource,
-      anchorCount: 0
+      anchorCount: 0,
+      anchors: []
     };
   }
 
@@ -2878,7 +2958,8 @@ function alignLyricLinesToTranscription(sourceLines = [], transcriptLines = [], 
   if (!anchors.length) {
     return {
       lines: sanitizedSource,
-      anchorCount: 0
+      anchorCount: 0,
+      anchors: []
     };
   }
 
@@ -2932,7 +3013,8 @@ function alignLyricLinesToTranscription(sourceLines = [], transcriptLines = [], 
 
   return {
     lines: alignedLines.filter((line) => !durationSeconds || line.start < durationSeconds - 0.1),
-    anchorCount: anchors.length
+    anchorCount: anchors.length,
+    anchors
   };
 }
 
@@ -6262,6 +6344,15 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     let renderLines = limitLyricLines(sanitizeLyricLines(payload.lines, durationSeconds), durationSeconds);
+    const transcriptTimingLines = limitLyricLines(
+      sanitizeLyricLines(
+        Array.isArray(payload?.transcriptLines) && payload.transcriptLines.length
+          ? payload.transcriptLines
+          : [],
+        durationSeconds
+      ),
+      durationSeconds
+    );
     const romanizedInitialLines = romanizeLyricLines(renderLines);
     renderLines = romanizedInitialLines.lines;
     const referenceLyricSourceLines = Array.isArray(payload.referenceLyricsLines) && payload.referenceLyricsLines.length
@@ -6421,8 +6512,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
 
         if (isUploadedAudioSource) {
+          const uploadedAudioTranscriptSourceLines = transcriptTimingLines.length
+            ? transcriptTimingLines
+            : renderLines;
           const stabilizedUploadedTranscriptLines = limitLyricLines(
-            sanitizeLyricLines(smoothTranscribedLyricGaps(renderLines, durationSeconds), durationSeconds),
+            sanitizeLyricLines(
+              smoothTranscribedLyricGaps(uploadedAudioTranscriptSourceLines, durationSeconds),
+              durationSeconds
+            ),
             durationSeconds
           );
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
@@ -6442,14 +6539,45 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               alignedReferenceLyrics.anchorCount >= minimumReferenceAnchors &&
               alignedReferenceLyrics.lines.length >= Math.max(4, Math.round(sourceLyricReferenceLines.length * 0.45))
             ) {
-              uploadedAudioRenderLines = alignedReferenceLyrics.lines;
+              const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
+                transcriptLines: stabilizedUploadedTranscriptLines,
+                lyricLines: alignedReferenceLyrics.lines,
+                anchors: alignedReferenceLyrics.anchors,
+                durationSeconds
+              });
+
+              uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
               renderNotes.push(
                 `Uploaded-audio lyrics were rebuilt from the song match and aligned to ${alignedReferenceLyrics.anchorCount} transcript anchors so the final words stay closer to the real lyrics.`
               );
+              if (introMergedReferenceLyrics.applied) {
+                renderNotes.push(
+                  `Readable spoken intro lines were kept for the first ${introMergedReferenceLyrics.preservedIntroCount} subtitle card${introMergedReferenceLyrics.preservedIntroCount === 1 ? "" : "s"} before the matched song lyrics take over.`
+                );
+              }
+              renderLinesAreTranscriptDerived = false;
             } else {
-              renderNotes.push(
-                "The uploaded-audio lyric match could not be anchored confidently enough, so the render kept the direct transcript wording for timing."
+              const fittedReferenceLyrics = fitLyricLinesToTranscriptWindow(
+                sourceLyricReferenceLines,
+                stabilizedUploadedTranscriptLines,
+                durationSeconds
               );
+              const introMergedReferenceLyrics = mergeUploadedAudioIntroTranscript({
+                transcriptLines: stabilizedUploadedTranscriptLines,
+                lyricLines: fittedReferenceLyrics.lines,
+                durationSeconds
+              });
+
+              uploadedAudioRenderLines = introMergedReferenceLyrics.lines;
+              renderNotes.push(
+                "The uploaded-audio lyric match could not be anchored confidently enough for line-by-line snapping, so the render kept the matched song words and only fit them to the transcript timing window."
+              );
+              if (introMergedReferenceLyrics.applied) {
+                renderNotes.push(
+                  `Readable spoken intro lines were kept for the first ${introMergedReferenceLyrics.preservedIntroCount} subtitle card${introMergedReferenceLyrics.preservedIntroCount === 1 ? "" : "s"} before the matched song lyrics begin.`
+                );
+              }
+              renderLinesAreTranscriptDerived = false;
             }
           }
 
@@ -6458,7 +6586,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             durationSeconds
           );
           renderLineSyncSource = "transcribed";
-          renderLinesAreTranscriptDerived = true;
+          renderLinesAreTranscriptDerived =
+            !sourceLyricReferenceLines.length || uploadedAudioRenderLines === stabilizedUploadedTranscriptLines;
           renderNotes.push(
             "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
           );
