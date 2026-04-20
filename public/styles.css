@@ -571,8 +571,10 @@ button {
 
 .preview-lines {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin-top: 14px;
+  min-height: 212px;
+  align-content: center;
   transform: scale(var(--preview-font-zoom, 1));
   transform-origin: center center;
   transition: transform 0.2s ease;
@@ -581,17 +583,35 @@ button {
 .preview-line {
   margin: 0;
   color: rgba(246, 240, 232, 0.62);
-  font-size: 1rem;
+  font-size: 0.96rem;
   line-height: 1.14;
   font-weight: 800;
   letter-spacing: -0.02em;
   text-align: center;
-  transition: all 0.25s ease;
+  opacity: 0.56;
+  transform: translateY(0);
+  transition: all 0.32s ease;
+}
+
+.preview-line.is-near {
+  opacity: 0.76;
+}
+
+.preview-line.is-mid {
+  opacity: 0.48;
+  transform: scale(0.96);
+}
+
+.preview-line.is-far {
+  opacity: 0.28;
+  transform: scale(0.92);
 }
 
 .preview-line.is-active {
   color: var(--preview-style-color, #ffffff);
   font-size: 1.28rem;
+  opacity: 1;
+  transform: scale(1.02);
   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.32);
 }
 
@@ -706,6 +726,12 @@ button {
   font-size: 1rem;
 }
 
+.lyric-style-preview.is-aa .preview-line-4,
+.lyric-style-preview.is-aa .preview-line-5,
+.lyric-style-preview.is-aa .preview-line-6 {
+  font-size: 0.86rem;
+}
+
 .lyric-style-preview.is-comic .preview-lines {
   gap: 12px;
 }
@@ -731,6 +757,18 @@ button {
 
 .lyric-style-preview.is-comic .preview-line-3 {
   transform: rotate(-1deg);
+}
+
+.lyric-style-preview.is-comic .preview-line-4 {
+  transform: rotate(2deg);
+}
+
+.lyric-style-preview.is-comic .preview-line-5 {
+  transform: rotate(-1deg);
+}
+
+.lyric-style-preview.is-comic .preview-line-6 {
+  transform: rotate(1deg);
 }
 
 .lyric-style-preview.is-cinematic .preview-lines {
@@ -763,6 +801,16 @@ button {
 .lyric-style-preview.is-side-by-side .preview-line-2 {
   justify-self: end;
   text-align: right;
+}
+
+.lyric-style-preview.is-side-by-side .preview-line-4,
+.lyric-style-preview.is-side-by-side .preview-line-6 {
+  justify-self: end;
+  text-align: right;
+}
+
+.lyric-style-preview.is-side-by-side .preview-line-5 {
+  justify-self: start;
 }
 
 .lyric-style-preview.is-typewriter .preview-line.is-active {
@@ -890,6 +938,21 @@ button {
 .lyric-style-preview.is-stacked .preview-line-3 {
   opacity: 0.64;
   transform: translateY(-8px);
+}
+
+.lyric-style-preview.is-stacked .preview-line-4 {
+  opacity: 0.74;
+  transform: translateY(-4px);
+}
+
+.lyric-style-preview.is-stacked .preview-line-5 {
+  opacity: 0.58;
+  transform: translateY(-10px);
+}
+
+.lyric-style-preview.is-stacked .preview-line-6 {
+  opacity: 0.42;
+  transform: translateY(-14px);
 }
 
 .lyric-style-preview.is-fulllength .lyric-style-preview-frame {
@@ -2563,6 +2626,7 @@ button {
   .preview-lines {
     gap: 6px;
     margin-top: 10px;
+    min-height: 180px;
   }
 
   .preview-line {
