@@ -49,6 +49,52 @@ function stripUploadedMetadataFragments(value = "") {
   );
 }
 
+function looksLikeUploadNoiseToken(token = "") {
+  const value = normalizeWhitespace(token).toLowerCase();
+
+  if (!value) {
+    return true;
+  }
+
+  if (/^\d{6,}$/.test(value)) {
+    return true;
+  }
+
+  if (/^[a-z]*\d+[a-z0-9]*$/i.test(value) && value.length >= 5) {
+    return true;
+  }
+
+  if (/^(cc|org|net|com)$/.test(value)) {
+    return true;
+  }
+
+  return value.length === 1 && !/^[ai]$/.test(value);
+}
+
+function trimUploadedNoiseTokens(value = "") {
+  const tokens = normalizeWhitespace(value)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (!tokens.length) {
+    return "";
+  }
+
+  let start = 0;
+  let end = tokens.length;
+
+  while (start < end && looksLikeUploadNoiseToken(tokens[start])) {
+    start += 1;
+  }
+
+  while (end > start && looksLikeUploadNoiseToken(tokens[end - 1])) {
+    end -= 1;
+  }
+
+  return normalizeWhitespace(tokens.slice(start, end).join(" "));
+}
+
 function stripFeaturedArtists(value = "") {
   return normalizeWhitespace(
     `${value || ""}`
@@ -203,7 +249,10 @@ function inferSongFromFilename(filename = "") {
     };
   }
 
-  const trimmedSongTitle = stripUploadedMetadataFragments(cleanedFilename) || cleanedFilename;
+  const trimmedSongTitle =
+    trimUploadedNoiseTokens(stripUploadedMetadataFragments(cleanedFilename)) ||
+    stripUploadedMetadataFragments(cleanedFilename) ||
+    cleanedFilename;
   const guessedFromTitle = inferSongFromVideo(trimmedSongTitle, "Uploaded audio");
   const normalizedArtist =
     /^uploaded audio$/i.test(normalizeWhitespace(guessedFromTitle.artist || "")) ? "" : guessedFromTitle.artist;
