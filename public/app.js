@@ -4009,6 +4009,26 @@ lyricFontInput.addEventListener("change", () => {
   updateLyricStylePreview();
   markRenderOutputStale("Lyrics font changed. Render again to apply the new font to the output video.");
 });
+lyricFontTrigger?.addEventListener("click", () => {
+  toggleLyricFontDropdown();
+});
+document.addEventListener("click", (event) => {
+  if (!lyricFontDropdown || !lyricFontDropdownOpen) {
+    return;
+  }
+
+  if (lyricFontDropdown.contains(event.target)) {
+    return;
+  }
+
+  closeLyricFontDropdown();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && lyricFontDropdownOpen) {
+    closeLyricFontDropdown();
+    lyricFontTrigger?.focus();
+  }
+});
 if (lyricFontZoomInput) {
   lyricFontZoomInput.addEventListener("input", () => {
     syncLyricZoomUi();
@@ -4105,6 +4125,7 @@ renderBackgroundVideoMeta();
 renderAudioFallbackMeta();
 updatePostRenderBackgroundStatus();
 syncMobileResultStack();
+buildLyricFontDropdown();
 updateLyricFontPreview();
 syncLyricZoomUi();
 updateStyleSpecificControls();
