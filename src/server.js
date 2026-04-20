@@ -41,7 +41,11 @@ const {
   recordLocalDebugEvent
 } = require("./services/local-debug");
 const uploadedAudioJobs = require("./services/jobStore");
-const { containsTeluguScript, romanizeLyricLines } = require("./services/telugu");
+const {
+  containsIndicPhoneticScript,
+  containsTeluguScript,
+  romanizeLyricLines
+} = require("./services/telugu");
 const { transcribeYouTubeAudio } = require("./services/transcription");
 const {
   getRenderJob,
@@ -344,7 +348,13 @@ function shouldRomanizeTeluguLyrics(metadata = {}, lyricResult = {}) {
     lyricResult?.song?.title || ""
   } ${lyricResult?.song?.artist || ""}`;
 
-  return containsTeluguScript(sampledLines) || containsTeluguScript(songText) || /\btelugu\b/i.test(songText);
+  return (
+    containsTeluguScript(sampledLines) ||
+    containsTeluguScript(songText) ||
+    (String(lyricResult?.source || "").toLowerCase() === "audio-transcription" &&
+      containsIndicPhoneticScript(sampledLines)) ||
+    /\btelugu\b/i.test(songText)
+  );
 }
 
 function romanizeLyricResultIfNeeded(lyricResult = {}) {

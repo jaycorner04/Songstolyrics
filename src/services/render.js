@@ -11,7 +11,11 @@ const { getAdaptiveProfile, recordAdaptiveSignal, recordRenderOutcome } = requir
 const { resolveAudioInput, resolveVideoUrl } = require("./audio");
 const { recordLocalDebugEvent } = require("./local-debug");
 const { loadPersistedRenderJobs, persistRenderJob } = require("./render-job-store");
-const { containsTeluguScript, romanizeLyricLines } = require("./telugu");
+const {
+  containsIndicPhoneticScript,
+  containsTeluguScript,
+  romanizeLyricLines
+} = require("./telugu");
 const { transcribeYouTubeAudio } = require("./transcription");
 const { extractVideoId } = require("./youtube");
 
@@ -2964,6 +2968,14 @@ function shouldRomanizeTeluguLyrics(lines = [], payload = {}) {
   );
 
   if (containsTeluguScript(sampledText) || containsTeluguScript(titleText)) {
+    return true;
+  }
+
+  if (
+    (String(payload?.syncMode || "").toLowerCase() === "transcribed" ||
+      String(payload?.videoId || "").startsWith("upload-")) &&
+    containsIndicPhoneticScript(sampledText)
+  ) {
     return true;
   }
 
