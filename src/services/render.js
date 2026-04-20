@@ -4476,10 +4476,13 @@ function createAssSubtitleContent(
     }
 
     if (selectedVariant === "line-by-line") {
-      const perLineDelay = lineCount > 1 ? Math.max(0.12, Math.min(0.34, lineDurationSeconds / (lineCount + 1))) : 0;
+      const perLineDelay = motionProfile.multiLineDelay;
 
       return textLines.map((textLine, textLineIndex) => {
-        const eventStartSeconds = Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex);
+        const eventStartSeconds = Math.max(
+          dialogueStartSeconds,
+          Math.min(endSeconds - 0.16, line.start + perLineDelay * textLineIndex)
+        );
         const eventEndSeconds = endSeconds;
         const eventY = Math.round(
           centerY + (textLineIndex - (lineCount - 1) / 2) * Math.round(baseFontSize * 0.9)
@@ -4490,7 +4493,7 @@ function createAssSubtitleContent(
           disableHighlight: textLineIndex !== lineCount - 1
         });
         const textTag = `{\\an5\\move(${centerX},${eventY + 26},${centerX},${eventY},0,${Math.round(
-          LYRIC_REVEAL_MS * 0.9
+          revealMs * 0.9
         )})\\fad(${fadeInMs},${fadeOutMs})\\fscx100\\fscy100\\bord2.8\\shad0\\blur0.2\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4511,7 +4514,7 @@ function createAssSubtitleContent(
           disableHighlight: false
         });
         const textTag = `{\\an4\\move(${laneX - 42},${laneY + 16},${laneX},${laneY},0,${Math.round(
-          LYRIC_REVEAL_MS
+          revealMs
         )})\\fad(${fadeInMs},${fadeOutMs})\\bord3.1\\shad0\\blur0.32\\fscx100\\fscy100\\fsp0.8\\b1\\c${hexToAssColor(
           primaryTextHex
         )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
