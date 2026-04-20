@@ -3006,7 +3006,7 @@ async function handleBackgroundUpload() {
     updatePostRenderBackgroundStatus();
     setStatus(
       videoOutputCard.hidden
-        ? `${uploadedBackgrounds.length} custom background image${uploadedBackgrounds.length === 1 ? "" : "s"} ready.`
+        ? `${uploadedBackgrounds.length} custom background image${uploadedBackgrounds.length === 1 ? "" : "s"} ready in the live preview. Drag the lyrics to a clear area if needed.`
         : "Background preview updated instantly. Rebuild the final video only if you want the new background in the download."
     );
   } catch (error) {
@@ -3040,7 +3040,7 @@ async function handleBackgroundVideoUpload() {
     updatePostRenderBackgroundStatus();
     setStatus(
       videoOutputCard.hidden
-        ? `Background video ready: ${uploadedBackgroundVideo.name}.`
+        ? `Background video ready: ${uploadedBackgroundVideo.name}. It is now previewing behind the lyrics.`
         : "Background video preview updated instantly. Rebuild the final video only if you want the download changed."
     );
   } catch (error) {

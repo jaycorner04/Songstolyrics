@@ -3979,10 +3979,13 @@ function createAssSubtitleContent(
   const fontBaseSpacing = Number(renderFontPreset.spacing || 0);
   const wrapLength = isPortrait ? lyricStylePreset.wrapPortrait : lyricStylePreset.wrapLandscape;
   const safeMargin = isPortrait ? 28 : 48;
+  const customLyricPlacement = normalizeRenderLyricPlacement(payload?.lyricPlacement);
   const centerAnchor = {
-    x: Math.round(videoSize.width * 0.5),
+    x: Math.round(videoSize.width * (customLyricPlacement?.x ?? 0.5)),
     y: Math.round(
-      videoSize.height * (isPortrait ? lyricStylePreset.yFactorPortrait : lyricStylePreset.yFactorLandscape)
+      videoSize.height *
+        (customLyricPlacement?.y ??
+          (isPortrait ? lyricStylePreset.yFactorPortrait : lyricStylePreset.yFactorLandscape))
     )
   };
   const cinematicTravelX = isPortrait ? 92 : 138;
@@ -4018,7 +4021,7 @@ function createAssSubtitleContent(
     );
     let targetCenterX = centerAnchor.x;
     let targetCenterY = centerAnchor.y + lineYOffsetPattern[index % lineYOffsetPattern.length];
-    let alignmentTag = "\\an5";
+    let alignmentTag = getRenderLyricAlignmentTag(customLyricPlacement?.anchor || "center");
 
     switch (selectedVariant) {
       case "comic":
@@ -4103,6 +4106,18 @@ function createAssSubtitleContent(
           targetCenterY += (index % 4) * Math.round(baseFontSize * 0.32) - Math.round(baseFontSize * 0.44);
         }
         break;
+    }
+
+    if (customLyricPlacement) {
+      targetCenterX = centerAnchor.x;
+      targetCenterY = centerAnchor.y + lineYOffsetPattern[index % lineYOffsetPattern.length];
+      alignmentTag = getRenderLyricAlignmentTag(customLyricPlacement.anchor);
+
+      if (selectedVariant === "side-by-side") {
+        const sideSpread = Math.round(videoSize.width * (isPortrait ? 0.14 : 0.12));
+        targetCenterX += index % 2 === 0 ? -sideSpread : sideSpread;
+        alignmentTag = index % 2 === 0 ? "\\an4" : "\\an6";
+      }
     }
 
     const centerX = Math.round(
@@ -4207,18 +4222,26 @@ function createAssSubtitleContent(
 
     if (selectedVariant === "aa") {
       const aaLines = buildAaWordLines(displayText, isPortrait).slice(0, isPortrait ? 5 : 4);
-      const preferredSide = placementMap[index]?.side || "left";
+      const preferredSide = customLyricPlacement?.anchor === "right"
+        ? "right"
+        : customLyricPlacement?.anchor === "center"
+          ? "left"
+          : (placementMap[index]?.side || "left");
       const isLeftSide = preferredSide !== "right";
       const anchorX = Math.round(
         clamp(
-          videoSize.width * (isLeftSide ? (isPortrait ? 0.16 : 0.18) : (isPortrait ? 0.84 : 0.82)),
+          customLyricPlacement
+            ? centerAnchor.x
+            : videoSize.width * (isLeftSide ? (isPortrait ? 0.16 : 0.18) : (isPortrait ? 0.84 : 0.82)),
           safeMargin + 24,
           videoSize.width - safeMargin - 24
         )
       );
       const anchorY = Math.round(
         clamp(
-          videoSize.height * (isPortrait ? 0.61 : 0.57),
+          customLyricPlacement
+            ? centerAnchor.y
+            : videoSize.height * (isPortrait ? 0.61 : 0.57),
           safeMargin + baseFontSize,
           videoSize.height - safeMargin - baseFontSize
         )
