@@ -4351,19 +4351,19 @@ function createAssSubtitleContent(
     if (selectedVariant === "typewriter" || selectedVariant === "word-by-word") {
       const styledText = buildWordByWordLyricText(
         displayText,
-        Math.min(lineDurationSeconds * 0.92, MAX_LYRIC_HOLD_SECONDS),
-        wrapLength,
+        motionProfile.wordBuildDuration,
+        effectiveWrapLength,
         {
           emojiAssetMap,
           baseTextHex: primaryTextHex
         }
       );
       const startX = alignmentTag === "\\an4"
-        ? Math.max(safeMargin, centerX - Math.round(cinematicTravelX * 0.5))
-        : centerX + (index % 2 === 0 ? -Math.round(cinematicTravelX * 0.55) : Math.round(cinematicTravelX * 0.55));
-      const startY = centerY + Math.round(cinematicTravelY * 1.2);
+        ? Math.max(safeMargin, centerX - Math.round(travelX * 0.5))
+        : centerX + (index % 2 === 0 ? -Math.round(travelX * 0.55) : Math.round(travelX * 0.55));
+      const startY = centerY + Math.round(travelY * 1.2);
       const textTag = `{${alignmentTag}\\move(${startX},${startY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.1
+        revealMs * 1.1
       )})\\fad(${fadeInMs},${fadeOutMs})\\bord2.8\\shad0\\blur0.45\\fscx100\\fscy100\\fsp1.2\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
@@ -4379,8 +4379,8 @@ function createAssSubtitleContent(
         baseTextHex: customStyleColorHex || "#111111"
       });
       const comicRotation = index % 2 === 0 ? -1.4 : 1.2;
-      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(bounceTravelY * 1.05)},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.05
+      const textTag = `{\\an5\\move(${centerX},${centerY + Math.round(bounceY * 1.05)},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.05
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx84\\fscy84\\bord1.2\\shad0\\blur0.05\\frz${comicRotation}\\fsp0.8\\t(0,130,\\fscx112\\fscy112)\\t(130,260,\\fscx100\\fscy100\\frz0)\\c${hexToAssColor(
         customStyleColorHex || "#111111"
       )}\\3c${hexToAssColor(customStyleColorHex || "#111111")}}`;
@@ -4464,8 +4464,8 @@ function createAssSubtitleContent(
         emojiAssetMap,
         baseTextHex: primaryTextHex
       });
-      const textTag = `{\\an5\\move(${centerX},${centerY + bounceTravelY},${centerX},${centerY},0,${Math.round(
-        LYRIC_REVEAL_MS * 1.15
+      const textTag = `{\\an5\\move(${centerX},${centerY + bounceY},${centerX},${centerY},0,${Math.round(
+        revealMs * 1.15
       )})\\fad(${fadeInMs},${fadeOutMs})\\fscx74\\fscy74\\bord3.4\\shad0\\blur0.25\\frz0\\t(0,120,\\fscx122\\fscy122)\\t(120,260,\\fscx100\\fscy100)\\b1\\c${hexToAssColor(
         primaryTextHex
       )}\\3c${hexToAssColor(contrastStyle.outlineHex)}}`;
