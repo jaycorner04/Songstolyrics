@@ -507,6 +507,19 @@ function removeLikelyHallucinations(lines) {
       continue;
     }
 
+    const normalizedWordCount = normalized.split(/\s+/).filter(Boolean).length;
+    const recentShortRepeatCount = cleaned
+      .slice(Math.max(0, cleaned.length - 4))
+      .filter(
+        (previousLine) =>
+          normalizeTranscriptKey(previousLine.text) === normalized &&
+          Math.abs(Number(line.start || 0) - Number(previousLine.start || 0)) <= 18
+      ).length;
+
+    if (recentShortRepeatCount >= 1 && normalizedWordCount <= 2) {
+      continue;
+    }
+
     cleaned.push(line);
   }
 
@@ -553,12 +566,32 @@ function isLikelyTranscriptGarbage(text) {
       .trim()
   );
   const uniqueWordCount = new Set(normalizedWords.filter(Boolean)).size;
+  const compactLength = normalized.replace(/\s+/g, "").length;
+  const letterDensity = letters.length / Math.max(1, compactLength);
+  const meaningfulWordCount = normalizedWords.filter(Boolean).length;
+  const shortWordCount = normalizedWords.filter((word) => word && word.length <= 2).length;
 
   if (!letters.length && digits.length) {
     return true;
   }
 
+  if (/^(?:[\p{N}]+[^\p{L}]*)+$/u.test(normalized)) {
+    return true;
+  }
+
   if (digits.length >= 3 && digits.length > letters.length) {
+    return true;
+  }
+
+  if (meaningfulWordCount <= 3 && digits.length >= 1 && letters.length <= 2) {
+    return true;
+  }
+
+  if (meaningfulWordCount > 0 && shortWordCount === meaningfulWordCount && digits.length >= 1) {
+    return true;
+  }
+
+  if (digits.length >= 1 && letterDensity < 0.42) {
     return true;
   }
 

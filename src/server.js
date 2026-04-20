@@ -298,6 +298,37 @@ function looksLikeNoisyLyricFallbackLine(text = "") {
   );
 }
 
+function looksLikeGarbageAudioFallbackLine(text = "") {
+  const normalized = normalizeWhitespace(text);
+
+  if (!normalized) {
+    return true;
+  }
+
+  const letters = normalized.match(/\p{L}/gu) || [];
+  const digits = normalized.match(/\p{N}/gu) || [];
+  const words = normalized
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const compactLength = normalized.replace(/\s+/g, "").length;
+  const letterDensity = letters.length / Math.max(1, compactLength);
+
+  if (!letters.length && digits.length) {
+    return true;
+  }
+
+  if (/^(?:[\p{N}]+[^\p{L}]*)+$/u.test(normalized)) {
+    return true;
+  }
+
+  if (digits.length >= 1 && letters.length <= 2 && words.length <= 3) {
+    return true;
+  }
+
+  return digits.length >= 1 && letterDensity < 0.42;
+}
+
 function assessAudioFallbackLyrics(lines = [], durationSeconds = 0) {
   const normalizedLines = (Array.isArray(lines) ? lines : [])
     .map((line) => ({
@@ -305,7 +336,11 @@ function assessAudioFallbackLyrics(lines = [], durationSeconds = 0) {
       text: normalizeWhitespace(line?.text || "")
     }))
     .filter((line) => line.text);
-  const filteredLines = normalizedLines.filter((line) => !looksLikeNoisyLyricFallbackLine(line.text));
+  const filteredLines = normalizedLines.filter(
+    (line) =>
+      !looksLikeNoisyLyricFallbackLine(line.text) &&
+      !looksLikeGarbageAudioFallbackLine(line.text)
+  );
   const removedLineCount = normalizedLines.length - filteredLines.length;
 
   if (!filteredLines.length) {
@@ -1236,6 +1271,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
     String(lyricResult?.source || "").toLowerCase() !== "unavailable"
       ? lyricResult.lines
       : [];
+  let transcriptPreviewLines = [];
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
 
@@ -1261,6 +1297,9 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         effectiveDurationSeconds = Number(
           transcription?.audioDurationSeconds || effectiveDurationSeconds || 0
         );
+        transcriptPreviewLines = Array.isArray(assessedTranscription?.lines)
+          ? assessedTranscription.lines
+          : [];
 
         if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {
           const hadNonAudioLyricSheet =
@@ -1269,18 +1308,29 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
             !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
             String(lyricResult?.source || "").toLowerCase() !== "unavailable";
 
-          lyricResult = {
-            song: lyricResult?.song || fallbackSong,
-            source: "audio-transcription",
-            syncMode: "transcribed",
-            lines: assessedTranscription.lines
-          };
+          if (hadNonAudioLyricSheet && matchedReferenceLyrics.length) {
+            lyricResult = {
+              song: lyricResult?.song || fallbackSong,
+              source: lyricResult?.source || "matched-lyrics",
+              syncMode: "transcribed",
+              lines: matchedReferenceLyrics
+            };
 
-          warnings.push(
-            hadNonAudioLyricSheet
-              ? "A lyric match was found from the filename, but uploaded-audio projects now use the audio transcript as the main lyric timing source so the final video stays synced to the file you uploaded."
-              : "Lyrics were built directly from the uploaded audio so the final video can stay synced to the same file."
-          );
+            warnings.push(
+              "A lyric match was found from the filename, so the preview keeps the matched song words while the render uses the uploaded-audio transcript only to place them in time."
+            );
+          } else {
+            lyricResult = {
+              song: lyricResult?.song || fallbackSong,
+              source: "audio-transcription",
+              syncMode: "transcribed",
+              lines: assessedTranscription.lines
+            };
+
+            warnings.push(
+              "Lyrics were built directly from the uploaded audio so the final video can stay synced to the same file."
+            );
+          }
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
             "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
@@ -1328,6 +1378,10 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       const romanizedResult = romanizeLyricResultIfNeeded(lyricResult);
       lyricResult = romanizedResult.lyricResult;
       teluguRomanized = romanizedResult.changed;
+
+      if (transcriptPreviewLines.length) {
+        transcriptPreviewLines = romanizeLyricLines(transcriptPreviewLines).lines;
+      }
     }
 
     return {
@@ -1357,6 +1411,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       lyricsSource: lyricResult.source,
       syncMode: lyricResult.syncMode,
       lines: lyricResult.lines,
+      transcriptLines: transcriptPreviewLines,
       referenceLyricsLines: matchedReferenceLyrics,
       warnings: [
         ...buildWarnings(lyricResult),
