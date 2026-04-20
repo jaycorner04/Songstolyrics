@@ -25,6 +25,9 @@ function cleanSongTitleFragment(value = "") {
 function cleanUploadedFilenameFragment(value = "") {
   return normalizeWhitespace(
     `${value || ""}`
+      .replace(/\b(?:www\.)?[a-z0-9-]+\.(?:com|org|net|cc|in)\b/gi, " ")
+      .replace(/\b(?:ytmp3free|youtubemp3free|mp3free|tomp3|mp3juice)\b/gi, " ")
+      .replace(/[.]+/g, " ")
       .replace(
         /\b(upload|uploaded|audio|song|music|official|lyrics?|lyrical|video|hd|4k|viral|status|edit|shorts?|reel|instagram|insta)\b/gi,
         ""
