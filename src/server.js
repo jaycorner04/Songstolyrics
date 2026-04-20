@@ -26,7 +26,11 @@ const {
 } = require("./services/audio");
 const { getAdaptiveProfile, recordAdaptiveSignal } = require("./services/adaptive-guardrails");
 const { getRuntimeDiagnostics } = require("./services/deployment");
-const { buildLyricsPayload, inferSongFromVideo } = require("./services/lyrics");
+const {
+  buildLyricsPayload,
+  inferSongFromFilename,
+  inferSongFromVideo
+} = require("./services/lyrics");
 const {
   buildRequestDebugContext,
   clearLocalDebugEvents,
@@ -1354,6 +1358,196 @@ app.post(
           : [])
       ]
     });
+  })
+);
+
+app.post(
+  "/api/convert-audio",
+  renderUpload.single("audioFile"),
+  asyncHandler(async (req, res) => {
+    const audioFile = req.file;
+
+    if (!audioFile) {
+      throw createError("Upload an audio file to begin.", 400);
+    }
+
+    const requestedTitle = normalizeWhitespace(req.body?.title || "");
+    const originalName = `${audioFile.originalname || requestedTitle || "uploaded-audio"}`;
+    const uploadedTitle =
+      requestedTitle ||
+      normalizeWhitespace(path.parse(originalName).name.replace(/[_-]+/g, " ")) ||
+      "Uploaded audio";
+    const uploadedSongGuess = inferSongFromFilename(originalName || uploadedTitle);
+    const durationFromBody = Math.max(0, Number(req.body?.durationSeconds || 0));
+    const fallbackSong = {
+      artist: normalizeWhitespace(uploadedSongGuess.artist || "Uploaded audio"),
+      title: normalizeWhitespace(uploadedSongGuess.title || uploadedTitle) || uploadedTitle
+    };
+    const rawLookupTitle = normalizeWhitespace(
+      uploadedSongGuess.artist
+        ? `${uploadedSongGuess.artist} - ${uploadedSongGuess.title || uploadedTitle}`
+        : uploadedSongGuess.title || uploadedTitle
+    );
+    const videoId = `upload-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const scratchDirectory = path.join(
+      convertCacheRoot,
+      `${videoId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    );
+    const warnings = [];
+    let lyricResult = await withTimeout(
+      buildLyricsPayload({
+        rawTitle: rawLookupTitle,
+        channelTitle: "Uploaded audio",
+        durationSeconds: durationFromBody,
+        captionCues: []
+      }),
+      12000,
+      {
+        song: fallbackSong,
+        source: "unavailable",
+        syncMode: "none",
+        lines: []
+      }
+    );
+    let effectiveDurationSeconds = durationFromBody;
+    let teluguRomanized = false;
+
+    try {
+      if (startupDiagnostics.transcriptionReady) {
+        try {
+          const transcription = await transcribeYouTubeAudio(
+            videoId,
+            scratchDirectory,
+            durationFromBody,
+            {
+              audioInputPath: audioFile.path,
+              preview: true,
+              timeoutMs: 90000,
+              downloadTimeoutMs: 15000
+            }
+          );
+          const assessedTranscription = assessAudioFallbackLyrics(
+            transcription?.lines,
+            transcription?.audioDurationSeconds || durationFromBody
+          );
+
+          effectiveDurationSeconds = Number(
+            transcription?.audioDurationSeconds || effectiveDurationSeconds || 0
+          );
+
+          if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {
+            lyricResult = {
+              song: lyricResult?.song || fallbackSong,
+              source: "audio-transcription",
+              syncMode: "transcribed",
+              lines: assessedTranscription.usable
+                ? assessedTranscription.lines
+                : assessedTranscription.lines
+            };
+
+            if (lyricResult?.song?.title && lyricResult.song.title !== fallbackSong.title) {
+              warnings.push(
+                "A lyric match was found from the uploaded filename, and the preview timing was rebuilt from the uploaded audio."
+              );
+            }
+          } else if (!lyricResult?.lines?.length) {
+            warnings.push(
+              "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
+            );
+          }
+        } catch (error) {
+          if (lyricResult?.lines?.length) {
+            warnings.push(
+              "The filename matched lyrics, but live transcription was unavailable for the preview. The render step can still retry timing from the uploaded audio."
+            );
+          } else {
+            warnings.push(
+              "The uploaded audio could not be transcribed for the preview. The render step will retry directly from the file."
+            );
+          }
+        }
+      } else if (!lyricResult?.lines?.length) {
+        warnings.push(
+          "Audio transcription is not ready on the server right now, so the uploaded file could not be fully analyzed for the preview."
+        );
+      }
+
+      lyricResult = {
+        ...lyricResult,
+        song: {
+          artist: normalizeWhitespace(
+            lyricResult?.song?.artist || fallbackSong.artist || "Uploaded audio"
+          ),
+          title:
+            normalizeWhitespace(lyricResult?.song?.title || fallbackSong.title || uploadedTitle) ||
+            uploadedTitle
+        },
+        lines: Array.isArray(lyricResult?.lines) ? lyricResult.lines : []
+      };
+
+      if (
+        shouldRomanizeTeluguLyrics(
+          {
+            title: uploadedTitle,
+            channelTitle: "Uploaded audio"
+          },
+          lyricResult
+        )
+      ) {
+        const romanizedResult = romanizeLyricResultIfNeeded(lyricResult);
+        lyricResult = romanizedResult.lyricResult;
+        teluguRomanized = romanizedResult.changed;
+      }
+
+      res.json({
+        sourceType: "uploaded-audio",
+        inputUrl: "",
+        videoId,
+        title: uploadedTitle,
+        channelTitle: "Uploaded audio",
+        description: "This project was started from an uploaded audio file.",
+        durationSeconds: Number(effectiveDurationSeconds || durationFromBody || 0),
+        thumbnails: [],
+        poster: "",
+        audioUrl: "",
+        audioPreviewBlocked: false,
+        audioMimeType: audioFile.mimetype || "audio/mpeg",
+        audioAccess: {
+          mode: "available",
+          previewAvailable: false,
+          badgeLabel: "Audio uploaded",
+          title: "Uploaded audio is ready",
+          summary:
+            "This project can build lyrics and the final video directly from your uploaded audio file. A YouTube link is optional for this path.",
+          primaryActionLabel: "Create lyric video",
+          recommendedAction: "render"
+        },
+        song: lyricResult.song,
+        lyricsSource: lyricResult.source,
+        syncMode: lyricResult.syncMode,
+        lines: lyricResult.lines,
+        warnings: [
+          ...buildWarnings(lyricResult),
+          ...warnings,
+          ...(teluguRomanized
+            ? [
+                "Telugu lyrics were detected in the uploaded audio and shown in English letters for easier preview."
+              ]
+            : []),
+          "The final render will use the uploaded audio file directly and can refine lyric timing again before export."
+        ]
+      });
+    } finally {
+      try {
+        if (audioFile?.path) {
+          await fsp.unlink(audioFile.path);
+        }
+      } catch {}
+
+      try {
+        await fsp.rm(scratchDirectory, { recursive: true, force: true });
+      } catch {}
+    }
   })
 );
 
