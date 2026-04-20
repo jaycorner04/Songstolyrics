@@ -5161,6 +5161,38 @@ function resolveUploadedVideoExtension(upload = {}) {
   return ".mp4";
 }
 
+function resolveUploadedAudioExtension(upload = {}) {
+  const originalExtension = path.extname(upload.originalName || upload.name || "").toLowerCase();
+
+  if (originalExtension) {
+    return originalExtension;
+  }
+
+  const mimeType = `${upload.mimeType || ""}`.toLowerCase();
+
+  if (mimeType.includes("wav")) {
+    return ".wav";
+  }
+
+  if (mimeType.includes("ogg")) {
+    return ".ogg";
+  }
+
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) {
+    return ".m4a";
+  }
+
+  if (mimeType.includes("aac")) {
+    return ".aac";
+  }
+
+  if (mimeType.includes("flac")) {
+    return ".flac";
+  }
+
+  return ".mp3";
+}
+
 async function saveUploadedBackgrounds(payload, renderDirectory) {
   const uploads = Array.isArray(payload.customBackgrounds)
     ? payload.customBackgrounds.slice(0, MAX_UPLOADED_BACKGROUNDS)
@@ -5204,6 +5236,34 @@ async function saveUploadedBackgroundVideo(payload, renderDirectory) {
     width: Number(uploadedVideo.width || 0),
     height: Number(uploadedVideo.height || 0),
     duration: Number(uploadedVideo.duration || 0)
+  };
+}
+
+async function saveUploadedAudioFile(payload, renderDirectory) {
+  const uploadedAudio = payload.customAudioUpload;
+
+  if (!uploadedAudio?.tempPath || !fs.existsSync(uploadedAudio.tempPath)) {
+    return null;
+  }
+
+  const targetPath = path.join(
+    renderDirectory,
+    `uploaded-audio${resolveUploadedAudioExtension(uploadedAudio)}`
+  );
+
+  await fsp.copyFile(uploadedAudio.tempPath, targetPath);
+
+  try {
+    await fsp.unlink(uploadedAudio.tempPath);
+  } catch {}
+
+  return {
+    filePath: targetPath,
+    originalName:
+      uploadedAudio.originalName || uploadedAudio.name || path.basename(targetPath),
+    mimeType: `${uploadedAudio.mimeType || ""}`,
+    size: Number(uploadedAudio.size || 0),
+    duration: Number(uploadedAudio.duration || 0)
   };
 }
 
@@ -6004,6 +6064,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
     const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
+    const uploadedAudioFile = await saveUploadedAudioFile(payload, renderDirectory);
 
     if (uploadedBackgroundPaths.length) {
       renderNotes.push(
@@ -6017,21 +6078,37 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
     }
 
+    if (uploadedAudioFile) {
+      renderNotes.push(
+        `Uploaded audio ${uploadedAudioFile.originalName} will be used as the soundtrack for this render.`
+      );
+    }
+
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
-    const audioUrlPromise = resolveAudioInput(payload.videoId, {
-      outputDirectory: audioInputDirectory,
-      allowDownloadFallback: true,
-      preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
-    }).then(
-      (audioSource) => ({
-        audioSource,
-        error: null
-      }),
-      (error) => ({
-        audioSource: null,
-        error
-      })
-    );
+    const audioUrlPromise = uploadedAudioFile
+      ? Promise.resolve({
+          audioSource: {
+            input: uploadedAudioFile.filePath,
+            sourceType: "file",
+            recovered: false,
+            mimeType: uploadedAudioFile.mimeType || "audio/mpeg"
+          },
+          error: null
+        })
+      : resolveAudioInput(payload.videoId, {
+          outputDirectory: audioInputDirectory,
+          allowDownloadFallback: true,
+          preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
+        }).then(
+          (audioSource) => ({
+            audioSource,
+            error: null
+          }),
+          (error) => ({
+            audioSource: null,
+            error
+          })
+        );
     updateJob(job, {
       stage: "Resolving video audio",
       progress: 0.12
@@ -7373,7 +7450,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 }
 
 async function startRenderJob(payload) {
-  const videoId = extractVideoId(payload.videoId || payload.inputUrl);
+  const rawVideoId = `${payload.videoId || ""}`.trim();
+  const hasUploadedAudio = Boolean(payload?.customAudioUpload?.tempPath);
+  const videoId = rawVideoId.startsWith("upload-")
+    ? rawVideoId
+    : payload.inputUrl
+      ? extractVideoId(payload.inputUrl)
+      : rawVideoId
+        ? rawVideoId
+        : hasUploadedAudio
+          ? `upload-${Date.now().toString(36)}`
+          : extractVideoId(payload.videoId || payload.inputUrl);
   const titleSlug = slugify(payload.song?.title || payload.title || videoId) || videoId;
   const createdAt = new Date().toISOString();
 
