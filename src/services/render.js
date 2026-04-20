@@ -37,7 +37,7 @@ const MAX_LYRIC_HOLD_SECONDS = 4.2;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
 const LYRIC_TRANSITION_GAP_SECONDS = 0.12;
-const LYRIC_AUDIO_OFFSET_SECONDS = 0.08;
+const LYRIC_AUDIO_OFFSET_SECONDS = 0;
 const LYRIC_FADE_MS = 180;
 const LYRIC_REVEAL_MS = 220;
 const LYRIC_ACCENT_COLORS = ["#d7d7d7", "#8fc8ff", "#f2f2f2", "#c6d0ff"];
@@ -2062,6 +2062,32 @@ function buildAdaptiveTranscriptionOptions(baseOptions = {}, adaptiveProfile = {
   };
 }
 
+function buildDeeperSyncRetryOptions(baseOptions = {}, adaptiveProfile = {}) {
+  const adaptiveOptions = buildAdaptiveTranscriptionOptions(
+    {
+      ...baseOptions,
+      preview: false
+    },
+    adaptiveProfile
+  );
+
+  return {
+    ...adaptiveOptions,
+    preview: false,
+    modelName:
+      adaptiveOptions.modelName ||
+      process.env.WHISPER_ADAPTIVE_MODEL ||
+      process.env.WHISPER_MODEL ||
+      "base",
+    beamSize: Math.max(Number(adaptiveOptions.beamSize || 0), 5),
+    vadFilter:
+      typeof adaptiveOptions.vadFilter === "boolean" ? adaptiveOptions.vadFilter : false,
+    conditionOnPreviousText: adaptiveOptions.conditionOnPreviousText !== false,
+    timeoutMs: Math.max(Number(adaptiveOptions.timeoutMs || 0), 120 * 1000),
+    downloadTimeoutMs: Math.max(Number(adaptiveOptions.downloadTimeoutMs || 0), 120 * 1000)
+  };
+}
+
 async function recordAdaptiveSignalSafely(payload = {}) {
   try {
     await recordAdaptiveSignal(payload);
@@ -3716,11 +3742,11 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
   const teluguRomanized = Boolean(options?.teluguRomanized);
 
   if (syncMode === "synced-lyrics") {
-    return 0.14;
+    return 0.03;
   }
 
   if (syncMode === "caption-aligned" || syncMode === "captions") {
-    return 0.12;
+    return 0.02;
   }
 
   if (syncMode === "transcribed") {
