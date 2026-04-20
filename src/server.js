@@ -1425,7 +1425,7 @@ app.post(
             {
               audioInputPath: audioFile.path,
               preview: true,
-              timeoutMs: 90000,
+              timeoutMs: 120000,
               downloadTimeoutMs: 15000
             }
           );
