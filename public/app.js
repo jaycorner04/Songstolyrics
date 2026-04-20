@@ -487,7 +487,8 @@ function getSelectedStyleColorSettings() {
 }
 
 function getSelectedLyricZoomValue() {
-  return Math.max(70, Math.min(145, Number(lyricFontZoomInput?.value || 100)));
+  const { min, max } = getPreviewZoomBounds();
+  return Math.max(min, Math.min(max, Number(lyricFontZoomInput?.value || 100)));
 }
 
 function getClientRenderProfile() {
