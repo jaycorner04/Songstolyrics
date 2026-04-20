@@ -6760,7 +6760,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
     }
 
-    if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
+    const shouldSkipTrustedSyncedLyricVerification = payload?.syncMode === "synced-lyrics";
+
+    if (shouldSkipTrustedSyncedLyricVerification) {
+      renderNotes.push("Final sync verification was skipped because synced web lyrics are already trusted as the timing source.");
+    } else if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
         stage: "Checking lyric/audio sync",
         progress: 0.3
@@ -7063,7 +7067,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(formatStrictSyncApprovalSummary(strictSyncReport));
     }
 
-    if (payload.requireVerifiedSync !== false && !canUseAudioTranscription) {
+    if (!shouldSkipTrustedSyncedLyricVerification && payload.requireVerifiedSync !== false && !canUseAudioTranscription) {
       renderNotes.push(
         "Final sync verification was skipped because YouTube blocked the server-side audio needed for that safety pass."
       );
@@ -7077,7 +7081,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         message: "No verified lyric lines were available after all render-time recovery steps."
       });
 
-      if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
+      if (!shouldSkipTrustedSyncedLyricVerification && payload.requireVerifiedSync !== false && canUseAudioTranscription) {
         throw createRenderError(
           "No verified lyric lines were available for this video, so the app stopped before rendering.",
           422
