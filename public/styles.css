@@ -2528,7 +2528,36 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .background-controls > :nth-child(-n+6) {
+    grid-column: 1 / -1;
+  }
+
+  .background-controls > :nth-last-child(-n+3) {
+    grid-column: span 1;
+    min-width: 0;
+  }
+
+  .background-controls > :nth-last-child(-n+3) .input-label {
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  .background-controls > :nth-last-child(-n+3) .helper-text,
+  .background-controls > :nth-last-child(-n+3) .helper-inline {
+    font-size: 0.68rem;
+    line-height: 1.25;
+  }
+
+  .background-controls > :nth-last-child(-n+3).style-tuning-card,
+  .background-controls > :nth-last-child(-n+3).format-field {
+    padding: 10px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .hero-stats {
