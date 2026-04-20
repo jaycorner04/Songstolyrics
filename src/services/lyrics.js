@@ -655,7 +655,13 @@ function normalizeCaptionCues(captionCues = []) {
 }
 
 async function buildLyricsPayload({ rawTitle, channelTitle, durationSeconds, captionCues = [] }) {
-  const guessedSong = inferSongFromVideo(rawTitle, channelTitle);
+  const inferredSong = inferSongFromVideo(rawTitle, channelTitle);
+  const guessedSong = {
+    ...inferredSong,
+    artist: /^uploaded audio$/i.test(normalizeWhitespace(inferredSong.artist || ""))
+      ? ""
+      : inferredSong.artist
+  };
   const lrcLibMatchesPromise = searchLrcLib(guessedSong, durationSeconds);
   const directLyricsPromise = guessedSong.artist && guessedSong.title
     ? fetchLyricsText({
