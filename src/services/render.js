@@ -7324,14 +7324,35 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     const isUploadedAudioSource =
       String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
+    const isShortFormSource =
+      /\/shorts\//i.test(`${payload?.inputUrl || payload?.url || ""}`) ||
+      (!isUploadedAudioSource && Number(durationSeconds || 0) > 0 && Number(durationSeconds || 0) <= 75);
+    const hasLoadedRenderableLyrics = getSourceTimingMetrics(renderLines, durationSeconds).meaningfulCount >= 2;
+    const shortFormTrustedSyncModes = new Set([
+      "transcribed",
+      "caption-aligned",
+      "captions",
+      "estimated"
+    ]);
     const shouldSkipTrustedSyncedLyricVerification =
-      payload?.syncMode === "synced-lyrics";
+      payload?.syncMode === "synced-lyrics" ||
+      (
+        hasLoadedRenderableLyrics &&
+        (
+          (isUploadedAudioSource && renderLineSyncSource === "transcribed") ||
+          (isShortFormSource && shortFormTrustedSyncModes.has(renderLineSyncSource))
+        )
+      );
 
     if (shouldSkipTrustedSyncedLyricVerification) {
       renderNotes.push(
         payload?.syncMode === "synced-lyrics"
           ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
-          : "Final sync verification was skipped."
+          : isUploadedAudioSource && renderLineSyncSource === "transcribed"
+            ? "Final sync verification was skipped because this uploaded-audio render is already using lyrics created from the uploaded soundtrack."
+            : isShortFormSource
+              ? "Final sync verification was skipped because this short-form render already has usable loaded lyric timing."
+              : "Final sync verification was skipped."
       );
     } else if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
