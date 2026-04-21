@@ -2688,6 +2688,68 @@ function shiftLyricLines(lines = [], shiftSeconds = 0, durationSeconds = 0) {
   );
 }
 
+function fitLateUploadedAudioLyricsToAudioWindow(lines = [], durationSeconds = 0) {
+  const sanitized = sanitizeLyricLines(lines, durationSeconds);
+  const duration = Number(durationSeconds || 0);
+
+  if (!sanitized.length || duration < 8) {
+    return {
+      changed: false,
+      lines: sanitized,
+      firstStart: sanitized[0]?.start || 0
+    };
+  }
+
+  const firstStart = Number(sanitized[0]?.start || 0);
+  const lastEnd = Math.max(
+    ...sanitized.map((line) => Number(line.start || 0) + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0)))
+  );
+  const lateStartThreshold = Math.max(4, duration * 0.32);
+
+  if (firstStart <= lateStartThreshold) {
+    return {
+      changed: false,
+      lines: sanitized,
+      firstStart
+    };
+  }
+
+  const targetStart = roundTimeValue(Math.min(1.2, Math.max(0.55, duration * 0.06)));
+  const targetEnd = roundTimeValue(Math.max(targetStart + MIN_LYRIC_DURATION_SECONDS, duration - 0.28));
+  const sourceSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, lastEnd - firstStart);
+  const targetSpan = Math.max(MIN_LYRIC_DURATION_SECONDS, targetEnd - targetStart);
+  const scale = targetSpan / sourceSpan;
+
+  const fittedLines = sanitized.map((line, index) => {
+    const mappedStart = roundTimeValue(
+      targetStart + (Number(line.start || 0) - firstStart) * scale
+    );
+    const nextLine = sanitized[index + 1];
+    const mappedNextStart = nextLine
+      ? roundTimeValue(targetStart + (Number(nextLine.start || 0) - firstStart) * scale)
+      : targetEnd;
+    const mappedEnd = roundTimeValue(
+      clamp(
+        mappedNextStart - LYRIC_TRANSITION_GAP_SECONDS,
+        mappedStart + MIN_LYRIC_DURATION_SECONDS,
+        targetEnd
+      )
+    );
+
+    return {
+      ...line,
+      start: mappedStart,
+      duration: roundTimeValue(Math.max(MIN_LYRIC_DURATION_SECONDS, mappedEnd - mappedStart))
+    };
+  });
+
+  return {
+    changed: true,
+    lines: sanitizeLyricLines(fittedLines, duration),
+    firstStart
+  };
+}
+
 function tightenIntroLyricTiming(candidateLines = [], transcriptLines = [], durationSeconds = 0) {
   const sanitizedCandidate = sanitizeLyricLines(candidateLines, durationSeconds);
   const sanitizedTranscript = sanitizeLyricLines(transcriptLines, durationSeconds);
