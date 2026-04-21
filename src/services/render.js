@@ -4256,7 +4256,7 @@ function createAssSubtitleContent(
   const emojiOverlays = [];
   const lyricEvents = lines.flatMap((line, index) => {
     const nextLine = lines[index + 1];
-    const endSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
+    const rawEndSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
     const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
     const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
@@ -4385,6 +4385,19 @@ function createAssSubtitleContent(
     const centerY = Math.round(
       clamp(targetCenterY, safeMargin + boxHeight / 2, videoSize.height - safeMargin - boxHeight / 2)
     );
+    const dialogueStartSeconds = roundTimeValue(
+      Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
+    );
+    const minimumReadableEndSeconds = dialogueStartSeconds + Math.min(
+      MAX_LYRIC_HOLD_SECONDS,
+      Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0), 0.9)
+    );
+    const endSeconds = roundTimeValue(
+      Math.min(
+        durationSeconds ? Math.max(durationSeconds, minimumReadableEndSeconds) : minimumReadableEndSeconds,
+        Math.max(rawEndSeconds, minimumReadableEndSeconds)
+      )
+    );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
     const motionProfile = buildAdaptiveLyricMotionProfile(
       {
@@ -4393,9 +4406,6 @@ function createAssSubtitleContent(
       },
       selectedVariant,
       textLines
-    );
-    const dialogueStartSeconds = roundTimeValue(
-      Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
     );
     const start = formatAssTime(dialogueStartSeconds);
     const end = formatAssTime(endSeconds);
