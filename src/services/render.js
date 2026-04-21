@@ -6491,7 +6491,6 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     });
 
     const videoSize = getRenderSize(payload);
-    const renderProfile = buildRenderProfile(payload);
     const allowSilentAudioFallback = process.env.ALLOW_SILENT_AUDIO_FALLBACK === "true";
     const metadataDurationSeconds = Number(payload.durationSeconds || 0);
     let durationSeconds = getRenderDurationSeconds(
@@ -6499,6 +6498,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         ? metadataDurationSeconds
         : Math.max(getLyricTimelineDuration(payload.lines), MIN_RENDER_DURATION_SECONDS)
     );
+    const renderProfile = buildRenderProfile(payload, durationSeconds);
     const renderNotes = [
       "Rendered in a dynamic kinetic lyric-video style inspired by the Envato text preset reference."
     ];
@@ -6509,7 +6509,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     );
 
     renderNotes.push(
-      renderProfile.fastMode
+      renderProfile.shortFastMode
+        ? "Short video fast path is active, so the app is using fewer background scenes, lower render FPS, and a quicker export profile."
+        : renderProfile.fastMode
         ? "Fast Render mode is active, so the app is using a lighter background pipeline and a quicker export profile."
         : "Standard render mode is active for the full visual pipeline."
     );
@@ -7948,7 +7950,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               stageLabel: "Rendering backup lyric video",
               progressStart: 0.48,
               progressSpan: 0.48,
-              filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+              filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative, renderProfile),
               forceSoftwareEncoder: true,
               emojiOverlays: subtitleBuild.emojiOverlays,
               emojiAssetEntries,
@@ -7989,7 +7991,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 stageLabel: "Rendering emergency fallback lyric video",
                 progressStart: 0.52,
                 progressSpan: 0.44,
-                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative, renderProfile),
                 forceSoftwareEncoder: true,
                 emojiOverlays: subtitleBuild.emojiOverlays,
                 emojiAssetEntries,
@@ -8024,7 +8026,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 stageLabel: "Rendering solid fallback lyric video",
                 progressStart: 0.56,
                 progressSpan: 0.4,
-                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative),
+                filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative, renderProfile),
                 forceSoftwareEncoder: true,
                 emojiOverlays: subtitleBuild.emojiOverlays,
                 emojiAssetEntries,
