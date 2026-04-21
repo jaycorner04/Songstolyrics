@@ -1,6 +1,13 @@
 node_modules
 npm-debug.log*
 .env
+.env.remote.live
+.git
+.github
+.codex-temp
+.autopush
+.live-debug
+.cookie-sync
 runtime
 cache
 uploads
@@ -8,4 +15,11 @@ renders
 tmp
 tmp-*
 *.log
+*.zip
+*-player-script.js
+check-out-*.png
+ref-frame-*.png
+tmp-*.png
+tmp-convert-response.json
+verify-*.png
 reference_frames

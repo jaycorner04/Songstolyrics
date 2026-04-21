@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.remote.live
 npm-debug.log*
 runtime/
 cache/
@@ -18,3 +19,5 @@ reference_frames/
 .codex-temp/
 .autopush/
 .live-debug/
+.cookie-sync/
+*.zip
