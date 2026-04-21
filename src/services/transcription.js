@@ -754,10 +754,12 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
     await transcribeWithFasterWhisper(audioPath, outputPath, normalizedOptions);
     const lines = parseWhisperJson(outputPath, effectiveDurationSeconds);
     const words = parseWhisperWords(outputPath, effectiveDurationSeconds);
+    const metadata = readWhisperMetadata(outputPath);
     return {
       source: transcriptionMode === "translate" ? "audio-translation" : "audio-transcription",
       syncMode: "transcribed",
       task: transcriptionMode,
+      language: metadata.language,
       audioDurationSeconds,
       audioPath,
       lines,
@@ -769,10 +771,12 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
     const whisperJsonPath = await transcribeWithOpenAiWhisper(audioPath, outputDirectory, normalizedOptions);
     const lines = parseWhisperJson(whisperJsonPath, effectiveDurationSeconds);
     const words = parseWhisperWords(whisperJsonPath, effectiveDurationSeconds);
+    const metadata = readWhisperMetadata(whisperJsonPath);
     return {
       source: transcriptionMode === "translate" ? "audio-translation" : "audio-transcription",
       syncMode: "transcribed",
       task: transcriptionMode,
+      language: metadata.language,
       audioDurationSeconds,
       audioPath,
       lines,
