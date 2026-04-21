@@ -4824,6 +4824,7 @@ function buildAtmosphereOrbAssetFilter(spec) {
 
 function buildAnimatedBackgroundFilter(videoSize = VIDEO_SIZE, options = {}) {
   const scaleMultiplier = Math.max(0.1, Number(options.scaleMultiplier || 0.14));
+  const outputFps = clamp(Math.round(Number(options.outputFps || OUTPUT_FPS)), 12, OUTPUT_FPS);
   const scaledWidth = roundEven(
     videoSize.width + Math.max(120, Math.round(videoSize.width * scaleMultiplier))
   );
@@ -4843,7 +4844,7 @@ function buildAnimatedBackgroundFilter(videoSize = VIDEO_SIZE, options = {}) {
   const saturation = Number(options.saturation ?? 0.98);
 
   return [
-    `fps=${OUTPUT_FPS}`,
+    `fps=${outputFps}`,
     "format=rgba",
     `scale=${scaledWidth}:${scaledHeight}:flags=lanczos`,
     `crop=${videoSize.width}:${videoSize.height}:x='${cropX}+${driftX}*sin(t*0.2)+${shakeX}*sin(t*1.75)+${microShakeX}*sin(t*7.2)':y='${cropY}+${driftY}*cos(t*0.17)+${shakeY}*cos(t*1.5)+${microShakeY}*sin(t*6.4)'`,
@@ -4853,13 +4854,14 @@ function buildAnimatedBackgroundFilter(videoSize = VIDEO_SIZE, options = {}) {
   ].join(",");
 }
 
-function createFilterScript(videoSize = VIDEO_SIZE, emojiOverlays = [], emojiAssetEntries = [], fontsDirRelative = "") {
+function createFilterScript(videoSize = VIDEO_SIZE, emojiOverlays = [], emojiAssetEntries = [], fontsDirRelative = "", renderProfile = {}) {
   const filters = [];
   filters.push(`[0:v]${buildAnimatedBackgroundFilter(videoSize, {
     scaleMultiplier: 0.14,
     noiseStrength: 4,
     brightness: 0.01,
-    saturation: 0.98
+    saturation: 0.98,
+    outputFps: renderProfile.outputFps
   })}[bg]`);
   filters.push(
     fontsDirRelative
@@ -6303,13 +6305,14 @@ async function prepareAtmosphereAssets(job, renderDirectory) {
   return assetPaths;
 }
 
-function createSafeFilterScript(videoSize = VIDEO_SIZE, emojiOverlays = [], emojiAssetEntries = [], fontsDirRelative = "") {
+function createSafeFilterScript(videoSize = VIDEO_SIZE, emojiOverlays = [], emojiAssetEntries = [], fontsDirRelative = "", renderProfile = {}) {
   const filters = [
     `[0:v]${buildAnimatedBackgroundFilter(videoSize, {
       scaleMultiplier: 0.12,
       noiseStrength: 2,
       brightness: 0.02,
-      saturation: 1
+      saturation: 1,
+      outputFps: renderProfile.outputFps
     })}[bg]`,
     fontsDirRelative
       ? `[bg]subtitles=lyrics.ass:fontsdir=${fontsDirRelative}[subbed]`
@@ -6336,9 +6339,9 @@ async function renderVideo(
   const outputVideoPath = options.outputVideoPath || path.join(renderDirectory, "final.mp4");
   const emojiAssetEntries = Array.isArray(options.emojiAssetEntries) ? options.emojiAssetEntries : [];
   const fontsDirRelative = `${options.fontsDirRelative || ""}`;
-  const filterGraph = options.filterGraph
-    || createFilterScript(videoSize, options.emojiOverlays || [], emojiAssetEntries, fontsDirRelative);
   const renderProfile = options.renderProfile || buildRenderProfile();
+  const filterGraph = options.filterGraph
+    || createFilterScript(videoSize, options.emojiOverlays || [], emojiAssetEntries, fontsDirRelative, renderProfile);
   const videoEncoder = options.videoEncoder
     || (options.forceSoftwareEncoder
       ? getSoftwareVideoEncoder(renderProfile)
@@ -6375,7 +6378,7 @@ async function renderVideo(
     `${audioInputIndex}:a`,
     ...videoEncoder.outputArgs,
     "-r",
-    String(OUTPUT_FPS),
+    String(renderProfile.outputFps || OUTPUT_FPS),
     "-pix_fmt",
     "yuv420p",
     "-c:a",
