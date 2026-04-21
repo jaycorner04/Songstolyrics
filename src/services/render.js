@@ -37,9 +37,9 @@ const OUTPUT_FPS = 24;
 const MAX_RENDER_ATTEMPTS = 2;
 const MIN_RENDER_DURATION_SECONDS = 12;
 const MAX_UPLOADED_BACKGROUNDS = 5;
-const MIN_LYRIC_DURATION_SECONDS = 0.8;
-const MAX_LYRIC_HOLD_SECONDS = 5.8;
-const MAX_SMART_LYRIC_DISPLAY_SECONDS = 7.8;
+const MIN_LYRIC_DURATION_SECONDS = 1.2;
+const MAX_LYRIC_HOLD_SECONDS = 8;
+const MAX_SMART_LYRIC_DISPLAY_SECONDS = 8;
 const MAX_TRANSCRIBED_GAP_SECONDS = 5.2;
 const GAP_FILL_HOLD_SECONDS = 3.6;
 const LYRIC_TRANSITION_GAP_SECONDS = 0.04;
@@ -1243,7 +1243,7 @@ function buildAdaptiveLyricMotionProfile(line = {}, selectedVariant = "", textLi
   );
   const movementMultiplier = isSlowPace ? 1.18 : isFastPace ? 0.76 : 1;
   const wordBuildDuration = clamp(
-    lineDurationSeconds * (isFastPace ? 0.94 : isSlowPace ? 0.74 : 0.84),
+    lineDurationSeconds * (isFastPace ? 0.96 : 0.92),
     0.45,
     MAX_LYRIC_HOLD_SECONDS
   );
