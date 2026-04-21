@@ -1631,9 +1631,17 @@ function getLyricPreviewPlacementDefault(styleValue = "auto") {
 
 function getLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "auto") {
   const defaults = getLyricPreviewPlacementDefault(styleValue);
+  if (lyricPreviewCustomPosition) {
+    return {
+      x: lyricPreviewCustomPosition.x,
+      y: lyricPreviewCustomPosition.y,
+      anchor: "center"
+    };
+  }
+
   return {
-    x: lyricPreviewCustomPosition?.x ?? defaults.x,
-    y: lyricPreviewCustomPosition?.y ?? defaults.y,
+    x: defaults.x,
+    y: defaults.y,
     anchor: defaults.anchor || "center"
   };
 }
@@ -1819,6 +1827,7 @@ function handleLyricPreviewPointerDown(event) {
     // Some mobile browsers only allow pointer capture on the direct touch target.
   }
   document.body.style.userSelect = "none";
+  document.body.style.touchAction = "none";
   event.preventDefault();
 }
 
@@ -1845,9 +1854,23 @@ function handleLyricPreviewPointerMove(event) {
         ? shellLeft + shellWidth
         : shellLeft + shellWidth / 2;
   const anchorY = shellTop + shellHeight / 2;
+  let nextX = clampPreviewPlacement(anchorX / Math.max(1, stageRect.width));
+  let nextY = clampPreviewPlacement(anchorY / Math.max(1, stageRect.height));
+
+  // Match the mobile-story editor feel: softly snap near the center guide.
+  if (Math.abs(nextX - 0.5) <= 0.025) {
+    nextX = 0.5;
+  }
+  if (Math.abs(nextY - 0.5) <= 0.025) {
+    nextY = 0.5;
+  }
+
+  lyricStylePreview?.classList.toggle("is-snapped-x", nextX === 0.5);
+  lyricStylePreview?.classList.toggle("is-snapped-y", nextY === 0.5);
+
   const nextPosition = {
-    x: clampPreviewPlacement(anchorX / Math.max(1, stageRect.width)),
-    y: clampPreviewPlacement(anchorY / Math.max(1, stageRect.height))
+    x: nextX,
+    y: nextY
   };
 
   if (
@@ -1866,6 +1889,7 @@ function finishLyricPreviewDrag(event) {
   }
 
   lyricStylePreview?.classList.remove("is-user-positioning");
+  lyricStylePreview?.classList.remove("is-snapped-x", "is-snapped-y");
   previewLinesShell?.classList.remove("is-dragging");
   try {
     previewLinesShell?.releasePointerCapture?.(event.pointerId);
@@ -1873,6 +1897,7 @@ function finishLyricPreviewDrag(event) {
     // Ignore release errors when the browser did not grant capture.
   }
   document.body.style.userSelect = "";
+  document.body.style.touchAction = "";
   const wasMoved = lyricPreviewDragState.moved;
   lyricPreviewDragState = null;
 
