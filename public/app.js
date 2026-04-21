@@ -1812,7 +1812,12 @@ function handleLyricPreviewPointerDown(event) {
 
   lyricStylePreview?.classList.add("is-user-positioning");
   previewLinesShell.classList.add("is-dragging");
-  previewLinesShell.setPointerCapture?.(event.pointerId);
+  const captureTarget = event.currentTarget?.setPointerCapture ? event.currentTarget : previewLinesShell;
+  try {
+    captureTarget.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Some mobile browsers only allow pointer capture on the direct touch target.
+  }
   document.body.style.userSelect = "none";
   event.preventDefault();
 }
@@ -1862,7 +1867,11 @@ function finishLyricPreviewDrag(event) {
 
   lyricStylePreview?.classList.remove("is-user-positioning");
   previewLinesShell?.classList.remove("is-dragging");
-  previewLinesShell?.releasePointerCapture?.(event.pointerId);
+  try {
+    previewLinesShell?.releasePointerCapture?.(event.pointerId);
+  } catch {
+    // Ignore release errors when the browser did not grant capture.
+  }
   document.body.style.userSelect = "";
   const wasMoved = lyricPreviewDragState.moved;
   lyricPreviewDragState = null;
@@ -4513,6 +4522,7 @@ if (neonGlowInput) {
   });
 }
 lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
+previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
