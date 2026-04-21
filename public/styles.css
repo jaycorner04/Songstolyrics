@@ -724,6 +724,54 @@ button {
   touch-action: none;
 }
 
+.lyric-preview-drag-surface::before,
+.lyric-preview-drag-surface::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.lyric-preview-drag-surface::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(84, 226, 255, 0.92) 16%,
+    rgba(84, 226, 255, 0.92) 84%,
+    transparent
+  );
+}
+
+.lyric-preview-drag-surface::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(84, 226, 255, 0.72) 16%,
+    rgba(84, 226, 255, 0.72) 84%,
+    transparent
+  );
+}
+
+.lyric-style-preview.is-user-positioning .lyric-preview-drag-surface::before,
+.lyric-style-preview.is-user-positioning .lyric-preview-drag-surface::after {
+  opacity: 0.46;
+}
+
+.lyric-style-preview.is-user-positioning.is-snapped-x .lyric-preview-drag-surface::before,
+.lyric-style-preview.is-user-positioning.is-snapped-y .lyric-preview-drag-surface::after {
+  opacity: 1;
+}
+
 .preview-drag-tip {
   position: absolute;
   right: 0;
@@ -745,7 +793,7 @@ button {
   position: absolute;
   left: var(--preview-lyrics-x, 50%);
   top: var(--preview-lyrics-y, 56%);
-  z-index: 1;
+  z-index: 4;
   width: min(86%, 520px);
   max-width: calc(100% - 24px);
   transform: translate(var(--preview-shell-translate-x, -50%), var(--preview-shell-translate-y, -50%));
@@ -753,6 +801,48 @@ button {
   touch-action: none;
   user-select: none;
   will-change: left, top, transform;
+}
+
+.preview-lines-shell::before {
+  content: "";
+  position: absolute;
+  inset: -12px -16px;
+  z-index: -1;
+  border: 1px solid rgba(84, 226, 255, 0.62);
+  border-radius: 18px;
+  background: rgba(5, 12, 24, 0.14);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 18px 40px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.preview-lines-shell::after {
+  content: "Move lyrics";
+  position: absolute;
+  left: 50%;
+  bottom: -38px;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(84, 226, 255, 0.28);
+  background: rgba(5, 12, 24, 0.82);
+  color: rgba(246, 240, 232, 0.88);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+}
+
+.preview-lines-shell:hover::before,
+.preview-lines-shell:focus-visible::before,
+.preview-lines-shell.is-dragging::before,
+.preview-lines-shell.is-dragging::after {
+  opacity: 1;
 }
 
 .preview-lines-shell.is-dragging {
