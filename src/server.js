@@ -43,6 +43,7 @@ const {
 const uploadedAudioJobs = require("./services/jobStore");
 const {
   containsIndicPhoneticScript,
+  containsRomanizedTeluguHint,
   containsTeluguScript,
   romanizeLyricLines
 } = require("./services/telugu");
@@ -386,6 +387,7 @@ function shouldRomanizeTeluguLyrics(metadata = {}, lyricResult = {}) {
   return (
     containsTeluguScript(sampledLines) ||
     containsTeluguScript(songText) ||
+    containsRomanizedTeluguHint(songText) ||
     (String(lyricResult?.source || "").toLowerCase() === "audio-transcription" &&
       containsIndicPhoneticScript(sampledLines)) ||
     /\btelugu\b/i.test(songText)
