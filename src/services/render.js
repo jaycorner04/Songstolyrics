@@ -7742,6 +7742,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       );
     }
 
+    if (renderLines.length && isUploadedAudioSource) {
+      const lateUploadedAudioTiming = fitLateUploadedAudioLyricsToAudioWindow(renderLines, durationSeconds);
+
+      if (lateUploadedAudioTiming.changed) {
+        renderLines = limitLyricLines(lateUploadedAudioTiming.lines, durationSeconds);
+        renderNotes.push(
+          `Uploaded-audio lyric timing was recovered because the first subtitle was delayed until ${roundTimeValue(lateUploadedAudioTiming.firstStart)}s, so the final lyric sheet was fit across the audible song window before export.`
+        );
+      }
+    }
+
     if (!renderLines.length) {
       await recordAdaptiveSignalSafely({
         channelTitle: payload.channelTitle,
