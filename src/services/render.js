@@ -4050,18 +4050,12 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
     ? Math.max(start + 0.12, Number(durationSeconds))
     : Number.POSITIVE_INFINITY;
   const naturalEnd = Math.min(start + cappedDuration, timelineLimit);
-  const vocalTailSeconds = rawLineDuration >= 3 ? 0.18 : 0.28;
-  const vocalEnd = Math.min(
-    start + Math.max(MIN_LYRIC_DURATION_SECONDS, rawLineDuration) + vocalTailSeconds,
-    timelineLimit
-  );
 
   if (!nextLine) {
     const smartFinalDuration = resolveSmartLyricDisplayDuration(line, cappedDuration);
     return Math.min(
-      naturalEnd,
-      vocalEnd,
-      start + Math.min(smartFinalDuration, MAX_LYRIC_HOLD_SECONDS)
+      timelineLimit,
+      start + Math.min(Math.max(cappedDuration, smartFinalDuration), MAX_LYRIC_HOLD_SECONDS)
     );
   }
 
@@ -4069,9 +4063,10 @@ function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
   const smartDisplayDuration = resolveSmartLyricDisplayDuration(line, safeUpperBound - start);
   const preferredEnd = Math.min(
-    naturalEnd,
-    vocalEnd,
-    start + Math.min(smartDisplayDuration, MAX_LYRIC_HOLD_SECONDS),
+    Math.max(
+      naturalEnd,
+      start + Math.min(smartDisplayDuration, MAX_LYRIC_HOLD_SECONDS)
+    ),
     safeUpperBound
   );
   const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.97, 0.18, 0.94);
