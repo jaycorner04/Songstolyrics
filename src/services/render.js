@@ -4008,23 +4008,39 @@ function getSelectedStyleVariant(lyricStylePreset, line = {}, index = 0) {
 
 function resolveLyricDisplayEnd(line, nextLine, durationSeconds = 0) {
   const start = Math.max(0, Number(line?.start || 0));
+  const rawLineDuration = Math.max(0, Number(line?.duration || 0));
   const cappedDuration = Math.min(
-    Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0)),
+    Math.max(MIN_LYRIC_DURATION_SECONDS, rawLineDuration),
     MAX_SMART_LYRIC_DISPLAY_SECONDS
   );
   const timelineLimit = durationSeconds
     ? Math.max(start + 0.12, Number(durationSeconds))
     : Number.POSITIVE_INFINITY;
   const naturalEnd = Math.min(start + cappedDuration, timelineLimit);
+  const vocalTailSeconds = rawLineDuration >= 3 ? 0.18 : 0.28;
+  const vocalEnd = Math.min(
+    start + Math.max(MIN_LYRIC_DURATION_SECONDS, rawLineDuration) + vocalTailSeconds,
+    timelineLimit
+  );
 
   if (!nextLine) {
-    return naturalEnd;
+    const smartFinalDuration = resolveSmartLyricDisplayDuration(line, cappedDuration);
+    return Math.min(
+      naturalEnd,
+      vocalEnd,
+      start + Math.min(smartFinalDuration, MAX_LYRIC_HOLD_SECONDS)
+    );
   }
 
   const nextStart = Math.max(start + 0.12, Number(nextLine?.start || start + MIN_LYRIC_DURATION_SECONDS));
   const safeUpperBound = Math.max(start + 0.12, nextStart - LYRIC_TRANSITION_GAP_SECONDS);
   const smartDisplayDuration = resolveSmartLyricDisplayDuration(line, safeUpperBound - start);
-  const preferredEnd = Math.min(Math.max(naturalEnd, start + smartDisplayDuration), safeUpperBound);
+  const preferredEnd = Math.min(
+    naturalEnd,
+    vocalEnd,
+    start + Math.min(smartDisplayDuration, MAX_LYRIC_HOLD_SECONDS),
+    safeUpperBound
+  );
   const denseMinimumSeconds = clamp((safeUpperBound - start) * 0.97, 0.18, 0.94);
   const minimumEnd = start + Math.min(denseMinimumSeconds, Math.max(0.18, safeUpperBound - start));
 
