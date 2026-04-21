@@ -634,21 +634,31 @@ function getRenderMode(payload = {}) {
   return payload?.renderMode === "fast" ? "fast" : "standard";
 }
 
-function buildRenderProfile(payload = {}) {
+function isShortFormRenderSource(payload = {}, durationSeconds = 0) {
+  const duration = Number(durationSeconds || payload?.durationSeconds || 0);
+  return /\/shorts\//i.test(`${payload?.inputUrl || payload?.url || ""}`) ||
+    (duration > 0 && duration <= 75);
+}
+
+function buildRenderProfile(payload = {}, durationSeconds = 0) {
   const mode = getRenderMode(payload);
-  const fastMode = mode === "fast";
+  const shortFastMode = isShortFormRenderSource(payload, durationSeconds);
+  const fastMode = mode === "fast" || shortFastMode;
 
   return {
     mode,
     fastMode,
-    panelCaptureCount: fastMode ? 4 : 6,
-    panelCaptureScale: fastMode ? 960 : 1120,
-    panelCaptureQuality: fastMode ? 7 : 6,
-    targetSceneDivisor: fastMode ? 24 : 20,
+    shortFastMode,
+    panelCaptureCount: shortFastMode ? 2 : fastMode ? 4 : 6,
+    panelCaptureScale: shortFastMode ? 720 : fastMode ? 960 : 1120,
+    panelCaptureQuality: shortFastMode ? 8 : fastMode ? 7 : 6,
+    targetSceneDivisor: shortFastMode ? 34 : fastMode ? 24 : 20,
     minSceneCount: fastMode ? 4 : 4,
-    maxSceneCount: fastMode ? 6 : 7,
-    minSceneSeconds: fastMode ? 12 : 11,
-    audioBitrate: fastMode ? "160k" : "160k"
+    maxSceneCount: shortFastMode ? 4 : fastMode ? 6 : 7,
+    minSceneSeconds: shortFastMode ? 16 : fastMode ? 12 : 11,
+    outputFps: shortFastMode ? 18 : fastMode ? 20 : OUTPUT_FPS,
+    encoderCrf: shortFastMode ? "30" : fastMode ? "27" : "22",
+    audioBitrate: shortFastMode ? "128k" : "160k"
   };
 }
 const WEB_ART_STOPWORDS = new Set([
@@ -5113,7 +5123,7 @@ function getSoftwareVideoEncoder(profile = {}) {
       "-preset",
       "ultrafast",
       "-crf",
-      profile.fastMode ? "26" : "22"
+      profile.encoderCrf || (profile.fastMode ? "26" : "22")
     ]
   };
 }
@@ -6037,11 +6047,13 @@ function buildBackgroundSlideshowPlan(bgPaths, durationSeconds, profile = {}) {
   const safePaths = bgPaths.filter(Boolean);
   const duration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
   const targetSceneCount = profile.fastMode
-    ? clamp(
-      Math.ceil(duration / 22) + 1,
-      Math.max(6, Math.min(safePaths.length, 8)),
-      Math.max(10, Math.min(safePaths.length + 2, 12))
-    )
+    ? profile.shortFastMode
+      ? clamp(Math.ceil(duration / 28) + 1, 3, 5)
+      : clamp(
+        Math.ceil(duration / 22) + 1,
+        Math.max(6, Math.min(safePaths.length, 8)),
+        Math.max(10, Math.min(safePaths.length + 2, 12))
+      )
     : Math.max(safePaths.length, Math.ceil(duration / PANEL_CHANGE_SECONDS));
   const sceneDuration = duration / Math.max(1, targetSceneCount);
 
