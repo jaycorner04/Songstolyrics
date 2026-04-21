@@ -1374,11 +1374,41 @@ button {
 }
 
 .background-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
   gap: 14px;
   margin-top: 18px;
-  align-items: start;
+  padding: 2px 2px 12px;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(144, 246, 179, 0.45) rgba(255, 255, 255, 0.05);
+}
+
+.background-controls::-webkit-scrollbar {
+  height: 8px;
+}
+
+.background-controls::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.background-controls::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(144, 246, 179, 0.55), rgba(127, 232, 255, 0.55));
+}
+
+.background-controls > .upload-field,
+.background-controls > .format-field,
+.background-controls > .style-tuning-card {
+  flex: 0 0 clamp(220px, 31%, 330px);
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  scroll-snap-align: start;
 }
 
 @media (min-width: 1180px) {
@@ -1401,13 +1431,13 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
   }
 
   .background-controls > .upload-field,
   .background-controls > .format-field,
   .background-controls > .style-tuning-card {
+    flex-basis: calc((100% - 32px) / 3);
     height: 100%;
   }
 
@@ -1417,24 +1447,6 @@ button {
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .background-controls > .upload-field:nth-child(1),
-  .background-controls > .upload-field:nth-child(2),
-  .background-controls > .upload-field:nth-child(3) {
-    grid-column: span 1;
-  }
-
-  .background-controls > .format-field:nth-child(4),
-  .background-controls > .format-field:nth-child(5),
-  .background-controls > .format-field:nth-child(6) {
-    grid-column: span 1;
-  }
-
-  .background-controls > .style-tuning-card:nth-child(7),
-  .background-controls > .format-field:nth-child(8),
-  .background-controls > .style-tuning-card:nth-child(9) {
-    grid-column: span 1;
   }
 
   .background-controls .input-label {
@@ -2743,7 +2755,8 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 12px;
   }
 
   .background-controls .input-label {
@@ -2784,16 +2797,16 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
     gap: 10px;
   }
 
   .background-controls > :nth-child(-n+6) {
-    grid-column: 1 / -1;
+    flex: 0 0 min(86vw, 320px);
   }
 
   .background-controls > :nth-last-child(-n+3) {
-    grid-column: span 1;
+    flex: 0 0 min(86vw, 320px);
     min-width: 0;
   }
 
@@ -3040,7 +3053,7 @@ button {
   }
 
   .background-controls {
-    grid-template-columns: 1fr;
+    display: flex;
     gap: 10px;
     margin-top: 12px;
   }
