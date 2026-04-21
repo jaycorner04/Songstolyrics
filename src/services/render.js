@@ -13,6 +13,7 @@ const { recordLocalDebugEvent } = require("./local-debug");
 const { loadPersistedRenderJobs, persistRenderJob } = require("./render-job-store");
 const {
   containsIndicPhoneticScript,
+  containsRomanizedTeluguHint,
   containsTeluguScript,
   romanizeLyricLines
 } = require("./telugu");
@@ -3207,10 +3208,14 @@ function shouldRomanizeTeluguLyrics(lines = [], payload = {}) {
     return true;
   }
 
+  if (containsRomanizedTeluguHint(titleText)) {
+    return true;
+  }
+
   if (
     (String(payload?.syncMode || "").toLowerCase() === "transcribed" ||
       String(payload?.videoId || "").startsWith("upload-")) &&
-    containsIndicPhoneticScript(sampledText)
+    (containsIndicPhoneticScript(sampledText) || containsRomanizedTeluguHint(sampledText))
   ) {
     return true;
   }
