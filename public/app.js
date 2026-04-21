@@ -4342,10 +4342,26 @@ async function handleSubmit(event) {
 
   try {
     if (!videoUrl && hasUploadedAudio) {
-      const uploadedAudioProject =
+      let uploadedAudioProject =
         isUploadedAudioProject(currentResult) && Array.isArray(currentResult?.lines)
           ? currentResult
-          : await prepareUploadedAudioProject(uploadedAudioFallback);
+          : null;
+
+      if (!uploadedAudioProject) {
+        try {
+          uploadedAudioProject = await prepareUploadedAudioProject(uploadedAudioFallback);
+        } catch (error) {
+          uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+          uploadedAudioProject.warnings = [
+            ...(uploadedAudioProject.warnings || []),
+            "The mobile preview lyric analysis could not finish, so the render will listen to this uploaded audio directly and build the final timing during export."
+          ];
+          setStatus(
+            "Preview lyrics took too long on this device. Starting render from the uploaded audio directly...",
+            false
+          );
+        }
+      }
 
       if (!uploadedAudioProject) {
         autoRenderPending = false;
