@@ -1273,6 +1273,18 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
     String(lyricResult?.source || "").toLowerCase() !== "unavailable"
       ? lyricResult.lines
       : [];
+  const uploadedAudioTextHint = `${originalName} ${uploadedTitle} ${rawLookupTitle} ${
+    fallbackSong.title || ""
+  } ${fallbackSong.artist || ""}`;
+  const preferTeluguRomanizedTranscription =
+    containsRomanizedTeluguHint(uploadedAudioTextHint) ||
+    shouldRomanizeTeluguLyrics(
+      {
+        title: uploadedTitle,
+        channelTitle: "Uploaded audio"
+      },
+      lyricResult
+    );
   let transcriptPreviewLines = [];
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
@@ -1288,11 +1300,28 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
             audioInputPath: audioFile.path,
             preview: true,
             timeoutMs: 120000,
-            downloadTimeoutMs: 15000
+            downloadTimeoutMs: 15000,
+            ...(preferTeluguRomanizedTranscription
+              ? {
+                  task: "transcribe",
+                  language: "te"
+                }
+              : {})
           }
         );
+        const transcriptionLooksTelugu =
+          preferTeluguRomanizedTranscription ||
+          String(transcription?.language || "").toLowerCase().startsWith("te") ||
+          containsTeluguScript(
+            Array.isArray(transcription?.lines)
+              ? transcription.lines.map((line) => line?.text || "").join(" ")
+              : ""
+          );
+        const transcriptionLinesForAssessment = transcriptionLooksTelugu
+          ? romanizeLyricLines(transcription?.lines || []).lines
+          : transcription?.lines;
         const assessedTranscription = assessAudioFallbackLyrics(
-          transcription?.lines,
+          transcriptionLinesForAssessment,
           transcription?.audioDurationSeconds || durationFromBody
         );
 
@@ -1324,13 +1353,15 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
           } else {
             lyricResult = {
               song: lyricResult?.song || fallbackSong,
-              source: "audio-transcription",
+              source: transcriptionLooksTelugu ? "audio-romanized" : "audio-transcription",
               syncMode: "transcribed",
               lines: assessedTranscription.lines
             };
 
             warnings.push(
-              "Lyrics were built directly from the uploaded audio so the final video can stay synced to the same file."
+              transcriptionLooksTelugu
+                ? "Telugu audio was listened to directly and shown in English-Telugu words so the final video can stay synced to the uploaded file."
+                : "Lyrics were built directly from the uploaded audio so the final video can stay synced to the same file."
             );
           }
         } else if (!lyricResult?.lines?.length) {
@@ -1371,7 +1402,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
     if (
       shouldRomanizeTeluguLyrics(
         {
-          title: uploadedTitle,
+          title: `${uploadedTitle} ${preferTeluguRomanizedTranscription ? "telugu" : ""}`,
           channelTitle: "Uploaded audio"
         },
         lyricResult
