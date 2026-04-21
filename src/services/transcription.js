@@ -366,6 +366,21 @@ function parseWhisperWords(filePath, durationSeconds) {
   return words.filter((word) => word.text && word.end > word.start);
 }
 
+function readWhisperMetadata(filePath) {
+  try {
+    const payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return {
+      language: normalizeWhitespace(payload?.language || ""),
+      task: normalizeWhitespace(payload?.task || "")
+    };
+  } catch {
+    return {
+      language: "",
+      task: ""
+    };
+  }
+}
+
 function normalizeTranscriptWordEntries(rawWords = [], segmentStart = 0, segmentEnd = 0) {
   return (Array.isArray(rawWords) ? rawWords : [])
     .map((word) => {
