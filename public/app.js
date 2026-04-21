@@ -1780,6 +1780,18 @@ function updateLyricPreviewBackground() {
   renderLyricPositionStatus();
 }
 
+function getLyricPreviewDragPoint(event) {
+  const touch = event?.touches?.[0] || event?.changedTouches?.[0];
+  const clientX = Number(touch?.clientX ?? event?.clientX);
+  const clientY = Number(touch?.clientY ?? event?.clientY);
+
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return null;
+  }
+
+  return { clientX, clientY };
+}
+
 function handleLyricPreviewPointerDown(event) {
   if (!previewLinesShell || !lyricPreviewDragSurface || lyricPreviewDragState) {
     return;
@@ -1789,24 +1801,24 @@ function handleLyricPreviewPointerDown(event) {
     return;
   }
 
+  const point = getLyricPreviewDragPoint(event);
   const stageRect = lyricPreviewDragSurface.getBoundingClientRect();
   const shellRect = previewLinesShell.getBoundingClientRect();
 
-  if (!stageRect.width || !stageRect.height || !shellRect.width || !shellRect.height) {
+  if (!point || !stageRect.width || !stageRect.height || !shellRect.width || !shellRect.height) {
     return;
   }
 
-  const targetInsideShell = previewLinesShell.contains(event.target);
+  const currentPlacement = getLyricPreviewPlacement();
 
   lyricPreviewDragState = {
-    pointerId: event.pointerId,
-    anchor: getLyricPreviewPlacement().anchor,
+    pointerId: event.pointerId ?? "touch",
     stageWidth: stageRect.width,
     stageHeight: stageRect.height,
-    shellWidth: shellRect.width,
-    shellHeight: shellRect.height,
-    pointerOffsetX: targetInsideShell ? event.clientX - shellRect.left : shellRect.width / 2,
-    pointerOffsetY: targetInsideShell ? event.clientY - shellRect.top : shellRect.height / 2,
+    startClientX: point.clientX,
+    startClientY: point.clientY,
+    startPlacementX: currentPlacement.x,
+    startPlacementY: currentPlacement.y,
     moved: false
   };
 
@@ -1828,34 +1840,29 @@ function handleLyricPreviewPointerDown(event) {
   }
   document.body.style.userSelect = "none";
   document.body.style.touchAction = "none";
-  event.preventDefault();
+  event.preventDefault?.();
 }
 
 function handleLyricPreviewPointerMove(event) {
-  if (!lyricPreviewDragState || event.pointerId !== lyricPreviewDragState.pointerId) {
+  if (!lyricPreviewDragState) {
     return;
   }
 
+  if (event.pointerId !== undefined && event.pointerId !== lyricPreviewDragState.pointerId) {
+    return;
+  }
+
+  const point = getLyricPreviewDragPoint(event);
   const stageRect = lyricPreviewDragSurface?.getBoundingClientRect();
 
-  if (!stageRect?.width || !stageRect?.height) {
+  if (!point || !stageRect?.width || !stageRect?.height) {
     return;
   }
 
-  const { shellWidth, shellHeight, pointerOffsetX, pointerOffsetY, anchor } = lyricPreviewDragState;
-  const maxLeft = Math.max(0, stageRect.width - shellWidth);
-  const maxTop = Math.max(0, stageRect.height - shellHeight);
-  const shellLeft = Math.min(maxLeft, Math.max(0, event.clientX - stageRect.left - pointerOffsetX));
-  const shellTop = Math.min(maxTop, Math.max(0, event.clientY - stageRect.top - pointerOffsetY));
-  const anchorX =
-    anchor === "left"
-      ? shellLeft
-      : anchor === "right"
-        ? shellLeft + shellWidth
-        : shellLeft + shellWidth / 2;
-  const anchorY = shellTop + shellHeight / 2;
-  let nextX = clampPreviewPlacement(anchorX / Math.max(1, stageRect.width));
-  let nextY = clampPreviewPlacement(anchorY / Math.max(1, stageRect.height));
+  const deltaX = (point.clientX - lyricPreviewDragState.startClientX) / Math.max(1, stageRect.width);
+  const deltaY = (point.clientY - lyricPreviewDragState.startClientY) / Math.max(1, stageRect.height);
+  let nextX = clampPreviewPlacement(lyricPreviewDragState.startPlacementX + deltaX, 0.06, 0.94);
+  let nextY = clampPreviewPlacement(lyricPreviewDragState.startPlacementY + deltaY, 0.08, 0.92);
 
   // Match the mobile-story editor feel: softly snap near the center guide.
   if (Math.abs(nextX - 0.5) <= 0.025) {
@@ -1881,10 +1888,16 @@ function handleLyricPreviewPointerMove(event) {
     lyricPreviewDragState.moved = true;
     setLyricPreviewCustomPosition(nextPosition);
   }
+
+  event.preventDefault?.();
 }
 
 function finishLyricPreviewDrag(event) {
-  if (!lyricPreviewDragState || event.pointerId !== lyricPreviewDragState.pointerId) {
+  if (!lyricPreviewDragState) {
+    return;
+  }
+
+  if (event?.pointerId !== undefined && event.pointerId !== lyricPreviewDragState.pointerId) {
     return;
   }
 
@@ -1892,7 +1905,7 @@ function finishLyricPreviewDrag(event) {
   lyricStylePreview?.classList.remove("is-snapped-x", "is-snapped-y");
   previewLinesShell?.classList.remove("is-dragging");
   try {
-    previewLinesShell?.releasePointerCapture?.(event.pointerId);
+    previewLinesShell?.releasePointerCapture?.(event?.pointerId);
   } catch {
     // Ignore release errors when the browser did not grant capture.
   }
@@ -4548,6 +4561,8 @@ if (neonGlowInput) {
 }
 lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
+lyricPreviewDragSurface?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
+previewLinesShell?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
@@ -4645,6 +4660,9 @@ window.addEventListener("resize", () => {
 window.addEventListener("pointermove", handleLyricPreviewPointerMove);
 window.addEventListener("pointerup", finishLyricPreviewDrag);
 window.addEventListener("pointercancel", finishLyricPreviewDrag);
+window.addEventListener("touchmove", handleLyricPreviewPointerMove, { passive: false });
+window.addEventListener("touchend", finishLyricPreviewDrag);
+window.addEventListener("touchcancel", finishLyricPreviewDrag);
 lyricPositionResetButton?.addEventListener("click", () => {
   resetLyricPreviewPosition();
 });
