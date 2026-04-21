@@ -2753,6 +2753,22 @@ button {
     gap: 14px;
   }
 
+  .background-controls > .upload-field:nth-child(-n+3) {
+    grid-column: 1 / -1;
+  }
+
+  .background-controls > .format-field:nth-child(4),
+  .background-controls > .format-field:nth-child(5),
+  .background-controls > .format-field:nth-child(6),
+  .background-controls > .style-tuning-card:nth-child(7),
+  .background-controls > .format-field:nth-child(8),
+  .background-controls > .style-tuning-card:nth-child(9) {
+    grid-column: span 1;
+    min-height: 0;
+    padding: 12px;
+    border-radius: 22px;
+  }
+
   .background-controls .input-label {
     min-height: 0;
   }
