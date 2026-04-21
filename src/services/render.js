@@ -2583,11 +2583,15 @@ async function cleanupRetryArtifacts(renderDirectory) {
 
 function sanitizeLyricLines(lines = [], fallbackDuration = 0) {
   const sanitized = lines
-    .map((line) => ({
-      text: normalizeWhitespace(line?.text || ""),
-      start: Math.max(0, Number(line?.start || 0)),
-      duration: Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line?.duration || 0))
-    }))
+    .map((line) => {
+      const explicitDuration = Number(line?.duration || 0);
+      return {
+        text: normalizeWhitespace(line?.text || ""),
+        start: Math.max(0, Number(line?.start || 0)),
+        duration: explicitDuration > 0 ? Math.max(MIN_LYRIC_DURATION_SECONDS, explicitDuration) : 0,
+        hasExplicitDuration: explicitDuration > 0
+      };
+    })
     .filter((line) => line.text && !/^\[[^\]]+\]$/.test(line.text))
     .sort((left, right) => left.start - right.start);
 
@@ -2595,11 +2599,25 @@ function sanitizeLyricLines(lines = [], fallbackDuration = 0) {
     const currentLine = sanitized[index];
     const nextLine = sanitized[index + 1];
 
-    if (nextLine) {
-      currentLine.duration = Math.max(MIN_LYRIC_DURATION_SECONDS, nextLine.start - currentLine.start);
-    } else if (fallbackDuration) {
-      currentLine.duration = Math.max(MIN_LYRIC_DURATION_SECONDS, fallbackDuration - currentLine.start);
+    const boundaryDuration = nextLine
+      ? Number(nextLine.start || 0) - currentLine.start
+      : fallbackDuration
+        ? Number(fallbackDuration || 0) - currentLine.start
+        : 0;
+
+    if (boundaryDuration > 0) {
+      if (currentLine.hasExplicitDuration) {
+        const safeBoundary = Math.max(0.12, boundaryDuration - LYRIC_TRANSITION_GAP_SECONDS);
+        const minimumDuration = Math.min(MIN_LYRIC_DURATION_SECONDS, safeBoundary);
+        currentLine.duration = clamp(currentLine.duration, minimumDuration, safeBoundary);
+      } else {
+        currentLine.duration = Math.max(MIN_LYRIC_DURATION_SECONDS, boundaryDuration);
+      }
+    } else if (!currentLine.hasExplicitDuration) {
+      currentLine.duration = MIN_LYRIC_DURATION_SECONDS;
     }
+
+    delete currentLine.hasExplicitDuration;
   }
 
   return sanitized;
@@ -3970,7 +3988,7 @@ function getLyricOffsetSeconds(syncMode = "none", options = {}) {
   }
 
   if (syncMode === "transcribed") {
-    return teluguRomanized ? -0.28 : 0.03;
+    return teluguRomanized ? -0.34 : -0.14;
   }
 
   return LYRIC_AUDIO_OFFSET_SECONDS;
