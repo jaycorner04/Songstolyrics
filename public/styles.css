@@ -3104,6 +3104,7 @@ button {
   .hero-copy {
     display: flex;
     gap: 10px;
+    order: 2;
   }
 
   .hero-copy > :not(.hero-preview-card) {
@@ -3114,6 +3115,7 @@ button {
     width: 100%;
     min-width: 0;
     gap: 10px;
+    order: 1;
   }
 
   .converter-card,
