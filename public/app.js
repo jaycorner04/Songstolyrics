@@ -1827,7 +1827,7 @@ function handleLyricPreviewPointerDown(event) {
 
   lyricPreviewDragState = {
     pointerId: event.pointerId ?? (event.type === "mousedown" ? "mouse" : "touch"),
-    inputType: event.type === "mousedown" ? "mouse" : event.type?.startsWith("touch") ? "touch" : "pointer",
+    inputType: event.pointerType || (event.type === "mousedown" ? "mouse" : event.type?.startsWith("touch") ? "touch" : "pointer"),
     stageWidth: stageRect.width,
     stageHeight: stageRect.height,
     startClientX: point.clientX,
@@ -1867,11 +1867,11 @@ function handleLyricPreviewPointerMove(event) {
     return;
   }
 
-  if (event.type === "mousemove" && lyricPreviewDragState.inputType !== "mouse") {
+  if (event.type === "mousemove" && !["mouse", "pointer"].includes(lyricPreviewDragState.inputType)) {
     return;
   }
 
-  if (event.type === "touchmove" && lyricPreviewDragState.inputType !== "touch") {
+  if (event.type === "touchmove" && !["touch", "pointer"].includes(lyricPreviewDragState.inputType)) {
     return;
   }
 
@@ -1924,11 +1924,11 @@ function finishLyricPreviewDrag(event) {
     return;
   }
 
-  if (event?.type === "mouseup" && lyricPreviewDragState.inputType !== "mouse") {
+  if (event?.type === "mouseup" && !["mouse", "pointer"].includes(lyricPreviewDragState.inputType)) {
     return;
   }
 
-  if ((event?.type === "touchend" || event?.type === "touchcancel") && lyricPreviewDragState.inputType !== "touch") {
+  if ((event?.type === "touchend" || event?.type === "touchcancel") && !["touch", "pointer"].includes(lyricPreviewDragState.inputType)) {
     return;
   }
 
