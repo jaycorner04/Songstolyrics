@@ -1664,10 +1664,16 @@ function updateLyricPreviewPlacement(styleValue = lyricStyleInput?.value || "aut
   }
 
   const placement = getLyricPreviewPlacement(styleValue);
-  lyricStylePreview.style.setProperty("--preview-lyrics-x", `${(placement.x * 100).toFixed(2)}%`);
-  lyricStylePreview.style.setProperty("--preview-lyrics-y", `${(placement.y * 100).toFixed(2)}%`);
-  lyricStylePreview.style.setProperty("--preview-shell-translate-x", getLyricPreviewAnchorTranslateX(placement.anchor));
+  const left = `${(placement.x * 100).toFixed(2)}%`;
+  const top = `${(placement.y * 100).toFixed(2)}%`;
+  const translateX = getLyricPreviewAnchorTranslateX(placement.anchor);
+  lyricStylePreview.style.setProperty("--preview-lyrics-x", left);
+  lyricStylePreview.style.setProperty("--preview-lyrics-y", top);
+  lyricStylePreview.style.setProperty("--preview-shell-translate-x", translateX);
   lyricStylePreview.style.setProperty("--preview-shell-translate-y", "-50%");
+  previewLinesShell.style.left = left;
+  previewLinesShell.style.top = top;
+  previewLinesShell.style.transform = `translate(${translateX}, -50%)`;
   previewLinesShell.dataset.anchor = placement.anchor;
 }
 
@@ -1792,12 +1798,20 @@ function getLyricPreviewDragPoint(event) {
   return { clientX, clientY };
 }
 
+function isPrimaryMouseButton(event) {
+  return event?.type === "mousedown" ? event.button === 0 : true;
+}
+
 function handleLyricPreviewPointerDown(event) {
   if (!previewLinesShell || !lyricPreviewDragSurface || lyricPreviewDragState) {
     return;
   }
 
   if (event.pointerType === "mouse" && event.button !== 0) {
+    return;
+  }
+
+  if (!isPrimaryMouseButton(event)) {
     return;
   }
 
@@ -1812,7 +1826,8 @@ function handleLyricPreviewPointerDown(event) {
   const currentPlacement = getLyricPreviewPlacement();
 
   lyricPreviewDragState = {
-    pointerId: event.pointerId ?? "touch",
+    pointerId: event.pointerId ?? (event.type === "mousedown" ? "mouse" : "touch"),
+    inputType: event.type === "mousedown" ? "mouse" : event.type?.startsWith("touch") ? "touch" : "pointer",
     stageWidth: stageRect.width,
     stageHeight: stageRect.height,
     startClientX: point.clientX,
@@ -1849,6 +1864,14 @@ function handleLyricPreviewPointerMove(event) {
   }
 
   if (event.pointerId !== undefined && event.pointerId !== lyricPreviewDragState.pointerId) {
+    return;
+  }
+
+  if (event.type === "mousemove" && lyricPreviewDragState.inputType !== "mouse") {
+    return;
+  }
+
+  if (event.type === "touchmove" && lyricPreviewDragState.inputType !== "touch") {
     return;
   }
 
@@ -1898,6 +1921,14 @@ function finishLyricPreviewDrag(event) {
   }
 
   if (event?.pointerId !== undefined && event.pointerId !== lyricPreviewDragState.pointerId) {
+    return;
+  }
+
+  if (event?.type === "mouseup" && lyricPreviewDragState.inputType !== "mouse") {
+    return;
+  }
+
+  if ((event?.type === "touchend" || event?.type === "touchcancel") && lyricPreviewDragState.inputType !== "touch") {
     return;
   }
 
@@ -4563,6 +4594,8 @@ lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPoint
 previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 lyricPreviewDragSurface?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
 previewLinesShell?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
+lyricPreviewDragSurface?.addEventListener("mousedown", handleLyricPreviewPointerDown);
+previewLinesShell?.addEventListener("mousedown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
 changeUploadedImagesButton.addEventListener("click", () => backgroundImagesInput.click());
@@ -4663,6 +4696,8 @@ window.addEventListener("pointercancel", finishLyricPreviewDrag);
 window.addEventListener("touchmove", handleLyricPreviewPointerMove, { passive: false });
 window.addEventListener("touchend", finishLyricPreviewDrag);
 window.addEventListener("touchcancel", finishLyricPreviewDrag);
+window.addEventListener("mousemove", handleLyricPreviewPointerMove);
+window.addEventListener("mouseup", finishLyricPreviewDrag);
 lyricPositionResetButton?.addEventListener("click", () => {
   resetLyricPreviewPosition();
 });
