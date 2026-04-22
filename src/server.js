@@ -1313,6 +1313,8 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
           {
             audioInputPath: audioFile.path,
             preview: true,
+            filename: audioFile.originalname || originalName || "",
+            title: fallbackSong.title || uploadedTitle || "",
             timeoutMs: 120000,
             downloadTimeoutMs: 15000,
             ...(preferTeluguRomanizedTranscription

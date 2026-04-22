@@ -13,6 +13,7 @@ const MODEL_NAME = process.env.WHISPER_MODEL || "base";
 const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
+const TELUGU_CONTENT_HINT_PATTERN = /telugu|mamdi|meena|konala|tollywood/i;
 
 function normalizeWhitespace(value = "") {
   return value.replace(/\s+/g, " ").trim();
@@ -20,6 +21,32 @@ function normalizeWhitespace(value = "") {
 
 function toVideoUrl(videoId) {
   return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+function hasTeluguContentHint(options = {}) {
+  return TELUGU_CONTENT_HINT_PATTERN.test(
+    `${options?.title || ""} ${options?.filename || ""}`
+  );
+}
+
+function resolveWhisperOptions(options = {}) {
+  const teluguContentDetected = hasTeluguContentHint(options);
+  const task = teluguContentDetected
+    ? "transcribe"
+    : options.task === "translate"
+      ? "translate"
+      : "transcribe";
+  const language = teluguContentDetected
+    ? "te"
+    : normalizeWhitespace(options.language || "");
+
+  return {
+    task,
+    language,
+    fasterWhisperLanguage: language && language.toLowerCase() !== "auto" ? language : "",
+    openAiWhisperLanguage: language || "auto",
+    teluguContentDetected
+  };
 }
 
 async function runCommand(command, args, options = {}) {
@@ -618,8 +645,7 @@ function isLikelyTranscriptGarbage(text) {
 }
 
 async function transcribeWithFasterWhisper(audioPath, outputPath, options = {}) {
-  const task = options.task === "translate" ? "translate" : "transcribe";
-  const language = normalizeWhitespace(options.language || "");
+  const { task, fasterWhisperLanguage } = resolveWhisperOptions(options);
   const modelName = normalizeWhitespace(options.modelName || MODEL_NAME) || MODEL_NAME;
   const beamSize = Math.max(1, Number(options.beamSize || (options.preview ? 1 : 5)) || 1);
   const conditionOnPreviousText = options.conditionOnPreviousText !== false;
@@ -684,7 +710,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
       outputPath,
       modelName,
       task,
-      language,
+      fasterWhisperLanguage,
       String(beamSize),
       conditionOnPreviousText ? "1" : "0",
       vadFilter ? "1" : "0"
@@ -696,8 +722,7 @@ with open(output_path, "w", encoding="utf-8") as handle:
 }
 
 async function transcribeWithOpenAiWhisper(audioPath, outputDirectory, options = {}) {
-  const task = options.task === "translate" ? "translate" : "transcribe";
-  const language = normalizeWhitespace(options.language || "");
+  const { task, openAiWhisperLanguage } = resolveWhisperOptions(options);
   const modelName = normalizeWhitespace(options.modelName || MODEL_NAME) || MODEL_NAME;
   const beamSize = Math.max(1, Number(options.beamSize || (options.preview ? 1 : 5)) || 1);
   const args = [
@@ -718,9 +743,7 @@ async function transcribeWithOpenAiWhisper(audioPath, outputDirectory, options =
     outputDirectory
   ];
 
-  if (language) {
-    args.push("--language", language);
-  }
+  args.push("--language", openAiWhisperLanguage);
 
   await runCommand(
     "python",
@@ -744,9 +767,15 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
     normalizedOptions.modelName = PREVIEW_MODEL_NAME;
   }
 
+  const resolvedWhisperOptions = resolveWhisperOptions(normalizedOptions);
+  normalizedOptions.task = resolvedWhisperOptions.task;
+  if (resolvedWhisperOptions.language) {
+    normalizedOptions.language = resolvedWhisperOptions.language;
+  }
+
   const audioPath = await downloadAudioWithOptions(videoId, outputDirectory, normalizedOptions);
   const audioDurationSeconds = await probeAudioDurationSeconds(audioPath);
-  const transcriptionMode = normalizedOptions.task === "translate" ? "translate" : "transcribe";
+  const transcriptionMode = resolvedWhisperOptions.task;
   const outputPath = path.join(outputDirectory, `${transcriptionMode}-transcript.json`);
   const effectiveDurationSeconds = audioDurationSeconds || durationSeconds;
 
