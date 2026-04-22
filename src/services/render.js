@@ -6529,15 +6529,24 @@ async function renderVideo(
     await fsp.unlink(outputVideoPath);
   } catch {}
 
-  const inputArgs = [
-    "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    backgroundManifestPath
-  ];
+  const backgroundVideoInputPath = `${options.backgroundVideoInputPath || ""}`;
+  const inputArgs = backgroundVideoInputPath
+    ? [
+        "-y",
+        "-stream_loop",
+        "-1",
+        "-i",
+        backgroundVideoInputPath
+      ]
+    : [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        backgroundManifestPath
+      ];
 
   emojiAssetEntries.forEach((entry) => {
     inputArgs.push("-i", entry.filePath);
@@ -7922,6 +7931,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       !uploadedBackgroundPaths.length;
     let backgroundPaths;
     let manifestPath = path.join(renderDirectory, "backgrounds.concat");
+    let movingBackgroundInputPath = "";
     let backgroundManifestPrepared = false;
     let backgroundMode = isAudioOnlyProject
       ? "safe-fallback"
@@ -7976,6 +7986,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           renderProfile
         );
         manifestPath = movingBackgroundManifest.manifestPath;
+        movingBackgroundInputPath = movingBackgroundManifest.filePath;
         backgroundManifestPrepared = true;
       } else if (uploadedBackgroundPaths.length) {
         backgroundPaths = await createUploadedBackgroundPlates(
@@ -8010,6 +8021,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         `Background preparation hit an error (${summarizeErrorMessage(error)}), so the render switched to safe generated backgrounds.`
       );
       backgroundMode = "safe-fallback";
+      movingBackgroundInputPath = "";
       backgroundManifestPrepared = false;
       backgroundPaths = await createEmergencyBackgroundPlates(
         job,
@@ -8100,7 +8112,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           emojiOverlays: subtitleBuild.emojiOverlays,
           emojiAssetEntries,
           fontsDirRelative,
-          renderProfile
+          renderProfile,
+          backgroundVideoInputPath: movingBackgroundInputPath
         }
       );
     } catch (error) {
@@ -8213,7 +8226,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 emojiOverlays: subtitleBuild.emojiOverlays,
                 emojiAssetEntries,
                 fontsDirRelative,
-                renderProfile
+                renderProfile,
+                backgroundVideoInputPath: movingBackgroundInputPath
               }
             );
             renderNotes.push("Emergency fallback render completed successfully.");
@@ -8244,13 +8258,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 progressStart: 0.56,
                 progressSpan: 0.4,
                 filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative, renderProfile),
-                forceSoftwareEncoder: true,
-                emojiOverlays: subtitleBuild.emojiOverlays,
-                emojiAssetEntries,
-                fontsDirRelative,
-                renderProfile
-              }
-            );
+              forceSoftwareEncoder: true,
+              emojiOverlays: subtitleBuild.emojiOverlays,
+              emojiAssetEntries,
+              fontsDirRelative,
+              renderProfile,
+              backgroundVideoInputPath: movingBackgroundInputPath
+            }
+          );
             renderNotes.push("Solid fallback render completed successfully after the background concat path failed.");
           }
         }
