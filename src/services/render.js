@@ -1931,7 +1931,7 @@ function limitLyricLines(lines = [], durationSeconds) {
 function applyFinalLyricTimingMode(lines = [], durationSeconds = 0) {
   const isShortVideo = Number(durationSeconds || 0) < 90;
   const minimumDisplaySeconds = isShortVideo ? 1.5 : 2.5;
-  const maximumDisplaySeconds = isShortVideo ? 4.0 : 5.0;
+  const maximumDisplaySeconds = isShortVideo ? 4.0 : 6.0;
   const preRollSeconds = isShortVideo ? 0 : 0.1;
 
   return limitLyricLines(

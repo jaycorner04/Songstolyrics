@@ -779,7 +779,9 @@ async function transcribeWithOpenAiWhisper(audioPath, outputDirectory, options =
 async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds, options = {}) {
   const outputDirectory = path.join(renderDirectory, "transcription");
   const normalizedOptions = {
-    ...options
+    ...options,
+    videoId,
+    durationSeconds
   };
 
   if (normalizedOptions.preview && !normalizedOptions.modelName) {
