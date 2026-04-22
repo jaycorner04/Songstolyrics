@@ -1288,6 +1288,11 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         12000,
         unavailableLyricResult
       );
+  if (filenameLooksGenerated) {
+    warnings.push(
+      "This looks like a generated lyric-video upload, so the preview ignored the old filename lyrics and will use the uploaded audio as the source of truth."
+    );
+  }
   const matchedReferenceLyrics =
     Array.isArray(lyricResult?.lines) &&
     lyricResult.lines.length >= 4 &&
@@ -1392,11 +1397,6 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
             "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
-          );
-        } else if (filenameLooksGenerated) {
-          lyricResult = unavailableLyricResult;
-          warnings.push(
-            "This looks like a generated lyric-video upload, so the preview ignored the old filename lyrics and will use the uploaded audio as the source of truth."
           );
         }
       } catch (error) {
