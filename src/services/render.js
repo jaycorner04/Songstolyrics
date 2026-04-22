@@ -5693,6 +5693,10 @@ function resolveUploadedAudioExtension(upload = {}) {
   return ".mp3";
 }
 
+function isGeneratedUploadFilename(value = "") {
+  return /^upload-[a-z0-9]+-[a-z0-9]+-\d+-/i.test(path.parse(`${value || ""}`).name);
+}
+
 async function saveUploadedBackgrounds(payload, renderDirectory) {
   const uploads = Array.isArray(payload.customBackgrounds)
     ? payload.customBackgrounds.slice(0, MAX_UPLOADED_BACKGROUNDS)
@@ -6783,6 +6787,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       });
 
       const effectiveOptions = buildAdaptiveTranscriptionOptions(options, adaptiveProfile);
+      const shouldForceTeluguUploadedAudio =
+        Boolean(payload?.customAudioUpload) &&
+        (isGeneratedUploadFilename(payload?.title) ||
+          isGeneratedUploadFilename(payload?.customAudioUpload?.name) ||
+          isGeneratedUploadFilename(payload?.customAudioUpload?.originalName));
       const localAudioInputPath =
         typeof audioUrl === "string" &&
         audioUrl &&
@@ -6796,6 +6805,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         durationSeconds,
         {
           ...effectiveOptions,
+          ...(shouldForceTeluguUploadedAudio
+            ? {
+                task: "transcribe",
+                language: "te"
+              }
+            : {}),
           audioInputPath: localAudioInputPath
         }
       );

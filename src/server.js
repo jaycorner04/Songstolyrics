@@ -1316,6 +1316,8 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       },
       lyricResult
     );
+  const shouldForceTeluguUploadTranscription =
+    preferTeluguRomanizedTranscription || filenameLooksGenerated;
   let transcriptPreviewLines = [];
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
@@ -1334,7 +1336,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
             title: fallbackSong.title || uploadedTitle || "",
             timeoutMs: 120000,
             downloadTimeoutMs: 15000,
-            ...(preferTeluguRomanizedTranscription
+            ...(shouldForceTeluguUploadTranscription
               ? {
                   task: "transcribe",
                   language: "te"
@@ -1344,7 +1346,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         );
         const allowMatchedFilenameLyrics = !filenameLooksGenerated;
         const transcriptionLooksTelugu =
-          preferTeluguRomanizedTranscription ||
+          shouldForceTeluguUploadTranscription ||
           String(transcription?.language || "").toLowerCase().startsWith("te") ||
           containsTeluguScript(
             Array.isArray(transcription?.lines)
@@ -1400,7 +1402,9 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
           }
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
-            "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
+            shouldForceTeluguUploadTranscription
+              ? "The uploaded audio was checked as Telugu, but Whisper could not recover enough lyric words from this file."
+              : "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
           );
         }
       } catch (error) {
