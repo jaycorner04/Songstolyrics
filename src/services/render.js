@@ -1928,22 +1928,34 @@ function limitLyricLines(lines = [], durationSeconds) {
     .filter((line) => line.duration > 0);
 }
 
-function applyFinalLyricTimingMode(lines = [], durationSeconds = 0) {
+function applyFinalLyricTimingMode(lines = [], durationSeconds = 0, options = {}) {
   const isShortVideo = Number(durationSeconds || 0) < 90;
+  const isTeluguRomanized = Boolean(options.teluguRomanized);
   const minimumDisplaySeconds = isShortVideo ? 1.5 : 2.5;
-  const maximumDisplaySeconds = isShortVideo ? 4.0 : 6.0;
+  const maximumDisplaySeconds = isTeluguRomanized
+    ? (isShortVideo ? 7.0 : 12.0)
+    : (isShortVideo ? 4.5 : 7.0);
   const preRollSeconds = isShortVideo ? 0 : 0.1;
+  const transitionGapSeconds = isTeluguRomanized ? 0.03 : 0.06;
 
   return limitLyricLines(
     lines.map((line, index) => {
       const originalStart = Math.max(0, Number(line?.start || 0));
-      const nextStart = Number(lines[index + 1]?.start ?? (originalStart + (isShortVideo ? 4 : 6)));
-      const naturalDuration = Math.max(0.18, nextStart - originalStart);
-      const start = Math.max(0, Number(line?.start || 0) - preRollSeconds);
-      const duration = Math.max(
-        minimumDisplaySeconds,
-        Math.min(naturalDuration, maximumDisplaySeconds)
+      const hasNextLine = Boolean(lines[index + 1]);
+      const nextStart = Number(lines[index + 1]?.start ?? 0);
+      const measuredDuration = Math.max(0.18, Number(line?.duration || 0));
+      const fallbackDuration = isShortVideo ? 4 : 6;
+      const nextBoundaryDuration =
+        hasNextLine && nextStart > originalStart
+          ? Math.max(0.18, nextStart - originalStart - transitionGapSeconds)
+          : fallbackDuration;
+      const vocalDuration = Math.max(measuredDuration, nextBoundaryDuration);
+      const start = Math.max(0, originalStart - preRollSeconds);
+      const end = Math.min(
+        Number(durationSeconds || 0) || originalStart + maximumDisplaySeconds,
+        originalStart + Math.max(minimumDisplaySeconds, Math.min(vocalDuration, maximumDisplaySeconds))
       );
+      const duration = Math.max(minimumDisplaySeconds, end - start);
 
       return {
         ...line,
@@ -5719,8 +5731,9 @@ async function saveUploadedBackgrounds(payload, renderDirectory) {
 
 async function saveUploadedBackgroundVideo(payload, renderDirectory) {
   const uploadedVideo = payload.customBackgroundVideo;
+  const sourcePath = uploadedVideo?.filePath || uploadedVideo?.savedPath || uploadedVideo?.tempPath;
 
-  if (!uploadedVideo?.tempPath || !fs.existsSync(uploadedVideo.tempPath)) {
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
     return null;
   }
 
@@ -5729,11 +5742,19 @@ async function saveUploadedBackgroundVideo(payload, renderDirectory) {
     `uploaded-background-video${resolveUploadedVideoExtension(uploadedVideo)}`
   );
 
-  await fsp.copyFile(uploadedVideo.tempPath, targetPath);
+  if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
+    await fsp.copyFile(sourcePath, targetPath);
 
-  try {
-    await fsp.unlink(uploadedVideo.tempPath);
-  } catch {}
+    if (sourcePath === uploadedVideo.tempPath) {
+      try {
+        await fsp.unlink(uploadedVideo.tempPath);
+      } catch {}
+    }
+  }
+
+  uploadedVideo.tempPath = targetPath;
+  uploadedVideo.savedPath = targetPath;
+  uploadedVideo.filePath = targetPath;
 
   return {
     filePath: targetPath,
@@ -6574,10 +6595,14 @@ async function renderVideo(
     "-movflags",
     "+faststart",
     "-t",
-    String(durationSeconds),
-    "-shortest",
-    outputVideoPath
+    String(durationSeconds)
   ];
+
+  if (!backgroundVideoInputPath) {
+    args.push("-shortest");
+  }
+
+  args.push(outputVideoPath);
 
   await runCommand(ffmpegPath, args, {
     cwd: renderDirectory,
@@ -8051,11 +8076,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       selectedLyricStylePreset.key === "fulllength" ||
       selectedLyricStylePreset.key === "aa" ||
       selectedLyricStylePreset.key === "auto";
-    renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds);
+    renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds, {
+      teluguRomanized: shouldUseRomanizedTeluguLyrics
+    });
     renderNotes.push(
       Number(durationSeconds || 0) < 90
-        ? "Shorts lyric timing mode is active: lines use tight vocal starts with 1.5s minimum display time."
-        : "Long-video lyric timing mode is active: lines use synced lyric starts with 0.1s pre-roll and 2.5s minimum display time."
+        ? shouldUseRomanizedTeluguLyrics
+          ? "Shorts Telugu lyric timing mode is active: romanized lines use tight vocal starts and hold longer against the sung phrase."
+          : "Shorts lyric timing mode is active: lines use tight vocal starts with 1.5s minimum display time."
+        : shouldUseRomanizedTeluguLyrics
+          ? "Long-video Telugu lyric timing mode is active: romanized lines use synced vocal starts, 0.1s pre-roll, and longer phrase holds."
+          : "Long-video lyric timing mode is active: lines use synced lyric starts with 0.1s pre-roll and 2.5s minimum display time."
     );
     const contrastMap = await buildLyricContrastMap(renderLines, backgroundPaths, backgroundPlan);
     const placementMap = requiresPlacementAnalysis

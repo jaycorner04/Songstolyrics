@@ -1813,7 +1813,17 @@ function isPrimaryMouseButton(event) {
 }
 
 function isLyricPreviewDragHandle(event) {
-  return Boolean(event?.target?.closest?.("#preview-lines-shell"));
+  const target = event?.target;
+
+  if (target?.closest?.("#preview-lines-shell")) {
+    return true;
+  }
+
+  if (target && previewLinesShell?.contains?.(target)) {
+    return true;
+  }
+
+  return Boolean(event?.composedPath?.().some((node) => node === previewLinesShell));
 }
 
 function handleLyricPreviewPointerDown(event) {
@@ -1866,11 +1876,12 @@ function handleLyricPreviewPointerDown(event) {
 
   lyricStylePreview?.classList.add("is-user-positioning");
   previewLinesShell.classList.add("is-dragging");
-  const captureTarget = event.currentTarget?.setPointerCapture ? event.currentTarget : previewLinesShell;
-  try {
-    captureTarget.setPointerCapture?.(event.pointerId);
-  } catch {
-    // Some mobile browsers only allow pointer capture on the direct touch target.
+  if (event.pointerId !== undefined) {
+    try {
+      previewLinesShell.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Some mobile browsers only allow pointer capture on the direct touch target.
+    }
   }
   document.body.style.userSelect = "none";
   event.preventDefault?.();
@@ -1953,10 +1964,12 @@ function finishLyricPreviewDrag(event) {
   lyricStylePreview?.classList.remove("is-user-positioning");
   lyricStylePreview?.classList.remove("is-snapped-x", "is-snapped-y");
   previewLinesShell?.classList.remove("is-dragging");
-  try {
-    previewLinesShell?.releasePointerCapture?.(event?.pointerId);
-  } catch {
-    // Ignore release errors when the browser did not grant capture.
+  if (event?.pointerId !== undefined) {
+    try {
+      previewLinesShell?.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Ignore release errors when the browser did not grant capture.
+    }
   }
   document.body.style.userSelect = lyricPreviewDragState.previousBodyUserSelect || "";
   const wasMoved = lyricPreviewDragState.moved;
@@ -4623,11 +4636,8 @@ if (neonGlowInput) {
     markRenderOutputStale("Glow settings changed. Render again to apply them to the output video.");
   });
 }
-lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
-lyricPreviewDragSurface?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
 previewLinesShell?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
-lyricPreviewDragSurface?.addEventListener("mousedown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("mousedown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("keydown", handleLyricPreviewKeyboardMove);
 changeBackgroundImagesButton.addEventListener("click", () => backgroundImagesInput.click());
