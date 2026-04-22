@@ -427,6 +427,10 @@ function romanizeLyricResultIfNeeded(lyricResult = {}) {
   };
 }
 
+function isGeneratedUploadFilename(value = "") {
+  return /^upload-[a-z0-9]+-[a-z0-9]+-\d+-/i.test(path.parse(`${value || ""}`).name);
+}
+
 function looksLikeDescriptionCreditLine(line = "") {
   const value = normalizeWhitespace(line.replace(/[|]+/g, " "));
 
@@ -1244,6 +1248,7 @@ async function withTimeout(promise, timeoutMs, fallbackValue) {
 async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
   const requestedTitle = normalizeWhitespace(requestBody?.title || "");
   const originalName = `${audioFile?.originalname || requestedTitle || "uploaded-audio"}`;
+  const filenameLooksGenerated = isGeneratedUploadFilename(originalName) || isGeneratedUploadFilename(requestedTitle);
   const uploadedTitle =
     requestedTitle ||
     normalizeWhitespace(path.parse(originalName).name.replace(/[_-]+/g, " ")) ||
@@ -1265,21 +1270,24 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
     `${videoId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   );
   const warnings = [];
-  let lyricResult = await withTimeout(
-    buildLyricsPayload({
-      rawTitle: rawLookupTitle,
-      channelTitle: "Uploaded audio",
-      durationSeconds: durationFromBody,
-      captionCues: []
-    }),
-    12000,
-    {
-      song: fallbackSong,
-      source: "unavailable",
-      syncMode: "none",
-      lines: []
-    }
-  );
+  const unavailableLyricResult = {
+    song: fallbackSong,
+    source: "unavailable",
+    syncMode: "none",
+    lines: []
+  };
+  let lyricResult = filenameLooksGenerated
+    ? unavailableLyricResult
+    : await withTimeout(
+        buildLyricsPayload({
+          rawTitle: rawLookupTitle,
+          channelTitle: "Uploaded audio",
+          durationSeconds: durationFromBody,
+          captionCues: []
+        }),
+        12000,
+        unavailableLyricResult
+      );
   const matchedReferenceLyrics =
     Array.isArray(lyricResult?.lines) &&
     lyricResult.lines.length >= 4 &&
@@ -1325,6 +1333,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
               : {})
           }
         );
+        const allowMatchedFilenameLyrics = !filenameLooksGenerated;
         const transcriptionLooksTelugu =
           preferTeluguRomanizedTranscription ||
           String(transcription?.language || "").toLowerCase().startsWith("te") ||
@@ -1355,7 +1364,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
             !["none", "transcribed"].includes(String(lyricResult?.syncMode || "").toLowerCase()) &&
             String(lyricResult?.source || "").toLowerCase() !== "unavailable";
 
-          if (hadNonAudioLyricSheet && matchedReferenceLyrics.length) {
+          if (allowMatchedFilenameLyrics && hadNonAudioLyricSheet && matchedReferenceLyrics.length) {
             lyricResult = {
               song: lyricResult?.song || fallbackSong,
               source: lyricResult?.source || "matched-lyrics",
@@ -1383,6 +1392,11 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         } else if (!lyricResult?.lines?.length) {
           warnings.push(
             "The uploaded audio transcript was too sparse for the preview, so the render step may rebuild safer timing directly from the file."
+          );
+        } else if (filenameLooksGenerated) {
+          lyricResult = unavailableLyricResult;
+          warnings.push(
+            "This looks like a generated lyric-video upload, so the preview ignored the old filename lyrics and will use the uploaded audio as the source of truth."
           );
         }
       } catch (error) {

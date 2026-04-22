@@ -31,11 +31,7 @@ function hasTeluguContentHint(options = {}) {
 
 function resolveWhisperOptions(options = {}) {
   const teluguContentDetected = hasTeluguContentHint(options);
-  const task = teluguContentDetected
-    ? "transcribe"
-    : options.task === "translate"
-      ? "translate"
-      : "transcribe";
+  const task = options.task === "translate" ? "translate" : "transcribe";
   const language = teluguContentDetected
     ? "te"
     : normalizeWhitespace(options.language || "");
