@@ -1705,9 +1705,38 @@ function renderLyricPositionStatus() {
 
   lyricPositionStatus.textContent = hasCustomPlacement
     ? `Custom lyric placement saved. The render will place the lyrics at ${positionText}.`
+    : lyricPreviewMoveMode
+      ? "Move mode is on. Touch and drag anywhere inside the live preview to place the lyrics."
     : backgroundReady
       ? "The uploaded background is previewing now. Drag the lyrics anywhere you want before rendering."
       : "Upload a background, then drag the live preview lyrics anywhere you want them to stay in the final render.";
+}
+
+function syncLyricPreviewMoveModeUi() {
+  lyricStylePreview?.classList.toggle("is-touch-move-mode", lyricPreviewMoveMode);
+  lyricPreviewDragSurface?.classList.toggle("is-touch-move-mode", lyricPreviewMoveMode);
+
+  if (lyricPreviewMoveButton) {
+    lyricPreviewMoveButton.classList.toggle("is-active", lyricPreviewMoveMode);
+    lyricPreviewMoveButton.setAttribute("aria-pressed", lyricPreviewMoveMode ? "true" : "false");
+    lyricPreviewMoveButton.textContent = lyricPreviewMoveMode ? "Moving on" : "Move lyrics";
+  }
+
+  renderLyricPositionStatus();
+}
+
+function setLyricPreviewMoveMode(enabled = false) {
+  lyricPreviewMoveMode = Boolean(enabled);
+  syncLyricPreviewMoveModeUi();
+}
+
+function toggleLyricPreviewMoveMode() {
+  setLyricPreviewMoveMode(!lyricPreviewMoveMode);
+  notifyLyricPreviewPositionChanged(
+    lyricPreviewMoveMode
+      ? "Move lyrics mode is on. Touch and drag inside the live preview to place the lyrics."
+      : "Move lyrics mode is off. Normal page scrolling is restored."
+  );
 }
 
 function setLyricPreviewCustomPosition(position = null) {
@@ -1815,6 +1844,10 @@ function isPrimaryMouseButton(event) {
 }
 
 function isLyricPreviewDragHandle(event) {
+  if (lyricPreviewMoveMode && lyricPreviewDragSurface?.contains?.(event?.target)) {
+    return !event?.target?.closest?.("button, input, select, textarea, a");
+  }
+
   const target = event?.target;
 
   if (target?.closest?.("#preview-lines-shell")) {
@@ -4638,6 +4671,13 @@ if (neonGlowInput) {
     markRenderOutputStale("Glow settings changed. Render again to apply them to the output video.");
   });
 }
+lyricPreviewMoveButton?.addEventListener("click", toggleLyricPreviewMoveMode);
+lyricPreviewMoveButton?.addEventListener("pointerdown", (event) => event.stopPropagation());
+lyricPreviewMoveButton?.addEventListener("touchstart", (event) => event.stopPropagation(), { passive: true });
+lyricPreviewMoveButton?.addEventListener("mousedown", (event) => event.stopPropagation());
+lyricPreviewDragSurface?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
+lyricPreviewDragSurface?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
+lyricPreviewDragSurface?.addEventListener("mousedown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("pointerdown", handleLyricPreviewPointerDown);
 previewLinesShell?.addEventListener("touchstart", handleLyricPreviewPointerDown, { passive: false });
 previewLinesShell?.addEventListener("mousedown", handleLyricPreviewPointerDown);
