@@ -2552,6 +2552,7 @@ function buildTranscriptionCacheKey(options = {}) {
   const language = normalizeWhitespace(options.language || "") || "auto";
   const modelName = normalizeWhitespace(options.modelName || "") || "default";
   const beamSize = Number(options.beamSize || 0) || "default";
+  const passName = normalizeWhitespace(options.passName || "") || "default";
   const previewMode = options.preview ? "preview" : "full";
   const vadMode =
     typeof options.vadFilter === "boolean"
@@ -2571,6 +2572,7 @@ function buildTranscriptionCacheKey(options = {}) {
     language,
     modelName,
     `beam-${beamSize}`,
+    passName,
     previewMode,
     vadMode,
     previousTextMode
@@ -3302,7 +3304,18 @@ function shouldRomanizeTeluguLyrics(lines = [], payload = {}) {
     .map((line) => line.text)
     .join(" ");
   const titleText = normalizeWhitespace(
-    `${payload?.title || ""} ${payload?.channelTitle || ""} ${payload?.song?.title || ""} ${payload?.song?.artist || ""}`
+    [
+      payload?.title,
+      payload?.channelTitle,
+      payload?.song?.title,
+      payload?.song?.artist,
+      payload?.filename,
+      payload?.videoId,
+      payload?.inputUrl,
+      payload?.customAudioUpload?.name,
+      payload?.customAudioUpload?.originalName,
+      payload?.customAudioUpload?.filename
+    ].filter(Boolean).join(" ")
   );
 
   if (containsTeluguScript(sampledText) || containsTeluguScript(titleText)) {
@@ -7073,7 +7086,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           let preservedUploadedIntroCount = 0;
           let useDirectUploadedTranscript = false;
 
-          if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds)) {
+          if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) || isUploadedAudioSource) {
             try {
               const fullUploadedTranscription = await getTranscription(
                 "Re-transcribing uploaded audio for full-song lyric timing",
@@ -7081,10 +7094,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 shouldUseRomanizedTeluguLyrics
                   ? {
                       task: "transcribe",
-                      language: "te"
+                      language: "te",
+                      passName: "uploaded-final-full"
                     }
                   : {
-                      task: "transcribe"
+                      task: "transcribe",
+                      passName: "uploaded-final-full"
                     }
               );
               const refreshedUploadedTranscriptLines = limitLyricLines(
@@ -7108,7 +7123,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
               if (
                 refreshedUploadedTranscriptLines.length &&
-                (refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
+                (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+                  refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
                   refreshedTranscriptMetrics.meaningfulCount > currentTranscriptMetrics.meaningfulCount + 2 ||
                   refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08)
               ) {
