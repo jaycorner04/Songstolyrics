@@ -8185,7 +8185,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               emojiOverlays: subtitleBuild.emojiOverlays,
               emojiAssetEntries,
               fontsDirRelative,
-              renderProfile
+              renderProfile,
+              backgroundVideoInputPath: movingBackgroundInputPath
             }
           );
           renderNotes.push("Backup render recovery completed successfully while preserving the prepared background scenes.");
@@ -8226,8 +8227,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 emojiOverlays: subtitleBuild.emojiOverlays,
                 emojiAssetEntries,
                 fontsDirRelative,
-                renderProfile,
-                backgroundVideoInputPath: movingBackgroundInputPath
+                renderProfile
               }
             );
             renderNotes.push("Emergency fallback render completed successfully.");
@@ -8258,14 +8258,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 progressStart: 0.56,
                 progressSpan: 0.4,
                 filterGraph: createSafeFilterScript(videoSize, subtitleBuild.emojiOverlays, emojiAssetEntries, fontsDirRelative, renderProfile),
-              forceSoftwareEncoder: true,
-              emojiOverlays: subtitleBuild.emojiOverlays,
-              emojiAssetEntries,
-              fontsDirRelative,
-              renderProfile,
-              backgroundVideoInputPath: movingBackgroundInputPath
-            }
-          );
+                forceSoftwareEncoder: true,
+                emojiOverlays: subtitleBuild.emojiOverlays,
+                emojiAssetEntries,
+                fontsDirRelative,
+                renderProfile
+              }
+            );
             renderNotes.push("Solid fallback render completed successfully after the background concat path failed.");
           }
         }
