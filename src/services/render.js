@@ -7995,24 +7995,30 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         backgroundPaths = fastManifest.slideshowPlan.map((scene) => scene.path);
         backgroundMode = "fast-comic";
       } else if (uploadedBackgroundVideo) {
-        backgroundPaths = await createUploadedVideoBackgroundPlates(
-          job,
-          uploadedBackgroundVideo,
-          renderDirectory,
-          backgroundPlan,
-          videoSize
-        );
-        const movingBackgroundManifest = await createUploadedVideoBackgroundManifest(
-          job,
-          uploadedBackgroundVideo,
-          renderDirectory,
-          durationSeconds,
-          videoSize,
-          renderProfile
-        );
-        manifestPath = movingBackgroundManifest.manifestPath;
-        movingBackgroundInputPath = movingBackgroundManifest.filePath;
+        movingBackgroundInputPath = uploadedBackgroundVideo.filePath;
         backgroundManifestPrepared = true;
+
+        try {
+          backgroundPaths = await createUploadedVideoBackgroundPlates(
+            job,
+            uploadedBackgroundVideo,
+            renderDirectory,
+            backgroundPlan,
+            videoSize
+          );
+        } catch (error) {
+          renderNotes.push(
+            `Uploaded background video frame sampling failed (${summarizeErrorMessage(error)}), so readability analysis used safe frames while the actual uploaded video stayed as the render background.`
+          );
+          backgroundPaths = await createEmergencyBackgroundPlates(
+            job,
+            renderDirectory,
+            backgroundPlan,
+            videoSize,
+            "Preparing readability fallback frames",
+            0.38
+          );
+        }
       } else if (uploadedBackgroundPaths.length) {
         backgroundPaths = await createUploadedBackgroundPlates(
           job,
@@ -8181,7 +8187,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 emojiOverlays: subtitleBuild.emojiOverlays,
                 emojiAssetEntries,
                 fontsDirRelative,
-                renderProfile
+                renderProfile,
+                backgroundVideoInputPath: movingBackgroundInputPath
               }
             );
           }
