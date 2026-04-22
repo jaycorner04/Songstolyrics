@@ -5960,6 +5960,75 @@ async function createEmergencyBackgroundPlates(
   return outputPaths;
 }
 
+async function createUploadedVideoBackgroundManifest(
+  job,
+  uploadedVideo,
+  renderDirectory,
+  durationSeconds,
+  videoSize,
+  renderProfile = {}
+) {
+  updateJob(job, {
+    stage: "Preparing moving uploaded background video",
+    progress: 0.42
+  });
+
+  const outputPath = path.join(renderDirectory, "uploaded-background-loop.mp4");
+  const manifestPath = path.join(renderDirectory, "backgrounds-uploaded-video.concat");
+  const outputFps = Math.max(12, Number(renderProfile.outputFps || OUTPUT_FPS) || OUTPUT_FPS);
+
+  await runCommand(
+    ffmpegPath,
+    [
+      "-y",
+      "-stream_loop",
+      "-1",
+      "-i",
+      uploadedVideo.filePath,
+      "-t",
+      String(getRenderDurationSeconds(durationSeconds)),
+      "-an",
+      "-vf",
+      [
+        `scale=${videoSize.width}:${videoSize.height}:force_original_aspect_ratio=increase`,
+        `crop=${videoSize.width}:${videoSize.height}`,
+        "setsar=1",
+        `fps=${outputFps}`,
+        "eq=contrast=1.04:saturation=0.96:brightness=-0.03",
+        "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.16:t=fill",
+        "format=yuv420p"
+      ].join(","),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "20",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      cwd: renderDirectory,
+      timeoutMs: RENDER_TIMEOUT_MS
+    }
+  );
+
+  await fsp.writeFile(
+    manifestPath,
+    createConcatManifest(
+      [outputPath],
+      [{ start: 0, end: Math.max(0.2, getRenderDurationSeconds(durationSeconds)) }]
+    ),
+    "utf8"
+  );
+
+  return {
+    manifestPath,
+    filePath: outputPath
+  };
+}
+
 async function createSolidColorBackgroundManifest(
   job,
   renderDirectory,
@@ -7853,6 +7922,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       !uploadedBackgroundPaths.length;
     let backgroundPaths;
     let manifestPath = path.join(renderDirectory, "backgrounds.concat");
+    let backgroundManifestPrepared = false;
     let backgroundMode = isAudioOnlyProject
       ? "safe-fallback"
       : uploadedBackgroundVideo
@@ -7897,6 +7967,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           backgroundPlan,
           videoSize
         );
+        const movingBackgroundManifest = await createUploadedVideoBackgroundManifest(
+          job,
+          uploadedBackgroundVideo,
+          renderDirectory,
+          durationSeconds,
+          videoSize,
+          renderProfile
+        );
+        manifestPath = movingBackgroundManifest.manifestPath;
+        backgroundManifestPrepared = true;
       } else if (uploadedBackgroundPaths.length) {
         backgroundPaths = await createUploadedBackgroundPlates(
           job,
@@ -7930,6 +8010,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         `Background preparation hit an error (${summarizeErrorMessage(error)}), so the render switched to safe generated backgrounds.`
       );
       backgroundMode = "safe-fallback";
+      backgroundManifestPrepared = false;
       backgroundPaths = await createEmergencyBackgroundPlates(
         job,
         renderDirectory,
@@ -7938,12 +8019,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       );
     }
 
-    if (backgroundMode !== "fast-comic") {
+    if (backgroundMode !== "fast-comic" && !backgroundManifestPrepared) {
       await fsp.writeFile(manifestPath, createConcatManifest(backgroundPaths, backgroundPlan), "utf8");
     }
     renderNotes.push(
       backgroundMode === "uploaded-video"
-        ? `${backgroundPaths.length} background scenes were sampled from your uploaded background video.`
+        ? `Your uploaded background video will play behind the lyrics; ${backgroundPaths.length} sampled frames are only used for lyric readability analysis.`
         : backgroundMode === "uploaded-images"
           ? `${backgroundPaths.length} background scenes were built from your uploaded images.`
           : backgroundMode === "fast-comic"
