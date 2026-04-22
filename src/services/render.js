@@ -8082,15 +8082,26 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       selectedLyricStylePreset.key === "fulllength" ||
       selectedLyricStylePreset.key === "aa" ||
       selectedLyricStylePreset.key === "auto";
+    const finalSubtitleRomanization = romanizeLyricLines(renderLines);
+    const finalUsesRomanizedTeluguLyrics =
+      shouldUseRomanizedTeluguLyrics || finalSubtitleRomanization.changed;
+
+    if (finalSubtitleRomanization.changed) {
+      renderLines = limitLyricLines(finalSubtitleRomanization.lines, durationSeconds);
+      renderNotes.push(
+        "Final subtitle text still contained Indic script, so it was converted to English letters before ASS generation to prevent missing-glyph boxes."
+      );
+    }
+
     renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds, {
-      teluguRomanized: shouldUseRomanizedTeluguLyrics
+      teluguRomanized: finalUsesRomanizedTeluguLyrics
     });
     renderNotes.push(
       Number(durationSeconds || 0) < 90
-        ? shouldUseRomanizedTeluguLyrics
+        ? finalUsesRomanizedTeluguLyrics
           ? "Shorts Telugu lyric timing mode is active: romanized lines use tight vocal starts and hold longer against the sung phrase."
           : "Shorts lyric timing mode is active: lines use tight vocal starts with 1.5s minimum display time."
-        : shouldUseRomanizedTeluguLyrics
+        : finalUsesRomanizedTeluguLyrics
           ? "Long-video Telugu lyric timing mode is active: romanized lines use synced vocal starts, 0.1s pre-roll, and longer phrase holds."
           : "Long-video lyric timing mode is active: lines use synced lyric starts with 0.1s pre-roll and 2.5s minimum display time."
     );
