@@ -4,8 +4,11 @@ function normalizeWhitespace(value = "") {
 
 const TELUGU_SCRIPT_PATTERN = /[\u0C00-\u0C7F]/u;
 const DEVANAGARI_SCRIPT_PATTERN = /[\u0900-\u097F]/u;
+const TELUGU_CONTEXT_HINT_PATTERN =
+  /\b(telugu|tollywood|andhra|telangana|hyderabad|vijayawada|visakhapatnam|vizag|tirupati|radhe\s*shyam|pushpa|rrr|baahubali|bahubali|salaar|kalki|prabhas|allu\s*arjun|ram\s*charan|ntr|mahesh\s*babu|pawan\s*kalyan|chiranjeevi|pooja\s*hegde|poojahegde|samantha|rashmika|anirudh|devi\s*sri\s*prasad|dsp|thaman|yuvan\s*shankar\s*raja|sid\s*sriram|harini\s*ivaturi)\b/i;
 const ROMANIZED_TELUGU_HINT_PATTERN =
-  /\b(telugu|tollywood|andhra|telangana|radhe\s*shyam|prabhas|pooja\s*hegde|poojahegde|ee\s*raathale|raathale|raatale|evaroo|veerevaroo|kalavani|preemikulaa|vidipooni|yaatrikulaa|daarokatee|dikkulee|oopirokateelee|shvaasala|nishvaasaala|dooboochulee|vadhine|vadine|mardhal|maradhal|maradalu|yemi|emi|cheyamanduve|cheyyamanduve|cheyya|nuvvu|ninnu|neeku|naaku|nenu|nanne|neeve|raave|rara|pilla|bangaram|prema|manasu|chinni|chinna|amma|ayya|annayya|akka|bava|enduke|enduko|ledu|kadha|kada)\b/i;
+  /\b(raathale|raatale|evaroo|evvaru|veerevaroo|kalavani|preemikulaa|prema|vidipooni|yaatrikulaa|daarokatee|dikkulee|oopirokateelee|shvaasala|nishvaasaala|dooboochulee|vadhine|vadine|mardhal|maradhal|maradalu|yemi|emi|emito|cheyamanduve|cheyyamanduve|cheyya|nuvvu|nuvve|ninnu|neeku|naaku|nenu|nanne|neeve|raave|rara|pilla|bangaram|manasu|manase|chinni|chinna|amma|ayya|annayya|akka|bava|enduke|enduko|ledu|kadha|kada|undaa|unna|vunna|aithe|aithey|premincha|premalo|kalalo|kannullo|gundello|maata|maatale|paata|paadana|choopule|choopullo|adugule|nadiche|velugu|vennela|jaabili|oohale|oohallo|thodu|needala|nesthama|pranam|praanam|gunde|hrudayam|malli|ila|elaa|alaa|ivaa|raavaa|povaa)\b/i;
+const ROMANIZED_TELUGU_ENDING_PATTERN = /(aa|ee|oo|aani|aale|ule|ulee|ale|alee|ani|eni|ina|ithe|aithe|undaa|unna|vunna|elaa|alaa|avaa|ivaa|raavaa|povaa)$/i;
 
 function buildIndicRomanizer({
   scriptPattern,
@@ -314,7 +317,28 @@ function containsIndicPhoneticScript(value = "") {
 }
 
 function containsRomanizedTeluguHint(value = "") {
-  return ROMANIZED_TELUGU_HINT_PATTERN.test(normalizeWhitespace(value));
+  const input = normalizeWhitespace(value);
+
+  if (!input) {
+    return false;
+  }
+
+  if (TELUGU_CONTEXT_HINT_PATTERN.test(input) || ROMANIZED_TELUGU_HINT_PATTERN.test(input)) {
+    return true;
+  }
+
+  const tokens = input
+    .toLowerCase()
+    .match(/[a-z]{3,}/g) || [];
+  const signalCount = tokens.reduce((count, token) => {
+    if (ROMANIZED_TELUGU_HINT_PATTERN.test(token) || ROMANIZED_TELUGU_ENDING_PATTERN.test(token)) {
+      return count + 1;
+    }
+
+    return count;
+  }, 0);
+
+  return signalCount >= 3 || (tokens.length >= 4 && signalCount >= 2 && /lyrics?|song|music/i.test(input));
 }
 
 function romanizeLyricLines(lines = []) {

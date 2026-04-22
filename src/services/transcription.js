@@ -6,6 +6,7 @@ const fsp = require("fs/promises");
 const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 const { resolveAudioInput } = require("./audio");
+const { containsRomanizedTeluguHint } = require("./telugu");
 const { buildYtDlpArgs, resolveCookieFilePath } = require("./ytdlp");
 
 const TRANSCRIPTION_TIMEOUT_MS = 8 * 60 * 1000;
@@ -14,7 +15,7 @@ const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
 const TELUGU_CONTENT_HINT_PATTERN =
-  /telugu|tollywood|andhra|telangana|mamdi|meena|konala|radhe\s*shyam|prabhas|pooja\s*hegde|poojahegde|ee\s*raathale|raathale|raatale|yuvan\s*shankar\s*raja|harini\s*ivaturi|\.te\b/i;
+  /telugu|tollywood|andhra|telangana|hyderabad|vijayawada|visakhapatnam|vizag|tirupati|mamdi|meena|konala|radhe\s*shyam|pushpa|rrr|baahubali|bahubali|salaar|kalki|prabhas|allu\s*arjun|ram\s*charan|ntr|mahesh\s*babu|pawan\s*kalyan|chiranjeevi|pooja\s*hegde|poojahegde|samantha|rashmika|anirudh|devi\s*sri\s*prasad|dsp|thaman|yuvan\s*shankar\s*raja|sid\s*sriram|harini\s*ivaturi|\.te\b/i;
 
 function normalizeWhitespace(value = "") {
   return value.replace(/\s+/g, " ").trim();
@@ -25,9 +26,8 @@ function toVideoUrl(videoId) {
 }
 
 function hasTeluguContentHint(options = {}) {
-  return TELUGU_CONTENT_HINT_PATTERN.test(
-    `${options?.title || ""} ${options?.filename || ""} ${options?.videoId || ""}`
-  );
+  const hintText = `${options?.title || ""} ${options?.filename || ""} ${options?.videoId || ""}`;
+  return TELUGU_CONTENT_HINT_PATTERN.test(hintText) || containsRomanizedTeluguHint(hintText);
 }
 
 function resolveWhisperOptions(options = {}) {

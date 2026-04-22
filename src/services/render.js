@@ -3297,7 +3297,7 @@ function shouldRomanizeTeluguLyrics(lines = [], payload = {}) {
     return true;
   }
 
-  if (containsRomanizedTeluguHint(titleText)) {
+  if (containsRomanizedTeluguHint(titleText) || containsRomanizedTeluguHint(sampledText)) {
     return true;
   }
 
