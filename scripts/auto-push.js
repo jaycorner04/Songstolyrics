@@ -8,6 +8,17 @@ const repoRoot = path.resolve(__dirname, "..");
 const stateDir = path.join(repoRoot, ".autopush");
 const pidFile = path.join(stateDir, "auto-push.pid");
 const debounceMs = Number(process.env.AUTO_PUSH_DEBOUNCE_MS || 15000);
+const autoDeployAfterPush = process.env.AUTO_DEPLOY_AFTER_PUSH !== "false";
+const autoDeploySshHost = process.env.AUTO_DEPLOY_REMOTE_HOST || process.env.LIVE_DEBUG_REMOTE_HOST || "15.206.23.118";
+const autoDeploySshUser = process.env.AUTO_DEPLOY_REMOTE_USER || process.env.LIVE_DEBUG_REMOTE_USER || "ec2-user";
+const autoDeployAppDir = process.env.AUTO_DEPLOY_APP_DIR || "/home/ec2-user/Songstolyrics";
+const autoDeployAppUrl = process.env.AUTO_DEPLOY_APP_URL || "http://127.0.0.1:3000";
+const autoDeploySshKeyPath =
+  process.env.AUTO_DEPLOY_SSH_KEY_PATH ||
+  process.env.SONG_TO_LYRICS_SSH_KEY_PATH ||
+  process.env.LIVE_DEBUG_SSH_KEY_PATH ||
+  path.join(process.env.USERPROFILE || "", "Downloads", "song-to-lyrics-key.pem");
+const autoDeployTimeoutMs = Number(process.env.AUTO_DEPLOY_TIMEOUT_MS || 15 * 60 * 1000);
 const ignoredPrefixes = [
   ".git/",
   ".autopush/",
@@ -53,6 +64,91 @@ function runGit(args, options = {}) {
       resolve((stdout || "").trim());
     });
   });
+}
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      {
+        cwd: repoRoot,
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: autoDeployTimeoutMs,
+        windowsHide: true,
+        ...options
+      },
+      (error, stdout, stderr) => {
+        const output = [stdout, stderr].filter(Boolean).join("\n").trim();
+
+        if (error) {
+          reject(new Error(output || error.message));
+          return;
+        }
+
+        resolve(output);
+      }
+    );
+  });
+}
+
+function shellQuote(value = "") {
+  return `'${`${value}`.replace(/'/g, `'\\''`)}'`;
+}
+
+function resolveSshCommand() {
+  if (process.env.AUTO_DEPLOY_SSH_EXE) {
+    return process.env.AUTO_DEPLOY_SSH_EXE;
+  }
+
+  const windowsSshPath = path.join(process.env.WINDIR || "", "System32", "OpenSSH", "ssh.exe");
+  return fs.existsSync(windowsSshPath) ? windowsSshPath : "ssh";
+}
+
+async function deployRemote(branch) {
+  if (!autoDeployAfterPush) {
+    log("auto deploy disabled by AUTO_DEPLOY_AFTER_PUSH=false");
+    return;
+  }
+
+  if (!autoDeploySshHost || !autoDeploySshUser || !autoDeployAppDir) {
+    log("auto deploy skipped because remote host, user, or app directory is not configured");
+    return;
+  }
+
+  if (!autoDeploySshKeyPath || !fs.existsSync(autoDeploySshKeyPath)) {
+    log(`auto deploy skipped because SSH key was not found at ${autoDeploySshKeyPath}`);
+    return;
+  }
+
+  const sshCommand = resolveSshCommand();
+  const remoteTarget = `${autoDeploySshUser}@${autoDeploySshHost}`;
+  const remoteCommand = [
+    "set -euo pipefail",
+    `export APP_URL=${shellQuote(autoDeployAppUrl)}`,
+    `export DEPLOY_BRANCH=${shellQuote(branch)}`,
+    `cd ${shellQuote(autoDeployAppDir)}`,
+    'git fetch origin "$DEPLOY_BRANCH"',
+    'git checkout "$DEPLOY_BRANCH"',
+    'git reset --hard "origin/$DEPLOY_BRANCH"',
+    "chmod +x scripts/deploy-remote.sh",
+    'APP_URL="$APP_URL" DEPLOY_BRANCH="$DEPLOY_BRANCH" ./scripts/deploy-remote.sh'
+  ].join("; ");
+
+  log(`deploying ${branch} to EC2 after push`);
+  await runCommand(sshCommand, [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ConnectTimeout=20",
+    "-i",
+    autoDeploySshKeyPath,
+    remoteTarget,
+    remoteCommand
+  ]);
+  log("EC2 deploy completed");
 }
 
 function processExists(pid) {
@@ -128,6 +224,7 @@ async function syncRepository(reason) {
     await runGit(["commit", "-m", commitMessage]);
     await runGit(["push", "origin", branch]);
     log(`committed and pushed changes after ${reason}`);
+    await deployRemote(branch);
   } catch (error) {
     log(`sync failed: ${error.message || error}`);
   } finally {
@@ -164,6 +261,7 @@ function startWatcher() {
 
   log(`watching ${repoRoot}`);
   log(`debounce ${debounceMs}ms`);
+  log(autoDeployAfterPush ? "auto deploy after push enabled" : "auto deploy after push disabled");
 
   fs.watch(repoRoot, { recursive: true }, (_eventType, filename) => {
     if (!filename) {
