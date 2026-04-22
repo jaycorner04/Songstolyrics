@@ -106,9 +106,13 @@ const renderUpload = multer({
   fileFilter(req, file, callback) {
     const fieldName = `${file.fieldname || ""}`;
     const mimeType = `${file.mimetype || ""}`;
+    const extension = path.extname(file.originalname || "").toLowerCase();
+    const looksLikeVideoFile = /^video\//i.test(mimeType) || /\.(mp4|mov|m4v|webm)$/i.test(extension);
+    const looksLikeAudioFile =
+      /^audio\//i.test(mimeType) || /\.(mp3|m4a|mp4|wav|aac|ogg|opus|webm|flac)$/i.test(extension);
 
     if (fieldName === "backgroundVideo") {
-      if (!/^video\//i.test(mimeType)) {
+      if (!looksLikeVideoFile) {
         callback(createError("Only video files can be uploaded as a background video.", 400));
         return;
       }
@@ -118,8 +122,8 @@ const renderUpload = multer({
     }
 
     if (fieldName === "audioFile" || fieldName === "audioFallback") {
-      if (!/^(audio|video)\//i.test(mimeType)) {
-        callback(createError("Only audio files can be uploaded as soundtrack audio.", 400));
+      if (!looksLikeAudioFile && !looksLikeVideoFile) {
+        callback(createError("Only audio or video files can be uploaded as soundtrack audio.", 400));
         return;
       }
 
@@ -1818,7 +1822,13 @@ app.post(
         ? body.customAudioUpload
         : null;
 
-    if (!renderLines.length && body?.title) {
+    const uploadedSourceLooksGenerated =
+      (String(body?.videoId || "").startsWith("upload-") || Boolean(audioFileUpload)) &&
+      (isGeneratedUploadFilename(body?.title) ||
+        isGeneratedUploadFilename(customAudioUploadMeta?.name) ||
+        isGeneratedUploadFilename(audioFileUpload?.originalname));
+
+    if (!renderLines.length && body?.title && !uploadedSourceLooksGenerated) {
       const lyricRetry = await withTimeout(
         buildLyricsPayload({
           rawTitle: body.title,

@@ -2908,24 +2908,24 @@ function readVideoFileMetadata(file) {
 function readAudioFileMetadata(file) {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
-    const audio = document.createElement("audio");
+    const media = /^video\//i.test(file.type || "") ? document.createElement("video") : document.createElement("audio");
 
-    audio.preload = "metadata";
-    audio.onloadedmetadata = () => {
+    media.preload = "metadata";
+    media.onloadedmetadata = () => {
       resolve({
         file,
         name: file.name,
-        duration: Number(audio.duration || 0),
+        duration: Number(media.duration || 0),
         size: Number(file.size || 0),
         mimeType: file.type || "",
         previewUrl: objectUrl
       });
     };
-    audio.onerror = () => {
+    media.onerror = () => {
       URL.revokeObjectURL(objectUrl);
       reject(new Error(`Could not read metadata from ${file.name}.`));
     };
-    audio.src = objectUrl;
+    media.src = objectUrl;
   });
 }
 

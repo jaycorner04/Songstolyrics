@@ -227,6 +227,14 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
       : await findReusableAudioFile(outputDirectory);
 
   if (existingAudioPath) {
+    if (options.audioInputPath && path.resolve(existingAudioPath) === path.resolve(options.audioInputPath)) {
+      return transcodeAudioSourceToWav(
+        existingAudioPath,
+        path.join(outputDirectory, "uploaded-audio.wav"),
+        Number(options.downloadTimeoutMs || 0) || TRANSCRIPTION_TIMEOUT_MS
+      );
+    }
+
     return existingAudioPath;
   }
 
