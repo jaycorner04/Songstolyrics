@@ -13,7 +13,7 @@ const MODEL_NAME = process.env.WHISPER_MODEL || "base";
 const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
-const TELUGU_CONTENT_HINT_PATTERN = /telugu|mamdi|meena|konala|tollywood/i;
+const TELUGU_CONTENT_HINT_PATTERN = /telugu|mamdi|meena|konala|tollywood|\.te\b/i;
 
 function normalizeWhitespace(value = "") {
   return value.replace(/\s+/g, " ").trim();
@@ -25,7 +25,7 @@ function toVideoUrl(videoId) {
 
 function hasTeluguContentHint(options = {}) {
   return TELUGU_CONTENT_HINT_PATTERN.test(
-    `${options?.title || ""} ${options?.filename || ""}`
+    `${options?.title || ""} ${options?.filename || ""} ${options?.videoId || ""}`
   );
 }
 
@@ -47,6 +47,25 @@ function resolveWhisperOptions(options = {}) {
     openAiWhisperLanguage: language || "auto",
     teluguContentDetected
   };
+}
+
+function filterPreVocalNoiseLines(lines = [], options = {}, fallbackDurationSeconds = 0) {
+  const audioDuration = Number(options?.durationSeconds || fallbackDurationSeconds || 0);
+  const earlyThreshold = audioDuration > 0 ? audioDuration * 0.2 : 0;
+
+  if (!earlyThreshold) {
+    return lines;
+  }
+
+  return lines.filter((line) => {
+    const wordCount = normalizeWhitespace(line?.text || "").split(/\s+/).filter(Boolean).length;
+
+    if (Number(line?.start || 0) < earlyThreshold && wordCount < 3) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 async function runCommand(command, args, options = {}) {
@@ -781,7 +800,14 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
 
   if (await hasPythonModule("faster_whisper")) {
     await transcribeWithFasterWhisper(audioPath, outputPath, normalizedOptions);
-    const lines = parseWhisperJson(outputPath, effectiveDurationSeconds);
+    const lines = filterPreVocalNoiseLines(
+      parseWhisperJson(outputPath, effectiveDurationSeconds),
+      {
+        ...normalizedOptions,
+        durationSeconds: effectiveDurationSeconds
+      },
+      effectiveDurationSeconds
+    );
     const words = parseWhisperWords(outputPath, effectiveDurationSeconds);
     const metadata = readWhisperMetadata(outputPath);
     return {
@@ -798,7 +824,14 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
 
   if (await hasPythonModule("whisper")) {
     const whisperJsonPath = await transcribeWithOpenAiWhisper(audioPath, outputDirectory, normalizedOptions);
-    const lines = parseWhisperJson(whisperJsonPath, effectiveDurationSeconds);
+    const lines = filterPreVocalNoiseLines(
+      parseWhisperJson(whisperJsonPath, effectiveDurationSeconds),
+      {
+        ...normalizedOptions,
+        durationSeconds: effectiveDurationSeconds
+      },
+      effectiveDurationSeconds
+    );
     const words = parseWhisperWords(whisperJsonPath, effectiveDurationSeconds);
     const metadata = readWhisperMetadata(whisperJsonPath);
     return {

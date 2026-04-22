@@ -1930,16 +1930,19 @@ function limitLyricLines(lines = [], durationSeconds) {
 
 function applyFinalLyricTimingMode(lines = [], durationSeconds = 0) {
   const isShortVideo = Number(durationSeconds || 0) < 90;
-  const minimumDisplaySeconds = isShortVideo ? 1.0 : 2.0;
+  const minimumDisplaySeconds = isShortVideo ? 1.5 : 2.5;
   const maximumDisplaySeconds = isShortVideo ? 4.0 : 5.0;
   const preRollSeconds = isShortVideo ? 0 : 0.1;
 
   return limitLyricLines(
-    lines.map((line) => {
+    lines.map((line, index) => {
+      const originalStart = Math.max(0, Number(line?.start || 0));
+      const nextStart = Number(lines[index + 1]?.start ?? (originalStart + (isShortVideo ? 4 : 6)));
+      const naturalDuration = Math.max(0.18, nextStart - originalStart);
       const start = Math.max(0, Number(line?.start || 0) - preRollSeconds);
       const duration = Math.max(
         minimumDisplaySeconds,
-        Math.min(Number(line?.duration || minimumDisplaySeconds), maximumDisplaySeconds)
+        Math.min(naturalDuration, maximumDisplaySeconds)
       );
 
       return {
@@ -7943,8 +7946,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds);
     renderNotes.push(
       Number(durationSeconds || 0) < 90
-        ? "Shorts lyric timing mode is active: lines use tight vocal starts with 1.0s minimum display time."
-        : "Long-video lyric timing mode is active: lines use synced lyric starts with 0.1s pre-roll and 2.0s minimum display time."
+        ? "Shorts lyric timing mode is active: lines use tight vocal starts with 1.5s minimum display time."
+        : "Long-video lyric timing mode is active: lines use synced lyric starts with 0.1s pre-roll and 2.5s minimum display time."
     );
     const contrastMap = await buildLyricContrastMap(renderLines, backgroundPaths, backgroundPlan);
     const placementMap = requiresPlacementAnalysis
