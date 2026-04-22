@@ -8216,7 +8216,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       {
         emojiAssetMap,
         contrastMap,
-        placementMap
+        placementMap,
+        teluguRomanized: finalUsesRomanizedTeluguLyrics
       }
     );
     const emojiAssetEntries = [...new Set(subtitleBuild.emojiOverlays.map((overlay) => overlay.emoji))]
