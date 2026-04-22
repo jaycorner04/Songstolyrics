@@ -722,7 +722,7 @@ button {
   min-height: 264px;
   margin-top: 14px;
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -1467,6 +1467,19 @@ button {
   background: rgba(127, 232, 255, 0.12);
   border-color: rgba(127, 232, 255, 0.32);
   color: #d7f8ff;
+}
+
+.inline-audio-status {
+  margin-top: 9px;
+  padding: 9px 11px;
+  border: 1px solid rgba(127, 232, 255, 0.24);
+  border-radius: 12px;
+  background: rgba(127, 232, 255, 0.08);
+  color: #d7f8ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .input-row button:disabled,
