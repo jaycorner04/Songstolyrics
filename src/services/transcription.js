@@ -13,7 +13,8 @@ const MODEL_NAME = process.env.WHISPER_MODEL || "base";
 const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
-const TELUGU_CONTENT_HINT_PATTERN = /telugu|mamdi|meena|konala|tollywood|\.te\b/i;
+const TELUGU_CONTENT_HINT_PATTERN =
+  /telugu|tollywood|andhra|telangana|mamdi|meena|konala|radhe\s*shyam|prabhas|pooja\s*hegde|poojahegde|ee\s*raathale|raathale|raatale|yuvan\s*shankar\s*raja|harini\s*ivaturi|\.te\b/i;
 
 function normalizeWhitespace(value = "") {
   return value.replace(/\s+/g, " ").trim();

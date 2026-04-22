@@ -5,7 +5,7 @@ function normalizeWhitespace(value = "") {
 const TELUGU_SCRIPT_PATTERN = /[\u0C00-\u0C7F]/u;
 const DEVANAGARI_SCRIPT_PATTERN = /[\u0900-\u097F]/u;
 const ROMANIZED_TELUGU_HINT_PATTERN =
-  /\b(telugu|tollywood|andhra|telangana|vadhine|vadine|mardhal|maradhal|maradalu|yemi|emi|cheyamanduve|cheyyamanduve|cheyya|nuvvu|ninnu|neeku|naaku|nenu|nanne|neeve|raave|rara|pilla|bangaram|prema|manasu|chinni|chinna|amma|ayya|annayya|akka|bava|enduke|enduko|ledu|kadha|kada)\b/i;
+  /\b(telugu|tollywood|andhra|telangana|radhe\s*shyam|prabhas|pooja\s*hegde|poojahegde|ee\s*raathale|raathale|raatale|evaroo|veerevaroo|kalavani|preemikulaa|vidipooni|yaatrikulaa|daarokatee|dikkulee|oopirokateelee|shvaasala|nishvaasaala|dooboochulee|vadhine|vadine|mardhal|maradhal|maradalu|yemi|emi|cheyamanduve|cheyyamanduve|cheyya|nuvvu|ninnu|neeku|naaku|nenu|nanne|neeve|raave|rara|pilla|bangaram|prema|manasu|chinni|chinna|amma|ayya|annayya|akka|bava|enduke|enduko|ledu|kadha|kada)\b/i;
 
 function buildIndicRomanizer({
   scriptPattern,
