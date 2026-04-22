@@ -3354,6 +3354,29 @@ function shouldPreferAudioTranscription(lines = [], durationSeconds = 0, syncMod
   return false;
 }
 
+function shouldRefreshUploadedAudioTranscript(lines = [], durationSeconds = 0) {
+  const metrics = getSourceTimingMetrics(lines, durationSeconds);
+  const duration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
+
+  if (!metrics.lineCount) {
+    return true;
+  }
+
+  if (duration >= 60 && metrics.lastEnd < duration * 0.55) {
+    return true;
+  }
+
+  if (duration >= 60 && metrics.maxGapSeconds > Math.max(18, duration * 0.18)) {
+    return true;
+  }
+
+  if (duration >= 60 && metrics.meaningfulCount < Math.max(5, Math.round(duration / 42))) {
+    return true;
+  }
+
+  return shouldPreferAudioTranscription(lines, durationSeconds, "transcribed");
+}
+
 function getSourceTimingMetrics(lines = [], durationSeconds = 0) {
   const sanitizedLines = sanitizeLyricLines(lines, durationSeconds);
   const coverageMetrics = getLyricCoverageMetrics(sanitizedLines, durationSeconds);
@@ -4249,6 +4272,7 @@ function createAssSubtitleContent(
   const emojiAssetMap = options.emojiAssetMap || {};
   const contrastMap = Array.isArray(options.contrastMap) ? options.contrastMap : [];
   const placementMap = Array.isArray(options.placementMap) ? options.placementMap : [];
+  const isTeluguRomanizedRender = Boolean(options.teluguRomanized);
   const lyricStylePreset = resolveLyricStylePreset(payload?.lyricStyle || "auto");
   const lyricFontPreset = resolveLyricFontPreset(payload?.lyricFont || "arial");
   const renderFontPreset = lyricFontPreset;
@@ -4297,14 +4321,20 @@ function createAssSubtitleContent(
     const nextLine = lines[index + 1];
     const rawEndSeconds = resolveLyricDisplayEnd(line, nextLine, durationSeconds);
     const contrastStyle = contrastMap[index] || getContrastStyleForBrightness(128);
-    const selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
+    let selectedVariant = getSelectedStyleVariant(lyricStylePreset, line, index);
+    if (isTeluguRomanizedRender && lyricStylePreset.key === "auto") {
+      selectedVariant = "minimal";
+    }
     const accentHex = customStyleColorHex || contrastStyle.accentHex || LYRIC_ACCENT_COLORS[index % LYRIC_ACCENT_COLORS.length];
     const primaryTextHex = customStyleColorHex || contrastStyle.textHex;
     const displayText = transformLyricTextForPreset(line.text, lyricStylePreset);
-    const effectiveWrapLength =
+    let effectiveWrapLength =
       selectedVariant === "fulllength"
         ? (isPortrait ? Math.min(wrapLength, 8) : Math.min(wrapLength, 10))
         : wrapLength;
+    if (isTeluguRomanizedRender) {
+      effectiveWrapLength = Math.max(effectiveWrapLength, isPortrait ? 22 : 30);
+    }
     const plainWrappedText = wrapText(displayText, effectiveWrapLength);
     const textLines = `${plainWrappedText}`.split("\\N").filter(Boolean);
     const lineCount = textLines.length || 1;
@@ -4436,11 +4466,15 @@ function createAssSubtitleContent(
       MAX_LYRIC_HOLD_SECONDS,
       Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0), 0.9)
     );
+    const desiredEndSeconds = Math.max(rawEndSeconds, minimumReadableEndSeconds);
+    const timelineEndLimit = durationSeconds ? Number(durationSeconds) : desiredEndSeconds;
+    const nextLineStartSeconds = nextLine ? Math.max(dialogueStartSeconds + 0.24, Number(nextLine.start || 0)) : null;
+    const overlapSafeEndLimit = nextLineStartSeconds
+      ? Math.max(dialogueStartSeconds + 0.24, nextLineStartSeconds - 0.06)
+      : timelineEndLimit;
+    const endLimit = Math.min(timelineEndLimit, overlapSafeEndLimit);
     const endSeconds = roundTimeValue(
-      Math.min(
-        durationSeconds ? Math.max(durationSeconds, minimumReadableEndSeconds) : minimumReadableEndSeconds,
-        Math.max(rawEndSeconds, minimumReadableEndSeconds)
-      )
+      Math.max(dialogueStartSeconds + 0.24, Math.min(desiredEndSeconds, endLimit))
     );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
     motionProfile = buildAdaptiveLyricMotionProfile(
@@ -7028,7 +7062,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const uploadedAudioTranscriptSourceLines = transcriptTimingLines.length
             ? transcriptTimingLines
             : renderLines;
-          const stabilizedUploadedTranscriptLines = limitLyricLines(
+          let stabilizedUploadedTranscriptLines = limitLyricLines(
             sanitizeLyricLines(
               smoothTranscribedLyricGaps(uploadedAudioTranscriptSourceLines, durationSeconds),
               durationSeconds
@@ -7037,8 +7071,63 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           );
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
           let preservedUploadedIntroCount = 0;
+          let useDirectUploadedTranscript = false;
 
-          if (sourceLyricReferenceLines.length) {
+          if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds)) {
+            try {
+              const fullUploadedTranscription = await getTranscription(
+                "Re-transcribing uploaded audio for full-song lyric timing",
+                0.18,
+                shouldUseRomanizedTeluguLyrics
+                  ? {
+                      task: "transcribe",
+                      language: "te"
+                    }
+                  : {
+                      task: "transcribe"
+                    }
+              );
+              const refreshedUploadedTranscriptLines = limitLyricLines(
+                sanitizeLyricLines(
+                  smoothTranscribedLyricGaps(
+                    romanizeLyricLines(fullUploadedTranscription.lines).lines,
+                    durationSeconds
+                  ),
+                  durationSeconds
+                ),
+                durationSeconds
+              );
+              const currentTranscriptMetrics = getSourceTimingMetrics(
+                stabilizedUploadedTranscriptLines,
+                durationSeconds
+              );
+              const refreshedTranscriptMetrics = getSourceTimingMetrics(
+                refreshedUploadedTranscriptLines,
+                durationSeconds
+              );
+
+              if (
+                refreshedUploadedTranscriptLines.length &&
+                (refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
+                  refreshedTranscriptMetrics.meaningfulCount > currentTranscriptMetrics.meaningfulCount + 2 ||
+                  refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08)
+              ) {
+                stabilizedUploadedTranscriptLines = refreshedUploadedTranscriptLines;
+                uploadedAudioRenderLines = refreshedUploadedTranscriptLines;
+                renderLinesAreTranscriptDerived = true;
+                useDirectUploadedTranscript = true;
+                renderNotes.push(
+                  "Uploaded-audio preview lyrics covered only the opening section, so the render re-transcribed the full song and used that timing."
+                );
+              }
+            } catch (error) {
+              renderNotes.push(
+                `Full uploaded-audio transcription refresh was unavailable (${summarizeErrorMessage(error)}), so the render kept the preview transcript timing.`
+              );
+            }
+          }
+
+          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const wordTimedReferenceLyrics = alignLyricLinesToWordTimeline(
               sourceLyricReferenceLines,
               stabilizedUploadedTranscriptLines,
@@ -7131,7 +7220,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
-          if (sourceLyricReferenceLines.length) {
+          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const firstTranscriptMeaningfulLine = stabilizedUploadedTranscriptLines.find(
               (line) => getAlignmentWords(line.text).length >= 2
             );
@@ -7162,7 +7251,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
-          if (sourceLyricReferenceLines.length) {
+          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const tightenedUploadedLyrics = tightenIntroLyricTiming(
               uploadedAudioRenderLines,
               stabilizedUploadedTranscriptLines,
@@ -7198,7 +7287,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           }
 
           const uploadedAudioLyricOffsetSeconds =
-            sourceLyricReferenceLines.length && !renderLinesAreTranscriptDerived ? 0 : lyricOffsetSeconds;
+            sourceLyricReferenceLines.length && !renderLinesAreTranscriptDerived && !useDirectUploadedTranscript
+              ? 0
+              : lyricOffsetSeconds;
 
           renderLines = limitLyricLines(
             applyLyricOffset(uploadedAudioRenderLines, uploadedAudioLyricOffsetSeconds, durationSeconds),
@@ -7206,9 +7297,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           );
           renderLineSyncSource = "transcribed";
           renderLinesAreTranscriptDerived =
-            !sourceLyricReferenceLines.length || uploadedAudioRenderLines === stabilizedUploadedTranscriptLines;
+            useDirectUploadedTranscript ||
+            !sourceLyricReferenceLines.length ||
+            uploadedAudioRenderLines === stabilizedUploadedTranscriptLines;
           renderNotes.push(
-            "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
+            useDirectUploadedTranscript
+              ? "The render used full uploaded-audio transcription timing across the song."
+              : "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
           );
         } else {
           try {
