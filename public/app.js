@@ -2632,7 +2632,7 @@ function renderLocalDebugStatus({
     parts.push(`Refreshed ${lastRefreshedAt}`);
   }
 
-  localDebugStatus.textContent = parts.join(" • ");
+  localDebugStatus.textContent = parts.join(" | ");
 }
 
 async function refreshLocalDebugPanel(options = {}) {

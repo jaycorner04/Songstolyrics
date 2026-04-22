@@ -38,7 +38,8 @@ const {
   deleteLocalDebugEvent,
   getLocalDebugEvents,
   isLocalDebugRequest,
-  recordLocalDebugEvent
+  recordLocalDebugEvent,
+  subscribeLocalDebugEvents
 } = require("./services/local-debug");
 const uploadedAudioJobs = require("./services/jobStore");
 const {
@@ -162,9 +163,22 @@ function asyncHandler(handler) {
 async function sendIndexHtml(req, res) {
   const html = await fsp.readFile(publicIndexPath, "utf8");
   const localDebugBaseUrl = `${process.env.LOCAL_DEBUG_BASE_URL || ""}`.trim().replace(/\/+$/g, "");
+  const shouldShowLocalDebug = Boolean(localDebugBaseUrl) || isLocalDebugRequest(req);
   const renderedHtml = html
     .replace(/__BUILD_MARKER__/g, buildMarker)
-    .replace(/__LOCAL_DEBUG_BASE_URL__/g, localDebugBaseUrl);
+    .replace(/__LOCAL_DEBUG_BASE_URL__/g, localDebugBaseUrl)
+    .replace(
+      /<section id="local-debug-shell" class="local-debug-shell" hidden>/,
+      shouldShowLocalDebug
+        ? '<section id="local-debug-shell" class="local-debug-shell">'
+        : '<section id="local-debug-shell" class="local-debug-shell" hidden>'
+    )
+    .replace(
+      /<div id="local-debug-card" class="local-debug-card" hidden>/,
+      shouldShowLocalDebug
+        ? '<div id="local-debug-card" class="local-debug-card">'
+        : '<div id="local-debug-card" class="local-debug-card" hidden>'
+    );
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   res.set("Expires", "0");
@@ -1504,6 +1518,43 @@ app.get("/api/local-debug/errors", (req, res) => {
   res.json({
     enabled: true,
     entries: getLocalDebugEvents()
+  });
+});
+
+app.get("/api/local-debug/stream", (req, res) => {
+  if (!isLocalDebugRequest(req)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    "Content-Type": "text/event-stream",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  res.flushHeaders?.();
+
+  const sendEvent = (eventName, payload = {}) => {
+    res.write(`event: ${eventName}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  const heartbeat = setInterval(() => {
+    sendEvent("ping", { now: new Date().toISOString() });
+  }, 25000);
+  const unsubscribe = subscribeLocalDebugEvents((payload = {}) => {
+    sendEvent("update", payload);
+  });
+
+  sendEvent("ready", {
+    entryCount: getLocalDebugEvents().length,
+    now: new Date().toISOString()
+  });
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
   });
 });
 

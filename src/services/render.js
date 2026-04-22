@@ -4409,6 +4409,11 @@ function createAssSubtitleContent(
     const centerY = Math.round(
       clamp(targetCenterY, safeMargin + boxHeight / 2, videoSize.height - safeMargin - boxHeight / 2)
     );
+    let motionProfile = buildAdaptiveLyricMotionProfile(
+      line,
+      selectedVariant,
+      textLines
+    );
     const dialogueStartSeconds = roundTimeValue(
       Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
     );
@@ -4423,7 +4428,7 @@ function createAssSubtitleContent(
       )
     );
     const lineDurationSeconds = Math.max(0.18, endSeconds - line.start);
-    const motionProfile = buildAdaptiveLyricMotionProfile(
+    motionProfile = buildAdaptiveLyricMotionProfile(
       {
         ...line,
         duration: lineDurationSeconds

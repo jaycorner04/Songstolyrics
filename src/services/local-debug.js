@@ -15,11 +15,25 @@ function normalizeWhitespace(value = "") {
 }
 
 function normalizeHost(value = "") {
-  return `${value || ""}`
-    .trim()
-    .replace(/^\[|\]$/g, "")
-    .split(":")[0]
-    .toLowerCase();
+  const raw = `${value || ""}`.trim().toLowerCase();
+
+  if (!raw) {
+    return "";
+  }
+
+  if (raw.startsWith("[") && raw.includes("]")) {
+    return raw.slice(1, raw.indexOf("]"));
+  }
+
+  if (raw.startsWith("::ffff:")) {
+    return raw.slice("::ffff:".length).split(":")[0];
+  }
+
+  if (raw === "::1" || raw.includes(":")) {
+    return raw;
+  }
+
+  return raw.split(":")[0];
 }
 
 function extractOriginHost(value = "") {
@@ -38,7 +52,7 @@ function extractOriginHost(value = "") {
 
 function isLoopbackHost(value = "") {
   const host = normalizeHost(value);
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0:0:0:0:0:0:0:1";
 }
 
 function isLocalDebugRequest(req = {}) {
