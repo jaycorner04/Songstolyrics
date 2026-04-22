@@ -1,6 +1,7 @@
 const form = document.getElementById("converter-form");
 const urlInput = document.getElementById("video-url");
 const uploadAudioInlineButton = document.getElementById("upload-audio-inline-button");
+const inlineAudioStatus = document.getElementById("inline-audio-status");
 const submitButton = document.getElementById("submit-button");
 const backgroundImagesInput = document.getElementById("background-images");
 const backgroundVideoInput = document.getElementById("background-video");
@@ -744,6 +745,10 @@ function syncInlineAudioButtonLabel(audioMeta = uploadedAudioFallback) {
     uploadAudioInlineButton.textContent = "Add audio";
     uploadAudioInlineButton.title = "Add audio";
     uploadAudioInlineButton.classList.remove("is-ready");
+    if (inlineAudioStatus) {
+      inlineAudioStatus.hidden = true;
+      inlineAudioStatus.textContent = "";
+    }
     return;
   }
 
@@ -751,6 +756,11 @@ function syncInlineAudioButtonLabel(audioMeta = uploadedAudioFallback) {
   uploadAudioInlineButton.textContent = shortenInlineAudioLabel(songTitle);
   uploadAudioInlineButton.title = `Uploaded audio: ${songTitle}`;
   uploadAudioInlineButton.classList.add("is-ready");
+  if (inlineAudioStatus) {
+    const audioDetails = [formatTime(audioMeta.duration), formatFileSize(audioMeta.size)].filter(Boolean).join(" - ");
+    inlineAudioStatus.hidden = false;
+    inlineAudioStatus.textContent = `Uploaded audio: ${songTitle}${audioDetails ? ` - ${audioDetails}` : ""}`;
+  }
 }
 
 function slugifyLocalProjectId(value = "") {
@@ -1802,8 +1812,16 @@ function isPrimaryMouseButton(event) {
   return event?.type === "mousedown" ? event.button === 0 : true;
 }
 
+function isLyricPreviewDragHandle(event) {
+  return Boolean(event?.target?.closest?.("#preview-lines-shell"));
+}
+
 function handleLyricPreviewPointerDown(event) {
   if (!previewLinesShell || !lyricPreviewDragSurface || lyricPreviewDragState) {
+    return;
+  }
+
+  if (!isLyricPreviewDragHandle(event)) {
     return;
   }
 
@@ -1834,6 +1852,7 @@ function handleLyricPreviewPointerDown(event) {
     startClientY: point.clientY,
     startPlacementX: currentPlacement.x,
     startPlacementY: currentPlacement.y,
+    previousBodyUserSelect: document.body.style.userSelect,
     moved: false
   };
 
@@ -1854,7 +1873,6 @@ function handleLyricPreviewPointerDown(event) {
     // Some mobile browsers only allow pointer capture on the direct touch target.
   }
   document.body.style.userSelect = "none";
-  document.body.style.touchAction = "none";
   event.preventDefault?.();
 }
 
@@ -1940,8 +1958,7 @@ function finishLyricPreviewDrag(event) {
   } catch {
     // Ignore release errors when the browser did not grant capture.
   }
-  document.body.style.userSelect = "";
-  document.body.style.touchAction = "";
+  document.body.style.userSelect = lyricPreviewDragState.previousBodyUserSelect || "";
   const wasMoved = lyricPreviewDragState.moved;
   lyricPreviewDragState = null;
 
