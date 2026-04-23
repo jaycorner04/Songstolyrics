@@ -7368,11 +7368,19 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                   ? {
                       task: "transcribe",
                       language: "te",
-                      passName: "uploaded-final-full"
+                      passName: "uploaded-final-full",
+                      modelName: process.env.WHISPER_UPLOADED_FINAL_MODEL || "small",
+                      beamSize: 6,
+                      conditionOnPreviousText: false,
+                      vadFilter: false
                     }
                   : {
                       task: "transcribe",
-                      passName: "uploaded-final-full"
+                      passName: "uploaded-final-full",
+                      modelName: process.env.WHISPER_UPLOADED_FINAL_MODEL || "small",
+                      beamSize: 6,
+                      conditionOnPreviousText: false,
+                      vadFilter: false
                     }
               );
               const refreshedUploadedTranscriptLines = limitLyricLines(
@@ -7393,20 +7401,32 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 refreshedUploadedTranscriptLines,
                 durationSeconds
               );
+              const refreshedTranscriptIsUsableFullSongSource =
+                refreshedUploadedTranscriptLines.length >= Math.max(8, Math.round(durationSeconds / 18)) &&
+                refreshedTranscriptMetrics.meaningfulCount >= Math.max(6, Math.round(durationSeconds / 28)) &&
+                (
+                  refreshedTranscriptMetrics.lastEnd >= Math.max(28, durationSeconds * 0.72) ||
+                  refreshedTranscriptMetrics.coverageRatio >= 0.18
+                );
 
               if (
                 refreshedUploadedTranscriptLines.length &&
-                (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+                (
+                  refreshedTranscriptIsUsableFullSongSource ||
+                  shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
                   refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
                   refreshedTranscriptMetrics.meaningfulCount > currentTranscriptMetrics.meaningfulCount + 2 ||
-                  refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08)
+                  refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08
+                )
               ) {
                 stabilizedUploadedTranscriptLines = refreshedUploadedTranscriptLines;
                 uploadedAudioRenderLines = refreshedUploadedTranscriptLines;
                 renderLinesAreTranscriptDerived = true;
                 useDirectUploadedTranscript = true;
                 renderNotes.push(
-                  "Uploaded-audio preview lyrics covered only the opening section, so the render re-transcribed the full song and used that timing."
+                  refreshedTranscriptIsUsableFullSongSource
+                    ? "The final render rebuilt lyrics from a full-song uploaded-audio transcription so subtitles stay locked to the vocals across the track."
+                    : "Uploaded-audio preview lyrics covered only the opening section, so the render re-transcribed the full song and used that timing."
                 );
               }
             } catch (error) {
