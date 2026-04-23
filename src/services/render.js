@@ -270,6 +270,18 @@ const LYRIC_FONT_OPTIONS = {
     assetFile: "TitilliumWeb-Regular.ttf"
   }
 };
+const LYRIC_RENDER_FONT_FALLBACKS = {
+  arial: "montserrat",
+  "arial-black": "archivo-black",
+  impact: "anton",
+  trebuchet: "titillium-web",
+  verdana: "sora",
+  tahoma: "kanit",
+  georgia: "montserrat",
+  palatino: "montserrat",
+  "century-gothic": "montserrat",
+  "comic-sans": "bangers"
+};
 const LYRIC_STYLE_PRESETS = {
   auto: {
     key: "auto",
@@ -1407,8 +1419,19 @@ function resolveLyricFontPreset(fontKey = "arial") {
   return LYRIC_FONT_OPTIONS[fontKey] || LYRIC_FONT_OPTIONS.arial;
 }
 
+function resolveLyricRenderFontPreset(fontKey = "arial") {
+  const selectedPreset = resolveLyricFontPreset(fontKey);
+
+  if (selectedPreset.assetFile) {
+    return selectedPreset;
+  }
+
+  const fallbackKey = LYRIC_RENDER_FONT_FALLBACKS[selectedPreset.key] || "montserrat";
+  return resolveLyricFontPreset(fallbackKey);
+}
+
 function resolveLyricFontName(fontKey = "arial") {
-  return resolveLyricFontPreset(fontKey).fontName;
+  return resolveLyricRenderFontPreset(fontKey).fontName;
 }
 
 async function prepareLyricFontAssets(renderDirectory, fontPresets = []) {
@@ -4668,7 +4691,7 @@ function createAssSubtitleContent(
   const isTeluguRomanizedRender = Boolean(options.teluguRomanized);
   const lyricStylePreset = resolveLyricStylePreset(resolveEffectiveLyricStyleKey(payload));
   const lyricFontPreset = resolveLyricFontPreset(payload?.lyricFont || "arial");
-  const renderFontPreset = lyricFontPreset;
+  const renderFontPreset = resolveLyricRenderFontPreset(payload?.lyricFont || "arial");
   const lyricFontName = renderFontPreset.fontName;
   const useStyleColor = Boolean(payload?.useStyleColor);
   const customStyleColorHex = useStyleColor
@@ -8871,7 +8894,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           size: emojiSize
         };
       });
-    const selectedFontPreset = resolveLyricFontPreset(payload?.lyricFont || "arial");
+    const selectedFontPreset = resolveLyricRenderFontPreset(payload?.lyricFont || "arial");
     const fontsDirRelative = await prepareLyricFontAssets(renderDirectory, [selectedFontPreset]);
 
     if (emojiAssetEntries.length) {
