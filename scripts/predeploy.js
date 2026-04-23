@@ -10,6 +10,12 @@ const STEPS = [
     retries: 0
   },
   {
+    label: "lyrics",
+    command: process.execPath,
+    args: ["scripts/check-lyric-regressions.js"],
+    retries: 0
+  },
+  {
     label: "smoke",
     command: process.execPath,
     args: ["scripts/smoke.js"],
