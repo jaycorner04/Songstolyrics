@@ -24,8 +24,12 @@ function createError(message, statusCode = 500) {
   return error;
 }
 
+function normalizeYouTubeInput(input = "") {
+  return `${input || ""}`.trim().replace(/[),.;\]\s]+$/g, "");
+}
+
 function extractVideoId(input) {
-  const value = `${input || ""}`.trim();
+  const value = normalizeYouTubeInput(input);
 
   if (!value) {
     throw createError("Please provide a YouTube link.", 400);

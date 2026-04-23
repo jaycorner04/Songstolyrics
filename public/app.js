@@ -655,8 +655,12 @@ function getTrailingLyricEmojiText(text = "") {
   return uniqueEmojis.join(" ");
 }
 
+function normalizeYouTubeInput(value = "") {
+  return `${value || ""}`.trim().replace(/[),.;\]\s]+$/g, "");
+}
+
 function looksLikeYouTubeUrl(value) {
-  const rawValue = `${value || ""}`.trim();
+  const rawValue = normalizeYouTubeInput(value);
 
   if (!rawValue) {
     return false;
@@ -672,7 +676,7 @@ function looksLikeYouTubeUrl(value) {
 }
 
 function extractVideoIdFromUrl(value = "") {
-  const rawValue = `${value || ""}`.trim();
+  const rawValue = normalizeYouTubeInput(value);
 
   if (/^[a-zA-Z0-9_-]{11}$/.test(rawValue)) {
     return rawValue;
