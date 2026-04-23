@@ -810,6 +810,34 @@ function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
   return false;
 }
 
+function getTimedRowsDurationSeconds(rows = []) {
+  return (Array.isArray(rows) ? rows : []).reduce((maxEnd, row) => {
+    const start = Number(row?.start || 0);
+    const duration = Number(row?.duration || 0);
+
+    if (!Number.isFinite(start) || start < 0) {
+      return maxEnd;
+    }
+
+    const end = start + (Number.isFinite(duration) && duration > 0 ? duration : 0);
+    return Math.max(maxEnd, end);
+  }, 0);
+}
+
+function getPreviewResponseDurationSeconds(metadataDurationSeconds = 0, lyricLines = [], captionCues = []) {
+  const metadataDuration = Math.max(0, Number(metadataDurationSeconds || 0));
+  const timedDuration = Math.max(
+    getTimedRowsDurationSeconds(lyricLines),
+    getTimedRowsDurationSeconds(captionCues)
+  );
+
+  if (timedDuration >= 30 && timedDuration > metadataDuration + 8) {
+    return Math.ceil(timedDuration);
+  }
+
+  return metadataDuration;
+}
+
 function shouldUseAudioFallbackForPreview(metadata = {}, lyricResult = {}, options = {}) {
   if (options.hasFastDescriptionLyrics) {
     return false;
@@ -1694,6 +1722,11 @@ app.post(
       { blocked: false, timedOut: true }
     );
     const audioPreviewBlocked = Boolean(audioPreviewProbe?.blocked);
+    const responseDurationSeconds = getPreviewResponseDurationSeconds(
+      metadata.durationSeconds,
+      lyricResult.lines,
+      captionCues
+    );
 
     res.json({
       inputUrl: videoUrl,
@@ -1701,7 +1734,7 @@ app.post(
       title: metadata.title,
       channelTitle: metadata.channelTitle,
       description: metadata.description,
-      durationSeconds: metadata.durationSeconds,
+      durationSeconds: responseDurationSeconds,
       thumbnails: metadata.thumbnails,
       poster: metadata.poster,
       audioUrl: audioPreviewBlocked ? "" : `/api/audio/${videoId}`,
