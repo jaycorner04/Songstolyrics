@@ -4066,6 +4066,155 @@ function buildStrictSyncValidationReport({
   };
 }
 
+function selectUploadedAudioLyricTimeline({
+  transcriptLines = [],
+  transcriptWords = [],
+  referenceLines = [],
+  durationSeconds = 0
+} = {}) {
+  const safeTranscriptLines = sanitizeLyricLines(transcriptLines, durationSeconds);
+  const safeReferenceLines = sanitizeLyricLines(referenceLines, durationSeconds);
+  const transcriptMetrics = getTranscriptTimingMetrics(
+    safeTranscriptLines,
+    transcriptWords,
+    durationSeconds
+  );
+  const effectiveDuration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
+  const minimumStrongTranscriptLines = Math.max(8, Math.round(effectiveDuration / 18));
+  const minimumFallbackTranscriptLines = Math.max(6, Math.round(effectiveDuration / 28));
+  const transcriptIsStrongFullSongSource =
+    safeTranscriptLines.length >= minimumStrongTranscriptLines &&
+    transcriptMetrics.reliableForFullAlignment;
+  const transcriptIsUsableFallback =
+    safeTranscriptLines.length >= minimumFallbackTranscriptLines &&
+    transcriptMetrics.reliableForWindowFit &&
+    (
+      transcriptMetrics.lastEnd >= Math.max(28, effectiveDuration * 0.64) ||
+      transcriptMetrics.coverageRatio >= 0.14
+    );
+
+  if (transcriptIsStrongFullSongSource) {
+    return {
+      applied: true,
+      key: "full-transcript",
+      lines: safeTranscriptLines,
+      transcriptDerived: true,
+      note:
+        "Uploaded-audio final render is using one full-song transcription timeline, so subtitles stay attached to the detected vocals across the whole track."
+    };
+  }
+
+  const candidates = [];
+
+  if (safeReferenceLines.length && transcriptMetrics.reliableForWindowFit) {
+    const wordTimedReference = alignLyricLinesToWordTimeline(
+      safeReferenceLines,
+      safeTranscriptLines,
+      transcriptWords,
+      durationSeconds
+    );
+
+    if (wordTimedReference.applied && wordTimedReference.lines.length) {
+      const report = buildStrictSyncValidationReport({
+        candidateLines: wordTimedReference.lines,
+        transcriptLines: safeTranscriptLines,
+        transcriptWords,
+        durationSeconds,
+        syncMode: "transcribed",
+        transcriptDerived: false,
+        referenceLines: safeReferenceLines
+      });
+
+      candidates.push({
+        priority: 1,
+        key: "word-timed-reference",
+        lines: wordTimedReference.lines,
+        transcriptDerived: false,
+        report,
+        note: `Uploaded-audio final render is using one transcript word-timed lyric timeline built from ${wordTimedReference.wordCount} detected word slots.`
+      });
+    }
+
+    const alignedReference = alignLyricLinesToTranscription(
+      safeReferenceLines,
+      safeTranscriptLines,
+      durationSeconds
+    );
+
+    if (alignedReference.lines.length) {
+      const report = buildStrictSyncValidationReport({
+        candidateLines: alignedReference.lines,
+        transcriptLines: safeTranscriptLines,
+        transcriptWords,
+        durationSeconds,
+        syncMode: "transcribed",
+        transcriptDerived: false,
+        referenceLines: safeReferenceLines
+      });
+
+      candidates.push({
+        priority: 2,
+        key: "anchor-aligned-reference",
+        lines: alignedReference.lines,
+        transcriptDerived: false,
+        report,
+        note: `Uploaded-audio final render is using one transcript-anchored lyric timeline built from ${alignedReference.anchorCount} stable lyric/audio anchors.`
+      });
+    }
+  }
+
+  const approvedReferenceCandidate = candidates
+    .filter((candidate) => candidate.report?.approved)
+    .sort((left, right) => {
+      if (left.priority !== right.priority) {
+        return left.priority - right.priority;
+      }
+
+      return (
+        Number(right.report?.anchorCoverageRatio || 0) - Number(left.report?.anchorCoverageRatio || 0) ||
+        Number(right.report?.averageAnchorScore || 0) - Number(left.report?.averageAnchorScore || 0)
+      );
+    })[0];
+
+  if (approvedReferenceCandidate) {
+    return {
+      applied: true,
+      ...approvedReferenceCandidate
+    };
+  }
+
+  if (transcriptIsUsableFallback || safeTranscriptLines.length) {
+    return {
+      applied: true,
+      key: transcriptIsUsableFallback ? "transcript-fallback" : "transcript-emergency",
+      lines: safeTranscriptLines,
+      transcriptDerived: true,
+      note: transcriptIsUsableFallback
+        ? "Uploaded-audio final render fell back to one verified transcription timeline because the matched lyric sheet could not be trusted across the full song."
+        : "Uploaded-audio final render fell back to the raw transcription timeline because no stronger lyric timeline could be verified safely."
+    };
+  }
+
+  const bestReferenceFallback = candidates.sort((left, right) => left.priority - right.priority)[0];
+
+  if (bestReferenceFallback) {
+    return {
+      applied: true,
+      ...bestReferenceFallback,
+      note:
+        "Uploaded-audio final render is using one matched lyric timeline because the full-song transcript was unavailable."
+    };
+  }
+
+  return {
+    applied: false,
+    key: "none",
+    lines: safeTranscriptLines,
+    transcriptDerived: true,
+    note: ""
+  };
+}
+
 function formatStrictSyncApprovalSummary(report = {}) {
   if (report.approvalMode === "structured-source-fallback") {
     return `Strict sync verification kept the full lyric sheet because the detected audio transcript was too sparse to safely replace it.`;
@@ -7355,9 +7504,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             ),
             durationSeconds
           );
+          let stabilizedUploadedTranscriptWords = [];
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
           let preservedUploadedIntroCount = 0;
           let useDirectUploadedTranscript = false;
+          let uploadedAudioTimelineDecision = null;
+          let useStrictUploadedAudioTimeline = false;
 
           if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) || isUploadedAudioSource) {
             try {
@@ -7420,6 +7572,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 )
               ) {
                 stabilizedUploadedTranscriptLines = refreshedUploadedTranscriptLines;
+                stabilizedUploadedTranscriptWords = Array.isArray(fullUploadedTranscription.words)
+                  ? fullUploadedTranscription.words
+                  : [];
                 uploadedAudioRenderLines = refreshedUploadedTranscriptLines;
                 renderLinesAreTranscriptDerived = true;
                 useDirectUploadedTranscript = true;
@@ -7436,11 +7591,30 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
-          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
+          uploadedAudioTimelineDecision = selectUploadedAudioLyricTimeline({
+            transcriptLines: stabilizedUploadedTranscriptLines,
+            transcriptWords: stabilizedUploadedTranscriptWords,
+            referenceLines: sourceLyricReferenceLines,
+            durationSeconds
+          });
+
+          if (uploadedAudioTimelineDecision.applied && uploadedAudioTimelineDecision.lines.length) {
+            uploadedAudioRenderLines = uploadedAudioTimelineDecision.lines;
+            renderLinesAreTranscriptDerived = uploadedAudioTimelineDecision.transcriptDerived;
+            useDirectUploadedTranscript = uploadedAudioTimelineDecision.transcriptDerived;
+            preservedUploadedIntroCount = 0;
+            useStrictUploadedAudioTimeline = true;
+
+            if (uploadedAudioTimelineDecision.note) {
+              renderNotes.push(uploadedAudioTimelineDecision.note);
+            }
+          }
+
+          if (!useStrictUploadedAudioTimeline && sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const wordTimedReferenceLyrics = alignLyricLinesToWordTimeline(
               sourceLyricReferenceLines,
               stabilizedUploadedTranscriptLines,
-              [],
+              stabilizedUploadedTranscriptWords,
               durationSeconds
             );
             const minimumReferenceWordTimedLines = Math.max(
@@ -7529,7 +7703,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
-          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
+          if (!useStrictUploadedAudioTimeline && sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const firstTranscriptMeaningfulLine = stabilizedUploadedTranscriptLines.find(
               (line) => getAlignmentWords(line.text).length >= 2
             );
@@ -7560,7 +7734,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             }
           }
 
-          if (sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
+          if (!useStrictUploadedAudioTimeline && sourceLyricReferenceLines.length && !useDirectUploadedTranscript) {
             const tightenedUploadedLyrics = tightenIntroLyricTiming(
               uploadedAudioRenderLines,
               stabilizedUploadedTranscriptLines,
@@ -7596,7 +7770,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           }
 
           const uploadedAudioLyricOffsetSeconds =
-            sourceLyricReferenceLines.length && !renderLinesAreTranscriptDerived && !useDirectUploadedTranscript
+            useStrictUploadedAudioTimeline
+              ? 0
+              : sourceLyricReferenceLines.length && !renderLinesAreTranscriptDerived && !useDirectUploadedTranscript
               ? 0
               : lyricOffsetSeconds;
 
@@ -7606,13 +7782,19 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           );
           renderLineSyncSource = "transcribed";
           renderLinesAreTranscriptDerived =
-            useDirectUploadedTranscript ||
-            !sourceLyricReferenceLines.length ||
-            uploadedAudioRenderLines === stabilizedUploadedTranscriptLines;
+            useStrictUploadedAudioTimeline
+              ? Boolean(uploadedAudioTimelineDecision?.transcriptDerived)
+              : useDirectUploadedTranscript ||
+                !sourceLyricReferenceLines.length ||
+                uploadedAudioRenderLines === stabilizedUploadedTranscriptLines;
           renderNotes.push(
-            useDirectUploadedTranscript
-              ? "The render used full uploaded-audio transcription timing across the song."
-              : "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
+            useStrictUploadedAudioTimeline
+              ? uploadedAudioTimelineDecision?.transcriptDerived
+                ? "The render used one transcription-based lyric timeline across the song instead of mixing multiple timing sources."
+                : "The render used one transcript-validated matched lyric timeline across the song instead of mixing multiple timing sources."
+              : useDirectUploadedTranscript
+                ? "The render used full uploaded-audio transcription timing across the song."
+                : "The render kept the uploaded-audio transcript timing from the preview step instead of re-transcribing the same file again."
           );
         } else {
           try {
