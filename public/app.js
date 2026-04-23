@@ -1096,14 +1096,14 @@ function buildFallbackAudioAccessState(result = {}) {
   }
 
   return {
-    mode: "upload-recommended",
+    mode: "recovery",
     previewAvailable: false,
-    badgeLabel: "Add sound",
-    title: "This link is ready, and a sound file will make it perfect",
+    badgeLabel: "Smart recovery",
+    title: "This link is ready for server recovery",
     summary:
-      "Lyrics and artwork are ready. Add the song audio file here if you want guaranteed sound in the final video.",
-    primaryActionLabel: "Add audio",
-    recommendedAction: "upload-audio"
+      "Lyrics and artwork are ready. The final render will try the stronger server soundtrack path; uploaded audio is optional for guaranteed sound.",
+    primaryActionLabel: "Create lyric video",
+    recommendedAction: "render"
   };
 }
 
@@ -1126,11 +1126,14 @@ function canAutoBuildLyricsFromAudio(result = {}) {
 }
 
 function linkNeedsUploadedAudio(result = currentResult) {
-  if (!result || isUploadedAudioProject(result)) {
+  if (!result || isUploadedAudioProject(result) || uploadedAudioFallback?.file) {
     return false;
   }
 
-  return getCurrentAudioAccessState(result).mode === "upload-recommended";
+  const audioAccess = getCurrentAudioAccessState(result);
+  const missingLyrics = !result.lines?.length && String(result.lyricsSource || "").toLowerCase() === "unavailable";
+
+  return audioAccess.mode === "upload-recommended" && missingLyrics;
 }
 
 function buildUploadedAudioRequiredMessage(result = currentResult) {
@@ -1148,8 +1151,7 @@ function promptRequiredAudioUpload(result = currentResult, options = {}) {
   const audioAccess = getCurrentAudioAccessState(result);
   const uploadRequired =
     audioAccess?.recommendedAction === "upload-audio" ||
-    audioAccess?.mode === "upload-recommended" ||
-    result?.audioPreviewBlocked === true;
+    audioAccess?.mode === "upload-recommended";
 
   if (!uploadRequired) {
     return false;

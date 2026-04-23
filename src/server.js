@@ -1806,17 +1806,9 @@ app.post(
         ? req.files.audioFallback[0]
         : null;
     const inputUrl = `${body?.inputUrl || ""}`.trim();
-    const audioPreviewBlocked = Boolean(body?.audioPreviewBlocked);
 
     if (!inputUrl && !audioFileUpload) {
       throw createError("A YouTube link or uploaded audio file is required before rendering.", 400);
-    }
-
-    if (inputUrl && audioPreviewBlocked && !audioFileUpload) {
-      throw createError(
-        "This link needs uploaded audio before rendering. Add the song audio file and try again.",
-        409
-      );
     }
 
     let renderSong = body?.song || null;

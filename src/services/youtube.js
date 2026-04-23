@@ -12,6 +12,7 @@ try {
 const WATCH_TIMEOUT_MS = 8000;
 const CAPTION_TIMEOUT_MS = 9000;
 const YTDLP_CAPTION_TIMEOUT_MS = 20000;
+const YTDLP_METADATA_TIMEOUT_MS = 20000;
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
 const MAX_CAPTION_LINE_LENGTH = 68;
@@ -863,6 +864,42 @@ async function getYtDlpCaptionInfo(videoId) {
   return JSON.parse(stdout);
 }
 
+async function getYtDlpVideoMetadata(videoId) {
+  try {
+    const ytDlpArgs = buildYtDlpArgs({
+      kind: "metadata",
+      fallbackClients: "web,mweb,android"
+    });
+    const { stdout } = await runCommand(
+      "python",
+      [
+        "-m",
+        "yt_dlp",
+        ...ytDlpArgs,
+        "--dump-single-json",
+        "--skip-download",
+        "--no-playlist",
+        "--no-warnings",
+        toVideoUrl(videoId)
+      ],
+      {
+        timeout: YTDLP_METADATA_TIMEOUT_MS
+      }
+    );
+    const payload = JSON.parse(stdout);
+
+    return {
+      title: normalizeWhitespace(payload?.title || ""),
+      channelTitle: normalizeWhitespace(payload?.uploader || payload?.channel || ""),
+      description: normalizeWhitespace(payload?.description || ""),
+      durationSeconds: Math.round(Number(payload?.duration || 0)),
+      thumbnail: normalizeWhitespace(payload?.thumbnail || "")
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchCaptionTrackCues(track = {}) {
   if (!track?.url) {
     return [];
@@ -955,29 +992,35 @@ async function getVideoMetadata(videoId, info) {
   const apiItem = apiPayload?.items?.[0];
   const html = info?.watchHtml || "";
   const oembed = info?.oembed || {};
+  const parsedDurationSeconds =
+    parseIsoDuration(apiItem?.contentDetails?.duration || "") ||
+    Number(parseHtmlValue(html, /"lengthSeconds":"(\d+)"/i) || 0);
+  const ytdlpMetadata = parsedDurationSeconds ? null : await getYtDlpVideoMetadata(videoId);
   const title =
     apiItem?.snippet?.title ||
     oembed.title ||
+    ytdlpMetadata?.title ||
     decodeHtmlEntities(parseHtmlValue(html, /<title>([^<]+)<\/title>/i)).replace(/ - YouTube$/i, "") ||
     `YouTube Video ${videoId}`;
   const channelTitle =
     apiItem?.snippet?.channelTitle ||
     oembed.author_name ||
+    ytdlpMetadata?.channelTitle ||
     decodeHtmlEntities(parseHtmlValue(html, /"ownerChannelName":"([^"]+)"/i)) ||
     "Unknown Channel";
   const description =
     apiItem?.snippet?.description ||
+    ytdlpMetadata?.description ||
     decodeHtmlEntities(parseHtmlValue(html, /"shortDescription":"([^"]*)"/i)) ||
     "";
   const shortsDetected =
-    /WEB_PAGE_TYPE_SHORTS|\/shorts\//i.test(html) || /\/shorts\//i.test(info?.watchUrl || "");
-  const parsedDurationSeconds =
-    parseIsoDuration(apiItem?.contentDetails?.duration || "") ||
-    Number(parseHtmlValue(html, /"lengthSeconds":"(\d+)"/i) || 0);
-  const durationSeconds = parsedDurationSeconds || (videoId && shortsDetected ? 60 : 0);
+    /\/shorts\//i.test(info?.watchUrl || "") ||
+    /"webPageType"\s*:\s*"WEB_PAGE_TYPE_SHORTS"/i.test(html) ||
+    /"url"\s*:\s*"\/shorts\//i.test(html);
+  const durationSeconds = parsedDurationSeconds || Number(ytdlpMetadata?.durationSeconds || 0) || (videoId && shortsDetected ? 60 : 0);
   const thumbnails = normalizeThumbnails(
     videoId,
-    apiItem?.snippet?.thumbnails?.high?.url || oembed.thumbnail_url || ""
+    apiItem?.snippet?.thumbnails?.high?.url || oembed.thumbnail_url || ytdlpMetadata?.thumbnail || ""
   );
 
   return {
@@ -1002,7 +1045,9 @@ async function getCaptionCues(info) {
   const shortFormDetected =
     durationSeconds > 0 && durationSeconds <= 70
       ? true
-      : /\/shorts\//i.test(`${info?.watchUrl || ""}`) || /WEB_PAGE_TYPE_SHORTS|\/shorts\//i.test(`${info?.watchHtml || ""}`);
+      : /\/shorts\//i.test(`${info?.watchUrl || ""}`) ||
+        /"webPageType"\s*:\s*"WEB_PAGE_TYPE_SHORTS"/i.test(`${info?.watchHtml || ""}`) ||
+        /"url"\s*:\s*"\/shorts\//i.test(`${info?.watchHtml || ""}`);
   const effectiveDurationSeconds = durationSeconds || (shortFormDetected ? 60 : 0);
 
   if (!videoId) {
