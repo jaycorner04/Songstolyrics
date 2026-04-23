@@ -184,10 +184,10 @@ fi
 log "deploying branch ${DEPLOY_BRANCH} from $(pwd)"
 BUILD_MARKER="${BUILD_MARKER:-$(git rev-parse --short HEAD)}"
 
-if command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]] && docker_compose_available; then
-  deploy_with_docker_compose
-elif command -v docker >/dev/null 2>&1 && docker_container_available; then
+if command -v docker >/dev/null 2>&1 && docker_container_available; then
   deploy_with_docker_container
+elif command -v docker >/dev/null 2>&1 && [[ -f docker-compose.yml ]] && docker_compose_available; then
+  deploy_with_docker_compose
 elif command -v pm2 >/dev/null 2>&1; then
   deploy_with_pm2
 elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '^song-to-lyrics'; then
