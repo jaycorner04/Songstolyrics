@@ -3187,17 +3187,54 @@ function smoothTranscribedLyricGaps(lines = [], durationSeconds = 0) {
   return smoothed.filter((line) => !duration || line.start < duration - 0.1);
 }
 
-// PERMANENT FIX: Never allow lyrics to go faster than natural vocal pace.
-// This prevents compression artifacts from bad duration detection.
-function enforceMinimumLyricPacing(lines = [], durationSeconds = 0) {
+function shouldEnforceMinimumLyricPacing(lines = [], durationSeconds = 0, options = {}) {
+  if (!Array.isArray(lines) || !lines.length) {
+    return false;
+  }
+
+  const syncSource = normalizeWhitespace(options.syncSource || "");
+  const transcriptDerived = Boolean(options.transcriptDerived);
+  const isUploadedAudioSource = Boolean(options.isUploadedAudioSource);
+
+  if (syncSource !== "transcribed" && !transcriptDerived && !isUploadedAudioSource) {
+    return false;
+  }
+
+  const metrics = getSourceTimingMetrics(lines, durationSeconds);
+
+  if (!metrics.lineCount || metrics.meaningfulCount < 2) {
+    return false;
+  }
+
+  if (metrics.reliableForSourcePacing) {
+    return false;
+  }
+
+  const duration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
+  const weakCoverage = metrics.coverageRatio < (duration >= 120 ? 0.24 : 0.2);
+  const sparseMeaningfulTiming = metrics.meaningfulCount < Math.max(4, Math.round(duration / 36));
+  const excessiveGap = metrics.maxGapSeconds > Math.max(16, duration * 0.14);
+  const fragmentaryTiming =
+    metrics.averageDuration > 0 &&
+    metrics.averageDuration < (duration < 90 ? 1.0 : 1.15);
+
+  return weakCoverage || sparseMeaningfulTiming || excessiveGap || fragmentaryTiming;
+}
+
+// Only smooth weak transcript timing. Good synced lyrics should keep their original pacing.
+function enforceMinimumLyricPacing(lines = [], durationSeconds = 0, options = {}) {
   if (!lines.length) {
     return lines;
   }
 
   const duration = Number(durationSeconds || 0);
-  const minimumStartGapSeconds = 2.05;
-  const minimumDisplaySeconds = 1.8;
-  const maximumDisplaySeconds = 6.0;
+  const isShortVideo = duration > 0 && duration < 90;
+  const minimumStartGapSeconds = isShortVideo ? 1.15 : 1.35;
+  const mergeGapThresholdSeconds = isShortVideo ? 0.72 : 0.9;
+  const minimumDisplaySeconds = isShortVideo ? 1.45 : 1.8;
+  const maximumDisplaySeconds = options.teluguRomanized
+    ? (isShortVideo ? 6.5 : 9.5)
+    : (isShortVideo ? 4.5 : 6.0);
   const maximumMergedWords = 18;
   const maximumMergedChars = 128;
   const orderedLines = lines
@@ -3225,7 +3262,7 @@ function enforceMinimumLyricPacing(lines = [], durationSeconds = 0) {
 
     if (
       startGap > 0 &&
-      startGap < minimumStartGapSeconds &&
+      startGap < mergeGapThresholdSeconds &&
       combinedWordCount <= maximumMergedWords &&
       combinedText.length <= maximumMergedChars
     ) {
@@ -3257,7 +3294,8 @@ function enforceMinimumLyricPacing(lines = [], durationSeconds = 0) {
 
   return pacedLines.map((line, index) => {
     const nextStart = Number(
-      pacedLines[index + 1]?.start ?? (duration || Number(line.start || 0) + maximumDisplaySeconds)
+      pacedLines[index + 1]?.start ??
+        (duration || Number(line.start || 0) + maximumDisplaySeconds)
     );
     const naturalGap = Math.max(minimumDisplaySeconds, nextStart - Number(line.start || 0) - 0.06);
 
@@ -8432,7 +8470,25 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds, {
       teluguRomanized: finalUsesRomanizedTeluguLyrics
     });
-    renderLines = enforceMinimumLyricPacing(renderLines, durationSeconds);
+    const shouldApplyMinimumLyricPacingGuard = shouldEnforceMinimumLyricPacing(
+      renderLines,
+      durationSeconds,
+      {
+        syncSource: renderLineSyncSource,
+        transcriptDerived: renderLinesAreTranscriptDerived,
+        isUploadedAudioSource:
+          String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload)
+      }
+    );
+
+    if (shouldApplyMinimumLyricPacingGuard) {
+      renderLines = enforceMinimumLyricPacing(renderLines, durationSeconds, {
+        teluguRomanized: finalUsesRomanizedTeluguLyrics
+      });
+      renderNotes.push(
+        "Weak transcript timing was stabilized before ASS generation so lyrics do not vanish or bunch together."
+      );
+    }
     renderNotes.push(
       Number(durationSeconds || 0) < 90
         ? finalUsesRomanizedTeluguLyrics
