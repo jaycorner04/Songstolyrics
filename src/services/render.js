@@ -646,7 +646,9 @@ function buildRenderProfile(payload = {}, durationSeconds = 0) {
   const mode = getRenderMode(payload);
   const shortFastMode = isShortFormRenderSource(payload, durationSeconds);
   const fastMode = mode === "fast" || shortFastMode;
-  const uploadedVideoBackground = Boolean(payload?.customBackgroundVideo);
+  const uploadedVideoBackground =
+    Boolean(payload?.customBackgroundVideo) ||
+    (Array.isArray(payload?.customBackgroundVideos) && payload.customBackgroundVideos.length > 0);
   const uploadedImageBackground = Array.isArray(payload?.customBackgrounds) && payload.customBackgrounds.length > 0;
   const audioOnlyProject =
     (String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload)) &&
@@ -6158,38 +6160,155 @@ async function saveUploadedBackgrounds(payload, renderDirectory) {
   return savedPaths;
 }
 
-async function saveUploadedBackgroundVideo(payload, renderDirectory) {
-  const uploadedVideo = payload.customBackgroundVideo;
-  const sourcePath = uploadedVideo?.filePath || uploadedVideo?.savedPath || uploadedVideo?.tempPath;
+function getUploadedBackgroundVideoPayloads(payload = {}) {
+  const uploadedVideos = Array.isArray(payload.customBackgroundVideos)
+    ? payload.customBackgroundVideos.slice(0, MAX_UPLOADED_BACKGROUNDS)
+    : payload.customBackgroundVideo
+      ? [payload.customBackgroundVideo]
+      : [];
 
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
+  return uploadedVideos.filter(Boolean);
+}
+
+async function saveUploadedBackgroundVideos(payload, renderDirectory) {
+  const uploadedVideos = getUploadedBackgroundVideoPayloads(payload);
+  const savedVideos = [];
+
+  for (let index = 0; index < uploadedVideos.length; index += 1) {
+    const uploadedVideo = uploadedVideos[index];
+    const sourcePath = uploadedVideo?.filePath || uploadedVideo?.savedPath || uploadedVideo?.tempPath;
+
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      continue;
+    }
+
+    const targetPath = path.join(
+      renderDirectory,
+      `uploaded-background-video-${String(index + 1).padStart(2, "0")}${resolveUploadedVideoExtension(uploadedVideo)}`
+    );
+
+    if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
+      await fsp.copyFile(sourcePath, targetPath);
+
+      if (sourcePath === uploadedVideo.tempPath) {
+        try {
+          await fsp.unlink(uploadedVideo.tempPath);
+        } catch {}
+      }
+    }
+
+    uploadedVideo.tempPath = targetPath;
+    uploadedVideo.savedPath = targetPath;
+    uploadedVideo.filePath = targetPath;
+
+    savedVideos.push({
+      filePath: targetPath,
+      width: Number(uploadedVideo.width || 0),
+      height: Number(uploadedVideo.height || 0),
+      duration: Number(uploadedVideo.duration || 0)
+    });
+  }
+
+  return savedVideos;
+}
+
+async function combineUploadedBackgroundVideos(
+  uploadedVideos = [],
+  renderDirectory,
+  videoSize = VIDEO_SIZE,
+  renderProfile = {}
+) {
+  const safeVideos = (Array.isArray(uploadedVideos) ? uploadedVideos : []).filter(
+    (video) => video?.filePath && fs.existsSync(video.filePath)
+  );
+
+  if (!safeVideos.length) {
     return null;
   }
 
-  const targetPath = path.join(
-    renderDirectory,
-    `uploaded-background-video${resolveUploadedVideoExtension(uploadedVideo)}`
-  );
-
-  if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
-    await fsp.copyFile(sourcePath, targetPath);
-
-    if (sourcePath === uploadedVideo.tempPath) {
-      try {
-        await fsp.unlink(uploadedVideo.tempPath);
-      } catch {}
-    }
+  if (safeVideos.length === 1) {
+    return safeVideos[0];
   }
 
-  uploadedVideo.tempPath = targetPath;
-  uploadedVideo.savedPath = targetPath;
-  uploadedVideo.filePath = targetPath;
+  const normalizedPaths = [];
+  const outputFps = Math.max(12, Number(renderProfile.outputFps || OUTPUT_FPS) || OUTPUT_FPS);
+
+  for (let index = 0; index < safeVideos.length; index += 1) {
+    const sourceVideo = safeVideos[index];
+    const normalizedPath = path.join(
+      renderDirectory,
+      `uploaded-background-video-normalized-${String(index + 1).padStart(2, "0")}.mp4`
+    );
+
+    await runCommand(
+      ffmpegPath,
+      [
+        "-y",
+        "-i",
+        sourceVideo.filePath,
+        "-an",
+        "-vf",
+        [
+          `scale=${videoSize.width}:${videoSize.height}:force_original_aspect_ratio=increase`,
+          `crop=${videoSize.width}:${videoSize.height}`,
+          "setsar=1",
+          `fps=${outputFps}`,
+          "format=yuv420p"
+        ].join(","),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "24",
+        "-movflags",
+        "+faststart",
+        normalizedPath
+      ],
+      {
+        cwd: renderDirectory,
+        timeoutMs: RENDER_TIMEOUT_MS
+      }
+    );
+
+    normalizedPaths.push(normalizedPath);
+  }
+
+  const manifestPath = path.join(renderDirectory, "uploaded-background-videos.concat");
+  const combinedPath = path.join(renderDirectory, "uploaded-background-videos-merged.mp4");
+  const manifestContent = normalizedPaths
+    .map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`)
+    .join("\n");
+  await fsp.writeFile(manifestPath, `${manifestContent}\n`, "utf8");
+
+  await runCommand(
+    ffmpegPath,
+    [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      manifestPath,
+      "-an",
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      combinedPath
+    ],
+    {
+      cwd: renderDirectory,
+      timeoutMs: RENDER_TIMEOUT_MS
+    }
+  );
 
   return {
-    filePath: targetPath,
-    width: Number(uploadedVideo.width || 0),
-    height: Number(uploadedVideo.height || 0),
-    duration: Number(uploadedVideo.duration || 0)
+    filePath: combinedPath,
+    width: videoSize.width,
+    height: videoSize.height,
+    duration: safeVideos.reduce((sum, video) => sum + Math.max(0, Number(video.duration || 0)), 0)
   };
 }
 
@@ -7174,7 +7293,13 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       );
     }
     const uploadedBackgroundPaths = await saveUploadedBackgrounds(payload, renderDirectory);
-    const uploadedBackgroundVideo = await saveUploadedBackgroundVideo(payload, renderDirectory);
+    const uploadedBackgroundVideos = await saveUploadedBackgroundVideos(payload, renderDirectory);
+    const uploadedBackgroundVideo = await combineUploadedBackgroundVideos(
+      uploadedBackgroundVideos,
+      renderDirectory,
+      videoSize,
+      renderProfile
+    );
     const uploadedAudioFile = await saveUploadedAudioFile(payload, renderDirectory);
 
     if (uploadedBackgroundPaths.length) {
@@ -7188,7 +7313,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     if (uploadedBackgroundVideo) {
-      renderNotes.push("An uploaded background video will be sampled to build the lyric scenes.");
+      renderNotes.push(
+        uploadedBackgroundVideos.length > 1
+          ? `${uploadedBackgroundVideos.length} uploaded background videos will be combined and used for this render.`
+          : "An uploaded background video will be sampled to build the lyric scenes."
+      );
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
       renderNotes.push(
         `Download compression is active for uploaded video backgrounds: ${renderProfile.outputFps}fps, ${renderProfile.videoMaxrate} video cap, ${renderProfile.audioBitrate} audio.`

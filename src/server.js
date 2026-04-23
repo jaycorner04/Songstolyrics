@@ -1823,15 +1823,15 @@ app.get(
 app.post(
   "/api/render",
   renderUpload.fields([
-    { name: "backgroundVideo", maxCount: 1 },
+    { name: "backgroundVideo", maxCount: 5 },
     { name: "audioFile", maxCount: 1 },
     { name: "audioFallback", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
     const body = parseRenderRequestBody(req);
-    const backgroundVideoFile = Array.isArray(req.files?.backgroundVideo)
-      ? req.files.backgroundVideo[0]
-      : null;
+    const backgroundVideoFiles = Array.isArray(req.files?.backgroundVideo)
+      ? req.files.backgroundVideo.slice(0, 5)
+      : [];
     const audioFileUpload = Array.isArray(req.files?.audioFile)
       ? req.files.audioFile[0]
       : Array.isArray(req.files?.audioFallback)
@@ -1845,6 +1845,11 @@ app.post(
 
     let renderSong = body?.song || null;
     let renderLines = Array.isArray(body?.lines) ? body.lines : [];
+    const customBackgroundVideoMetaList = Array.isArray(body?.customBackgroundVideos)
+      ? body.customBackgroundVideos
+      : body?.customBackgroundVideo
+        ? [body.customBackgroundVideo]
+        : [];
     const customAudioUploadMeta =
       body?.customAudioUpload && typeof body.customAudioUpload === "object" && !Array.isArray(body.customAudioUpload)
         ? body.customAudioUpload
@@ -1887,15 +1892,24 @@ app.post(
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
-      customBackgroundVideo: backgroundVideoFile
+      customBackgroundVideos: backgroundVideoFiles.map((backgroundVideoFile, index) => ({
+        tempPath: backgroundVideoFile.path,
+        originalName: backgroundVideoFile.originalname,
+        mimeType: backgroundVideoFile.mimetype,
+        size: backgroundVideoFile.size,
+        width: Number(customBackgroundVideoMetaList[index]?.width || 0),
+        height: Number(customBackgroundVideoMetaList[index]?.height || 0),
+        duration: Number(customBackgroundVideoMetaList[index]?.duration || 0)
+      })),
+      customBackgroundVideo: backgroundVideoFiles[0]
         ? {
-            tempPath: backgroundVideoFile.path,
-            originalName: backgroundVideoFile.originalname,
-            mimeType: backgroundVideoFile.mimetype,
-            size: backgroundVideoFile.size,
-            width: Number(body?.customBackgroundVideo?.width || 0),
-            height: Number(body?.customBackgroundVideo?.height || 0),
-            duration: Number(body?.customBackgroundVideo?.duration || 0)
+            tempPath: backgroundVideoFiles[0].path,
+            originalName: backgroundVideoFiles[0].originalname,
+            mimeType: backgroundVideoFiles[0].mimetype,
+            size: backgroundVideoFiles[0].size,
+            width: Number(customBackgroundVideoMetaList[0]?.width || 0),
+            height: Number(customBackgroundVideoMetaList[0]?.height || 0),
+            duration: Number(customBackgroundVideoMetaList[0]?.duration || 0)
           }
         : null,
       customAudioUpload: audioFileUpload

@@ -129,6 +129,7 @@ let localDebugRefreshQueued = false;
 let localDebugLastRefreshedAt = "";
 let musicBulletinTimer = null;
 let uploadedBackgrounds = [];
+let uploadedBackgroundVideos = [];
 let uploadedBackgroundVideo = null;
 let uploadedAudioFallback = null;
 let activeMusicBulletinIndex = 0;
@@ -598,8 +599,18 @@ const lyricEmojiRules = [
 ];
 
 function revokeUploadedBackgroundVideoPreview() {
-  if (uploadedBackgroundVideo?.previewUrl) {
-    URL.revokeObjectURL(uploadedBackgroundVideo.previewUrl);
+  const previewUrls = new Set(
+    uploadedBackgroundVideos
+      .map((video) => `${video?.previewUrl || ""}`.trim())
+      .filter(Boolean)
+  );
+
+  if (!previewUrls.size && uploadedBackgroundVideo?.previewUrl) {
+    previewUrls.add(uploadedBackgroundVideo.previewUrl);
+  }
+
+  for (const previewUrl of previewUrls) {
+    URL.revokeObjectURL(previewUrl);
   }
 }
 
@@ -1797,7 +1808,7 @@ function updateLyricPreviewBackground() {
   }
 
   const previewImage = uploadedBackgrounds[0]?.dataUrl || "";
-  const previewVideo = uploadedBackgroundVideo?.previewUrl || "";
+  const previewVideo = uploadedBackgroundVideos[0]?.previewUrl || uploadedBackgroundVideo?.previewUrl || "";
   const hasCustomBackground = Boolean(previewImage || previewVideo);
   lyricStylePreview.classList.toggle("is-custom-background", hasCustomBackground);
 
@@ -3035,11 +3046,13 @@ function renderUploadPreviews() {
 
 function describeBackgroundSelection() {
   if (uploadedBackgroundVideo && uploadedBackgrounds.length) {
-    return `${uploadedBackgroundVideo.name} is previewing now as the background video, and ${uploadedBackgrounds.length} image${uploadedBackgrounds.length === 1 ? "" : "s"} are also ready if you want to switch again.`;
+    return `${uploadedBackgroundVideos.length > 1 ? `${uploadedBackgroundVideos.length} background videos are` : `${uploadedBackgroundVideo.name} is`} previewing now as the background video source, and ${uploadedBackgrounds.length} image${uploadedBackgrounds.length === 1 ? "" : "s"} are also ready if you want to switch again.`;
   }
 
   if (uploadedBackgroundVideo) {
-    return `${uploadedBackgroundVideo.name} is previewing now. The downloaded MP4 will only change if you press Rebuild final video.`;
+    return uploadedBackgroundVideos.length > 1
+      ? `${uploadedBackgroundVideos.length} background videos are queued. The first one is previewing now, and the downloaded MP4 will use all of them after you rebuild it.`
+      : `${uploadedBackgroundVideo.name} is previewing now. The downloaded MP4 will only change if you press Rebuild final video.`;
   }
 
   if (uploadedBackgrounds.length) {
@@ -3121,16 +3134,27 @@ function setPostRenderActionsVisible(isVisible) {
 }
 
 function renderBackgroundVideoMeta() {
-  if (!uploadedBackgroundVideo) {
+  if (!uploadedBackgroundVideos.length) {
     backgroundVideoMeta.textContent = "No background video selected.";
     return;
   }
 
+  const primaryVideo = uploadedBackgroundVideos[0];
   const orientation =
-    uploadedBackgroundVideo.height > uploadedBackgroundVideo.width ? "portrait" : "landscape";
+    primaryVideo.height > primaryVideo.width ? "portrait" : "landscape";
+  const totalDuration = uploadedBackgroundVideos.reduce(
+    (sum, video) => sum + Number(video?.duration || 0),
+    0
+  );
+  const totalSize = uploadedBackgroundVideos.reduce(
+    (sum, video) => sum + Number(video?.size || 0),
+    0
+  );
+
   backgroundVideoMeta.textContent =
-    `${uploadedBackgroundVideo.name} • ${uploadedBackgroundVideo.width}x${uploadedBackgroundVideo.height} • ` +
-    `${formatTime(uploadedBackgroundVideo.duration)} • ${formatFileSize(uploadedBackgroundVideo.size)} • ${orientation}`;
+    uploadedBackgroundVideos.length === 1
+      ? `${primaryVideo.name} • ${primaryVideo.width}x${primaryVideo.height} • ${formatTime(primaryVideo.duration)} • ${formatFileSize(primaryVideo.size)} • ${orientation}`
+      : `${uploadedBackgroundVideos.length} background videos ready • first: ${primaryVideo.name} • total ${formatTime(totalDuration)} • ${formatFileSize(totalSize)}`;
 }
 
 function revokeUploadedAudioPreviewUrl() {
@@ -3233,32 +3257,48 @@ async function handleBackgroundUpload() {
 }
 
 async function handleBackgroundVideoUpload() {
-  const [file] = Array.from(backgroundVideoInput.files || []);
+  const selectedFiles = Array.from(backgroundVideoInput.files || []);
+  const files = selectedFiles.slice(0, 5);
   revokeUploadedBackgroundVideoPreview();
+  uploadedBackgroundVideos = [];
   uploadedBackgroundVideo = null;
   renderBackgroundVideoMeta();
   updateLyricPreviewBackground();
   updatePostRenderBackgroundStatus();
 
-  if (!file) {
+  if (!files.length) {
     return;
   }
 
   setStatus("Reading background video details...");
 
   try {
-    uploadedBackgroundVideo = await readVideoFileMetadata(file);
-    uploadedBackgroundVideo.previewUrl = URL.createObjectURL(file);
+    uploadedBackgroundVideos = await Promise.all(
+      files.map(async (file) => {
+        const metadata = await readVideoFileMetadata(file);
+        metadata.previewUrl = URL.createObjectURL(file);
+        return metadata;
+      })
+    );
+    uploadedBackgroundVideo = uploadedBackgroundVideos[0] || null;
     renderBackgroundVideoMeta();
     updateLyricPreviewBackground();
     updatePostRenderBackgroundStatus();
     setStatus(
       videoOutputCard.hidden
-        ? `Background video ready: ${uploadedBackgroundVideo.name}. It is now previewing behind the lyrics.`
-        : "Background video preview updated instantly. Rebuild the final video only if you want the download changed."
+        ? uploadedBackgroundVideos.length === 1
+          ? `Background video ready: ${uploadedBackgroundVideo.name}. It is now previewing behind the lyrics.`
+          : `${uploadedBackgroundVideos.length} background videos are ready. The first one is previewing now behind the lyrics.`
+        : uploadedBackgroundVideos.length === 1
+          ? "Background video preview updated instantly. Rebuild the final video only if you want the download changed."
+          : "Background video previews are ready. Rebuild the final video if you want all uploaded videos merged into the download."
     );
+    if (selectedFiles.length > files.length) {
+      setStatus(`Only the first ${files.length} background videos were kept.`, false);
+    }
   } catch (error) {
     revokeUploadedBackgroundVideoPreview();
+    uploadedBackgroundVideos = [];
     uploadedBackgroundVideo = null;
     renderBackgroundVideoMeta();
     updateLyricPreviewBackground();
@@ -3521,6 +3561,7 @@ async function applyAudioPlayerWithRecovery(result = currentResult) {
 
 function clearCustomBackgroundSelection() {
   uploadedBackgrounds = [];
+  uploadedBackgroundVideos = [];
   revokeUploadedBackgroundVideoPreview();
   uploadedBackgroundVideo = null;
   backgroundImagesInput.value = "";
@@ -4264,6 +4305,13 @@ async function handleRender() {
       poster: currentResult.poster,
       thumbnails: currentResult.thumbnails,
       customBackgrounds: uploadedBackgrounds,
+      customBackgroundVideos: uploadedBackgroundVideos.map((video) => ({
+        name: video.name,
+        width: video.width,
+        height: video.height,
+        duration: video.duration,
+        size: video.size
+      })),
       customBackgroundVideo: uploadedBackgroundVideo
         ? {
             name: uploadedBackgroundVideo.name,
@@ -4296,8 +4344,10 @@ async function handleRender() {
       const formData = new FormData();
       formData.append("renderPayload", JSON.stringify(renderPayload));
 
-      if (uploadedBackgroundVideo?.file) {
-        formData.append("backgroundVideo", uploadedBackgroundVideo.file, uploadedBackgroundVideo.name);
+      for (const video of uploadedBackgroundVideos) {
+        if (video?.file) {
+          formData.append("backgroundVideo", video.file, video.name);
+        }
       }
 
       if (uploadedAudioFallback?.file) {
