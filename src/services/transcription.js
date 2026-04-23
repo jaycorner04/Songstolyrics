@@ -14,12 +14,12 @@ const MODEL_NAME = process.env.WHISPER_MODEL || "base";
 const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
-const TRANSCRIBED_LINE_MAX_WORDS = 10;
-const TRANSCRIBED_LINE_MIN_TRAILING_WORDS = 4;
-const TRANSCRIBED_LINE_MAX_MERGED_WORDS = 16;
+const TRANSCRIBED_LINE_MAX_WORDS = 8;
+const TRANSCRIBED_LINE_MIN_TRAILING_WORDS = 3;
+const TRANSCRIBED_LINE_MAX_MERGED_WORDS = 12;
 const TRANSCRIBED_LINE_MAX_MERGED_CHARS = 118;
-const RAPID_TRANSCRIBED_LINE_GAP_SECONDS = 2.45;
-const RAPID_TRANSCRIBED_LINE_MAX_SPAN_SECONDS = 6.2;
+const RAPID_TRANSCRIBED_LINE_GAP_SECONDS = 1.15;
+const RAPID_TRANSCRIBED_LINE_MAX_SPAN_SECONDS = 3.8;
 const DEMUCS_FALLBACK_TIMEOUT_MS = Math.max(
   60 * 1000,
   Number(process.env.DEMUCS_FALLBACK_TIMEOUT_MS || 12 * 60 * 1000)
@@ -466,7 +466,8 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
     return [];
   }
 
-  const minimumLineDuration = 2.5;
+  const hasWordTimestamps = Array.isArray(rawWordEntries) && rawWordEntries.length > 0;
+  const minimumLineDuration = hasWordTimestamps ? 0.45 : 1.2;
   const segmentEnd = start + duration;
   const wordEntries = normalizeTranscriptWordEntries(rawWordEntries, start, segmentEnd);
 

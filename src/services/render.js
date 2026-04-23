@@ -2035,7 +2035,10 @@ function limitLyricLines(lines = [], durationSeconds) {
 function applyFinalLyricTimingMode(lines = [], durationSeconds = 0, options = {}) {
   const isShortVideo = Number(durationSeconds || 0) < 90;
   const isTeluguRomanized = Boolean(options.teluguRomanized);
-  const minimumDisplaySeconds = isShortVideo ? 1.5 : 2.5;
+  const audioTimed = Boolean(options.audioTimed || options.transcriptDerived);
+  const minimumDisplaySeconds = audioTimed
+    ? (isShortVideo ? 1.0 : 1.2)
+    : (isShortVideo ? 1.5 : 2.5);
   const maximumDisplaySeconds = isTeluguRomanized
     ? (isShortVideo ? 7.0 : 12.0)
     : (isShortVideo ? 4.5 : 7.0);
@@ -2053,7 +2056,9 @@ function applyFinalLyricTimingMode(lines = [], durationSeconds = 0, options = {}
         hasNextLine && nextStart > originalStart
           ? Math.max(0.18, nextStart - originalStart - transitionGapSeconds)
           : fallbackDuration;
-      const vocalDuration = Math.max(measuredDuration, nextBoundaryDuration);
+      const vocalDuration = audioTimed
+        ? Math.min(measuredDuration, nextBoundaryDuration)
+        : Math.max(measuredDuration, nextBoundaryDuration);
       const start = Math.max(0, originalStart - preRollSeconds);
       const end = Math.min(
         Number(durationSeconds || 0) || originalStart + maximumDisplaySeconds,
@@ -4523,16 +4528,21 @@ function createAssSubtitleContent(
   const neonGlowStrength = neonGlowValue / 100;
   const lyricFontZoom = resolveLyricFontZoomValue(payload?.lyricFontZoom || 100);
   const fontZoomBoost = Math.max(0.84, lyricFontZoom);
+  const prefersReadableTranscribedSizing =
+    isTranscribedOrUploadedAudioRender(payload) || lyricStylePreset.key === "line-by-line";
+  const baseFontRatio = prefersReadableTranscribedSizing
+    ? (isPortrait ? 0.082 : 0.087)
+    : (isPortrait ? 0.074 : 0.082);
   const baseFontSize = clamp(
     Math.round(
         Math.min(videoSize.width, videoSize.height) *
-        (isPortrait ? 0.074 : 0.082) *
+        baseFontRatio *
         lyricStylePreset.fontScale *
         renderFontPreset.sizeScale *
         lyricFontZoom
     ),
-    Math.round((isPortrait ? 40 : 48) * Math.min(1, fontZoomBoost)),
-    Math.round((isPortrait ? 58 : 84) * Math.max(1, fontZoomBoost))
+    Math.round((isPortrait ? 46 : 54) * Math.min(1, fontZoomBoost)),
+    Math.round((isPortrait ? 72 : 92) * Math.max(1, fontZoomBoost))
   );
   const fontScaleX = Math.round(renderFontPreset.scaleX || 100);
   const fontScaleY = Math.round(renderFontPreset.scaleY || 100);
@@ -8468,7 +8478,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds, {
-      teluguRomanized: finalUsesRomanizedTeluguLyrics
+      teluguRomanized: finalUsesRomanizedTeluguLyrics,
+      transcriptDerived: renderLinesAreTranscriptDerived,
+      audioTimed: renderLineSyncSource === "transcribed"
     });
     const shouldApplyMinimumLyricPacingGuard = shouldEnforceMinimumLyricPacing(
       renderLines,
