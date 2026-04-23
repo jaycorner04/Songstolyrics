@@ -1,3 +1,15 @@
 [auto-push] watching C:\Users\abhis\OneDrive\Desktop\CODEX\song to lyrics
 [auto-push] debounce 15000ms
 [auto-push] auto deploy after push enabled
+[auto-push] committed and pushed changes after .live-debug
+[auto-push] deploying main to EC2 after push
+[auto-push] sync failed: M	scripts/deploy-remote.sh
+Your branch is behind 'origin/main' by 1 commit, and can be fast-forwarded.
+  (use "git pull" to update your local branch)
+HEAD is now at 099dbed chore: auto-sync 2026-04-23 09:50:59
+
+From https://github.com/jaycorner04/Songstolyrics
+ * branch            main       -> FETCH_HEAD
+   e445b77..099dbed  main       -> origin/main
+Already on 'main'
+chmod: cannot access 'scripts/deploy-remote.sh': No such file or directory
