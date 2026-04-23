@@ -1344,8 +1344,7 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       },
       lyricResult
     );
-  const shouldForceTeluguUploadTranscription =
-    preferTeluguRomanizedTranscription || filenameLooksGenerated;
+  const shouldForceTeluguUploadTranscription = preferTeluguRomanizedTranscription;
   let transcriptPreviewLines = [];
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;

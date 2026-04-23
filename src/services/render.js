@@ -1957,8 +1957,25 @@ async function prepareColorEmojiAssets(renderDirectory, lines = []) {
   return assetMap;
 }
 
+function safeRenderDuration(lines = [], durationSeconds = 0) {
+  const baseDuration = Number(durationSeconds || 0);
+
+  if (!lines.length) {
+    return baseDuration;
+  }
+
+  const lyricEnd = lines.reduce((latestEnd, line) => {
+    const start = Number(line?.start || 0);
+    const duration = Number(line?.duration || 3);
+    return Math.max(latestEnd, start + duration);
+  }, 0);
+
+  return Math.max(baseDuration, lyricEnd + 1);
+}
+
 function limitLyricLines(lines = [], durationSeconds) {
-  const maxStart = Math.max(0, Number(durationSeconds || 0) - 0.25);
+  const safeDurationSeconds = safeRenderDuration(lines, durationSeconds);
+  const maxStart = Math.max(0, safeDurationSeconds - 0.25);
 
   return lines
     .filter((line) => Number(line?.start || 0) <= maxStart)
@@ -1966,7 +1983,7 @@ function limitLyricLines(lines = [], durationSeconds) {
       ...line,
       duration: Math.max(
         MIN_LYRIC_DURATION_SECONDS,
-        Math.min(Number(line.duration || 0), durationSeconds - line.start)
+        Math.min(Number(line.duration || 0), safeDurationSeconds - line.start)
       )
     }))
     .filter((line) => line.duration > 0);
@@ -3125,6 +3142,26 @@ function smoothTranscribedLyricGaps(lines = [], durationSeconds = 0) {
   }
 
   return smoothed.filter((line) => !duration || line.start < duration - 0.1);
+}
+
+// PERMANENT FIX: Never allow lyrics to go faster than natural vocal pace.
+// This prevents compression artifacts from bad duration detection.
+function enforceMinimumLyricPacing(lines = [], durationSeconds = 0) {
+  if (!lines.length) {
+    return lines;
+  }
+
+  const duration = Number(durationSeconds || 0);
+
+  return lines.map((line, index) => {
+    const nextStart = Number(lines[index + 1]?.start ?? (duration || Number(line.start || 0) + 6));
+    const naturalGap = nextStart - Number(line.start || 0);
+
+    return {
+      ...line,
+      duration: roundTimeValue(Math.max(1.8, Math.min(naturalGap, 6.0)))
+    };
+  });
 }
 
 function normalizeAlignmentText(text = "") {
@@ -6987,11 +7024,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       });
 
       const effectiveOptions = buildAdaptiveTranscriptionOptions(options, adaptiveProfile);
+      const uploadedAudioLanguageHint = normalizeWhitespace(
+        [
+          payload?.title,
+          payload?.channelTitle,
+          payload?.song?.title,
+          payload?.song?.artist,
+          payload?.customAudioUpload?.name,
+          payload?.customAudioUpload?.originalName
+        ].filter(Boolean).join(" ")
+      );
       const shouldForceTeluguUploadedAudio =
         Boolean(payload?.customAudioUpload) &&
-        (isGeneratedUploadFilename(payload?.title) ||
-          isGeneratedUploadFilename(payload?.customAudioUpload?.name) ||
-          isGeneratedUploadFilename(payload?.customAudioUpload?.originalName));
+        (containsTeluguScript(uploadedAudioLanguageHint) ||
+          containsRomanizedTeluguHint(uploadedAudioLanguageHint));
       const localAudioInputPath =
         typeof audioUrl === "string" &&
         audioUrl &&
@@ -8257,6 +8303,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     renderLines = applyFinalLyricTimingMode(renderLines, durationSeconds, {
       teluguRomanized: finalUsesRomanizedTeluguLyrics
     });
+    renderLines = enforceMinimumLyricPacing(renderLines, durationSeconds);
     renderNotes.push(
       Number(durationSeconds || 0) < 90
         ? finalUsesRomanizedTeluguLyrics

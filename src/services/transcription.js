@@ -14,6 +14,12 @@ const MODEL_NAME = process.env.WHISPER_MODEL || "base";
 const PREVIEW_MODEL_NAME = process.env.WHISPER_PREVIEW_MODEL || "tiny";
 const TRANSIENT_PROCESS_ERROR_REGEX = /\b(eperm|eacces|ebusy|emfile|enfile)\b/i;
 const COMMAND_RETRY_DELAYS_MS = [250, 800];
+const TRANSCRIBED_LINE_MAX_WORDS = 10;
+const TRANSCRIBED_LINE_MIN_TRAILING_WORDS = 4;
+const TRANSCRIBED_LINE_MAX_MERGED_WORDS = 16;
+const TRANSCRIBED_LINE_MAX_MERGED_CHARS = 118;
+const RAPID_TRANSCRIBED_LINE_GAP_SECONDS = 2.45;
+const RAPID_TRANSCRIBED_LINE_MAX_SPAN_SECONDS = 6.2;
 const TELUGU_CONTENT_HINT_PATTERN =
   /telugu|tollywood|andhra|telangana|hyderabad|vijayawada|visakhapatnam|vizag|tirupati|mamdi|meena|konala|radhe\s*shyam|pushpa|rrr|baahubali|bahubali|salaar|kalki|prabhas|allu\s*arjun|ram\s*charan|ntr|mahesh\s*babu|pawan\s*kalyan|chiranjeevi|pooja\s*hegde|poojahegde|samantha|rashmika|anirudh|devi\s*sri\s*prasad|dsp|thaman|yuvan\s*shankar\s*raja|sid\s*sriram|harini\s*ivaturi|\.te\b/i;
 
@@ -347,16 +353,17 @@ function parseWhisperJson(filePath, durationSeconds) {
     .filter((line) => line.text && line.duration > 0.1 && (!duration || line.start < duration - 0.1));
 
   const cleanedLines = removeLikelyHallucinations(rawLines);
+  const stabilizedLines = stabilizeTranscribedLinePacing(cleanedLines, duration);
 
-  if (!cleanedLines.length) {
-    return rawLines;
+  if (!stabilizedLines.length) {
+    return stabilizeTranscribedLinePacing(rawLines, duration);
   }
 
-  if (rawLines.length >= 4 && cleanedLines.length < Math.max(2, Math.round(rawLines.length * 0.35))) {
-    return rawLines;
+  if (rawLines.length >= 4 && stabilizedLines.length < Math.max(2, Math.round(rawLines.length * 0.35))) {
+    return stabilizeTranscribedLinePacing(rawLines, duration);
   }
 
-  return cleanedLines;
+  return stabilizedLines;
 }
 
 function parseWhisperWords(filePath, durationSeconds) {
@@ -459,11 +466,15 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
   const wordEntries = normalizeTranscriptWordEntries(rawWordEntries, start, segmentEnd);
 
   if (wordEntries.length) {
-    const chunkSize = 7;
     const timedChunks = [];
+    const wordEntryChunks = chunkItemsForLyricLines(
+      wordEntries,
+      TRANSCRIBED_LINE_MAX_WORDS,
+      TRANSCRIBED_LINE_MIN_TRAILING_WORDS,
+      TRANSCRIBED_LINE_MAX_MERGED_WORDS
+    );
 
-    for (let index = 0; index < wordEntries.length; index += chunkSize) {
-      const slice = wordEntries.slice(index, index + chunkSize);
+    for (const slice of wordEntryChunks) {
       const chunkStart = Number(slice[0]?.start ?? start);
       const chunkEnd = Math.max(chunkStart + 0.12, Number(slice.at(-1)?.end ?? chunkStart + 0.4));
       const chunkText = normalizeWhitespace(slice.map((entry) => entry.text).join(" "));
@@ -524,17 +535,95 @@ function splitTranscribedSegment(text, start, duration, rawWordEntries = []) {
 }
 
 function chunkWords(words, size) {
+  return chunkItemsForLyricLines(
+    words,
+    size,
+    TRANSCRIBED_LINE_MIN_TRAILING_WORDS,
+    TRANSCRIBED_LINE_MAX_MERGED_WORDS
+  ).map((slice) => ({
+    text: slice.join(" "),
+    wordCount: slice.length
+  }));
+}
+
+function chunkItemsForLyricLines(items = [], size = TRANSCRIBED_LINE_MAX_WORDS, minTrailing = 0, maxMerged = size) {
   const chunks = [];
 
-  for (let index = 0; index < words.length; index += size) {
-    const slice = words.slice(index, index + size);
-    chunks.push({
-      text: slice.join(" "),
-      wordCount: slice.length
-    });
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
   }
 
-  return chunks;
+  if (chunks.length >= 2) {
+    const trailingChunk = chunks.at(-1);
+    const previousChunk = chunks.at(-2);
+
+    if (
+      trailingChunk.length > 0 &&
+      trailingChunk.length < minTrailing &&
+      previousChunk.length + trailingChunk.length <= maxMerged
+    ) {
+      chunks.splice(chunks.length - 2, 2, [...previousChunk, ...trailingChunk]);
+    }
+  }
+
+  return chunks.filter((chunk) => chunk.length);
+}
+
+function getLyricWordCount(text = "") {
+  return normalizeWhitespace(text).split(/\s+/).filter(Boolean).length;
+}
+
+function stabilizeTranscribedLinePacing(lines = [], durationSeconds = 0) {
+  const duration = Number(durationSeconds || 0);
+  const orderedLines = (Array.isArray(lines) ? lines : [])
+    .map((line) => ({
+      text: normalizeWhitespace(line?.text || ""),
+      start: Math.max(0, Number(line?.start || 0)),
+      duration: Math.max(0.2, Number(line?.duration || 0))
+    }))
+    .filter((line) => line.text && line.duration > 0.1 && (!duration || line.start < duration - 0.1))
+    .sort((left, right) => left.start - right.start);
+  const stabilized = [];
+
+  for (const nextLine of orderedLines) {
+    const previousLine = stabilized.at(-1);
+
+    if (!previousLine) {
+      stabilized.push({ ...nextLine });
+      continue;
+    }
+
+    const previousStart = Number(previousLine.start || 0);
+    const nextStart = Number(nextLine.start || 0);
+    const previousEnd = previousStart + Math.max(0.2, Number(previousLine.duration || 0));
+    const nextEnd = nextStart + Math.max(0.2, Number(nextLine.duration || 0));
+    const combinedText = normalizeWhitespace(`${previousLine.text} ${nextLine.text}`);
+    const combinedWordCount = getLyricWordCount(combinedText);
+    const combinedSpan = nextEnd - previousStart;
+    const startGap = nextStart - previousStart;
+    const rapidLineChange =
+      startGap > 0 &&
+      (startGap <= RAPID_TRANSCRIBED_LINE_GAP_SECONDS || previousEnd > nextStart - 0.18);
+    const readableMerge =
+      combinedWordCount <= TRANSCRIBED_LINE_MAX_MERGED_WORDS &&
+      combinedText.length <= TRANSCRIBED_LINE_MAX_MERGED_CHARS &&
+      combinedSpan <= RAPID_TRANSCRIBED_LINE_MAX_SPAN_SECONDS;
+
+    if (rapidLineChange && readableMerge) {
+      previousLine.text = combinedText;
+      previousLine.duration = Math.max(previousLine.duration, nextEnd - previousStart);
+      continue;
+    }
+
+    stabilized.push({ ...nextLine });
+  }
+
+  return stabilized.map((line) => ({
+    ...line,
+    duration: duration
+      ? Math.min(Math.max(0.2, Number(line.duration || 0)), Math.max(0.2, duration - line.start))
+      : Math.max(0.2, Number(line.duration || 0))
+  }));
 }
 
 function removeLikelyHallucinations(lines) {
