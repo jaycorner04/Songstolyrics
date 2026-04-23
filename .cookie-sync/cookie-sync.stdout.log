@@ -1,0 +1,26 @@
+Uploading cookie file candidate: C:\Users\abhis\Downloads\cookies.txt
+Verifying candidate on server...
+[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+[youtube] dQw4w9WgXcQ: Downloading webpage
+WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure. For tips on how to effectively export YouTube cookies, refer to  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies .
+[youtube] dQw4w9WgXcQ: Downloading android vr player API JSON
+WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure. For tips on how to effectively export YouTube cookies, refer to  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies .
+[youtube] dQw4w9WgXcQ: Downloading player 4b0d80ee-main
+WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure. For tips on how to effectively export YouTube cookies, refer to  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies .
+[youtube] [jsc:deno] Solving JS challenges using deno
+[youtube] dQw4w9WgXcQ: Downloading m3u8 information
+WARNING: [youtube] The provided YouTube account cookies are no longer valid. They have likely been rotated in the browser as a security measure. For tips on how to effectively export YouTube cookies, refer to  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies .
+WARNING: ffmpeg not found. The downloaded format may not be the best available. Installing ffmpeg is strongly recommended: https://github.com/yt-dlp/yt-dlp#dependencies
+[info] dQw4w9WgXcQ: Downloading 1 format(s): 96
+Candidate was uploaded but did not verify cleanly. Trying the next cookie file...
+Uploading cookie file candidate: C:\Users\abhis\OneDrive\Desktop\CODEX\song to lyrics\runtime\youtube-cookies.txt
+Verifying candidate on server...
+[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+[youtube] dQw4w9WgXcQ: Downloading webpage
+[youtube] dQw4w9WgXcQ: Downloading android vr player API JSON
+[youtube] dQw4w9WgXcQ: Downloading player d95a0e03-main
+[youtube] [jsc:deno] Solving JS challenges using deno
+[youtube] dQw4w9WgXcQ: Downloading m3u8 information
+WARNING: ffmpeg not found. The downloaded format may not be the best available. Installing ffmpeg is strongly recommended: https://github.com/yt-dlp/yt-dlp#dependencies
+[info] dQw4w9WgXcQ: Downloading 1 format(s): 96
+Verified cookie source: C:\Users\abhis\OneDrive\Desktop\CODEX\song to lyrics\runtime\youtube-cookies.txt
