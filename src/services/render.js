@@ -646,11 +646,29 @@ function buildRenderProfile(payload = {}, durationSeconds = 0) {
   const mode = getRenderMode(payload);
   const shortFastMode = isShortFormRenderSource(payload, durationSeconds);
   const fastMode = mode === "fast" || shortFastMode;
+  const uploadedVideoBackground = Boolean(payload?.customBackgroundVideo);
+  const outputFps = shortFastMode ? 18 : fastMode || uploadedVideoBackground ? 20 : OUTPUT_FPS;
+  const encoderCrf = shortFastMode ? "32" : uploadedVideoBackground ? "29" : fastMode ? "30" : "28";
+  const videoMaxrate = shortFastMode
+    ? "1300k"
+    : uploadedVideoBackground
+      ? "1800k"
+      : fastMode
+        ? "1600k"
+        : "2200k";
+  const videoBufsize = shortFastMode
+    ? "2600k"
+    : uploadedVideoBackground
+      ? "3600k"
+      : fastMode
+        ? "3200k"
+        : "4400k";
 
   return {
     mode,
     fastMode,
     shortFastMode,
+    uploadedVideoBackground,
     panelCaptureCount: shortFastMode ? 2 : fastMode ? 4 : 6,
     panelCaptureScale: shortFastMode ? 720 : fastMode ? 960 : 1120,
     panelCaptureQuality: shortFastMode ? 8 : fastMode ? 7 : 6,
@@ -658,9 +676,11 @@ function buildRenderProfile(payload = {}, durationSeconds = 0) {
     minSceneCount: fastMode ? 4 : 4,
     maxSceneCount: shortFastMode ? 4 : fastMode ? 6 : 7,
     minSceneSeconds: shortFastMode ? 16 : fastMode ? 12 : 11,
-    outputFps: shortFastMode ? 18 : fastMode ? 20 : OUTPUT_FPS,
-    encoderCrf: shortFastMode ? "30" : fastMode ? "27" : "22",
-    audioBitrate: shortFastMode ? "128k" : "160k"
+    outputFps,
+    encoderCrf,
+    videoMaxrate,
+    videoBufsize,
+    audioBitrate: shortFastMode || uploadedVideoBackground ? "112k" : "128k"
   };
 }
 const WEB_ART_STOPWORDS = new Set([
@@ -5428,9 +5448,9 @@ function getSoftwareVideoEncoder(profile = {}) {
       "-c:v",
       "libx264",
       "-preset",
-      "ultrafast",
+      profile.encoderPreset || "veryfast",
       "-crf",
-      profile.encoderCrf || (profile.fastMode ? "26" : "22")
+      profile.encoderCrf || (profile.fastMode ? "30" : "28")
     ]
   };
 }
@@ -6773,6 +6793,12 @@ async function renderVideo(
     "-map",
     `${audioInputIndex}:a`,
     ...videoEncoder.outputArgs,
+    "-maxrate",
+    renderProfile.videoMaxrate || "2200k",
+    "-bufsize",
+    renderProfile.videoBufsize || "4400k",
+    "-g",
+    String(Math.max(36, Math.round(Number(renderProfile.outputFps || OUTPUT_FPS) * 2))),
     "-r",
     String(renderProfile.outputFps || OUTPUT_FPS),
     "-pix_fmt",
@@ -6941,6 +6967,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     if (uploadedBackgroundVideo) {
       renderNotes.push("An uploaded background video will be sampled to build the lyric scenes.");
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
+      renderNotes.push(
+        `Download compression is active for uploaded video backgrounds: ${renderProfile.outputFps}fps, ${renderProfile.videoMaxrate} video cap, ${renderProfile.audioBitrate} audio.`
+      );
     }
 
     if (uploadedAudioFile) {
