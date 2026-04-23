@@ -1649,6 +1649,33 @@ function getRenderDurationSeconds(value) {
   return clamp(Number(value || 0), MIN_RENDER_DURATION_SECONDS, MAX_RENDER_DURATION_SECONDS);
 }
 
+async function getAudioFileDuration(filePath) {
+  try {
+    const { stdout } = await runCommand(
+      ffprobePath,
+      [
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        filePath
+      ],
+      {
+        timeoutMs: 10000
+      }
+    );
+    const data = JSON.parse(stdout);
+    const audioStream = Array.isArray(data?.streams)
+      ? data.streams.find((stream) => stream?.codec_type === "audio")
+      : null;
+
+    return Math.round(Number(audioStream?.duration || 0));
+  } catch {
+    return 0;
+  }
+}
+
 async function sampleImageAverageColor(imagePath) {
   const { stderr } = await runCommand(
     ffmpegPath,
@@ -2762,7 +2789,7 @@ function fitLateUploadedAudioLyricsToAudioWindow(lines = [], durationSeconds = 0
   const lastEnd = Math.max(
     ...sanitized.map((line) => Number(line.start || 0) + Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0)))
   );
-  const lateStartThreshold = Math.max(4, duration * 0.32);
+  const lateStartThreshold = Math.max(4, duration * 0.08);
 
   if (firstStart <= lateStartThreshold) {
     return {
@@ -5852,7 +5879,7 @@ async function saveUploadedAudioFile(payload, renderDirectory) {
       uploadedAudio.originalName || uploadedAudio.name || path.basename(targetPath),
     mimeType: `${uploadedAudio.mimeType || ""}`,
     size: Number(uploadedAudio.size || 0),
-    duration: Number(uploadedAudio.duration || 0)
+    duration: Number(uploadedAudio.duration || 0) || await getAudioFileDuration(targetPath)
   };
 }
 
