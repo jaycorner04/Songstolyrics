@@ -647,28 +647,51 @@ function buildRenderProfile(payload = {}, durationSeconds = 0) {
   const shortFastMode = isShortFormRenderSource(payload, durationSeconds);
   const fastMode = mode === "fast" || shortFastMode;
   const uploadedVideoBackground = Boolean(payload?.customBackgroundVideo);
-  const outputFps = shortFastMode ? 18 : fastMode || uploadedVideoBackground ? 20 : OUTPUT_FPS;
-  const encoderCrf = shortFastMode ? "32" : uploadedVideoBackground ? "29" : fastMode ? "30" : "28";
+  const uploadedImageBackground = Array.isArray(payload?.customBackgrounds) && payload.customBackgrounds.length > 0;
+  const audioOnlyProject =
+    (String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload)) &&
+    !uploadedVideoBackground &&
+    !uploadedImageBackground;
+  const outputFps = shortFastMode
+    ? 18
+    : fastMode || uploadedVideoBackground || uploadedImageBackground || audioOnlyProject
+      ? 20
+      : OUTPUT_FPS;
+  const encoderCrf = shortFastMode
+    ? "32"
+    : uploadedVideoBackground
+      ? "29"
+      : uploadedImageBackground || audioOnlyProject
+        ? "30"
+        : fastMode
+          ? "30"
+          : "28";
   const videoMaxrate = shortFastMode
     ? "1300k"
     : uploadedVideoBackground
       ? "1800k"
-      : fastMode
-        ? "1600k"
-        : "2200k";
+      : uploadedImageBackground || audioOnlyProject
+        ? "1400k"
+        : fastMode
+          ? "1600k"
+          : "2200k";
   const videoBufsize = shortFastMode
     ? "2600k"
     : uploadedVideoBackground
       ? "3600k"
-      : fastMode
-        ? "3200k"
-        : "4400k";
+      : uploadedImageBackground || audioOnlyProject
+        ? "2800k"
+        : fastMode
+          ? "3200k"
+          : "4400k";
 
   return {
     mode,
     fastMode,
     shortFastMode,
     uploadedVideoBackground,
+    uploadedImageBackground,
+    audioOnlyProject,
     panelCaptureCount: shortFastMode ? 2 : fastMode ? 4 : 6,
     panelCaptureScale: shortFastMode ? 720 : fastMode ? 960 : 1120,
     panelCaptureQuality: shortFastMode ? 8 : fastMode ? 7 : 6,
@@ -680,7 +703,7 @@ function buildRenderProfile(payload = {}, durationSeconds = 0) {
     encoderCrf,
     videoMaxrate,
     videoBufsize,
-    audioBitrate: shortFastMode || uploadedVideoBackground ? "112k" : "128k"
+    audioBitrate: shortFastMode || uploadedVideoBackground || uploadedImageBackground || audioOnlyProject ? "112k" : "128k"
   };
 }
 const WEB_ART_STOPWORDS = new Set([
@@ -6962,6 +6985,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         `${uploadedBackgroundPaths.length} uploaded background image${uploadedBackgroundPaths.length === 1 ? "" : "s"} will be used for this render.`
       );
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
+      renderNotes.push(
+        `Download compression is active for image backgrounds: ${renderProfile.outputFps}fps, ${renderProfile.videoMaxrate} video cap, ${renderProfile.audioBitrate} audio.`
+      );
     }
 
     if (uploadedBackgroundVideo) {
@@ -6969,6 +6995,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(`Output resolution is ${videoSize.width}x${videoSize.height}.`);
       renderNotes.push(
         `Download compression is active for uploaded video backgrounds: ${renderProfile.outputFps}fps, ${renderProfile.videoMaxrate} video cap, ${renderProfile.audioBitrate} audio.`
+      );
+    }
+
+    if (!uploadedBackgroundVideo && !uploadedBackgroundPaths.length && renderProfile.audioOnlyProject) {
+      renderNotes.push(
+        `Download compression is active for audio-only renders: ${renderProfile.outputFps}fps, ${renderProfile.videoMaxrate} video cap, ${renderProfile.audioBitrate} audio.`
       );
     }
 
