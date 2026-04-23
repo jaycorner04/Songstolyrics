@@ -7743,13 +7743,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             ),
             durationSeconds
           );
-          let stabilizedUploadedTranscriptWords = [];
+          let stabilizedUploadedTranscriptWords = Array.isArray(payload?.transcriptWords)
+            ? payload.transcriptWords
+            : [];
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
           let preservedUploadedIntroCount = 0;
           let useDirectUploadedTranscript = false;
           let uploadedAudioTimelineDecision = null;
           let useStrictUploadedAudioTimeline = false;
-          if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) || isUploadedAudioSource) {
+          const shouldForceFullUploadedAudioRetranscription =
+            isUploadedAudioSource && !Boolean(payload?.uploadedAudioPreviewStrong);
+          if (
+            shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+            shouldForceFullUploadedAudioRetranscription
+          ) {
             try {
               const fullUploadedTranscription = await getTranscription(
                 "Re-transcribing uploaded audio for full-song lyric timing",
@@ -7804,6 +7811,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 (
                   refreshedTranscriptIsUsableFullSongSource ||
                   shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+                  shouldForceFullUploadedAudioRetranscription ||
                   refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
                   refreshedTranscriptMetrics.meaningfulCount > currentTranscriptMetrics.meaningfulCount + 2 ||
                   refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08

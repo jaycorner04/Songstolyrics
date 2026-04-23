@@ -4298,6 +4298,8 @@ async function handleRender() {
       durationSeconds: currentResult.durationSeconds,
       lines: currentResult.lines,
       transcriptLines: currentResult.transcriptLines,
+      transcriptWords: currentResult.transcriptWords,
+      uploadedAudioPreviewStrong: Boolean(currentResult.uploadedAudioPreviewStrong),
       referenceLyricsLines: currentResult.referenceLyricsLines,
       song: currentResult.song,
       syncMode: currentResult.syncMode,

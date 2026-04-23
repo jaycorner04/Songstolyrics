@@ -1346,6 +1346,8 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
     );
   const shouldForceTeluguUploadTranscription = preferTeluguRomanizedTranscription;
   let transcriptPreviewLines = [];
+  let transcriptPreviewWords = [];
+  let uploadedAudioPreviewStrong = false;
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
 
@@ -1394,6 +1396,13 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         transcriptPreviewLines = Array.isArray(assessedTranscription?.lines)
           ? assessedTranscription.lines
           : [];
+        transcriptPreviewWords = Array.isArray(transcription?.words) ? transcription.words : [];
+        uploadedAudioPreviewStrong =
+          Boolean(assessedTranscription?.usable) &&
+          (
+            transcriptPreviewWords.length >= Math.max(24, Math.round(effectiveDurationSeconds / 3)) ||
+            transcriptPreviewLines.length >= Math.max(8, Math.round(effectiveDurationSeconds / 18))
+          );
 
         if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {
           const hadNonAudioLyricSheet =
@@ -1510,6 +1519,8 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
       syncMode: lyricResult.syncMode,
       lines: lyricResult.lines,
       transcriptLines: transcriptPreviewLines,
+      transcriptWords: transcriptPreviewWords,
+      uploadedAudioPreviewStrong,
       referenceLyricsLines: matchedReferenceLyrics,
       warnings: [
         ...buildWarnings(lyricResult),
@@ -1887,6 +1898,9 @@ app.post(
       durationSeconds: body?.durationSeconds,
       lines: renderLines,
       referenceLyricsLines: Array.isArray(body?.referenceLyricsLines) ? body.referenceLyricsLines : [],
+      transcriptLines: Array.isArray(body?.transcriptLines) ? body.transcriptLines : [],
+      transcriptWords: Array.isArray(body?.transcriptWords) ? body.transcriptWords : [],
+      uploadedAudioPreviewStrong: Boolean(body?.uploadedAudioPreviewStrong),
       song: renderSong,
       syncMode: body?.syncMode || "none",
       poster: body?.poster || "",

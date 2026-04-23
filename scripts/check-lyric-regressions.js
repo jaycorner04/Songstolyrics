@@ -19,7 +19,17 @@ function assertNotIncludes(snippet, message) {
 }
 
 assertIncludes(
-  'if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) || isUploadedAudioSource) {',
+  "const shouldForceFullUploadedAudioRetranscription =",
+  "Uploaded-audio lyric protection failed: smart uploaded-audio retranscription gate is missing."
+);
+
+assertIncludes(
+  "isUploadedAudioSource && !Boolean(payload?.uploadedAudioPreviewStrong);",
+  "Uploaded-audio lyric protection failed: strong uploaded-audio preview bypass is missing."
+);
+
+assertIncludes(
+  "shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||",
   "Uploaded-audio lyric protection failed: full-song transcription gate changed."
 );
 
