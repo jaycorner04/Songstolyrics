@@ -77,6 +77,7 @@ async function getRuntimeDiagnostics() {
   const deno = await runCheck("deno", ["--version"]);
   const fasterWhisper = await runCheck("python", ["-c", "import faster_whisper"]);
   const openAiWhisper = await runCheck("python", ["-c", "import whisper"]);
+  const demucs = await runCheck("python", ["-c", "import demucs"]);
   const cookieFile = resolveCookieFilePath();
   const proxyUrl = resolveProxyUrl();
   const ytdlCoreProxyUrl = resolveProxyUrl("ytdlCore");
@@ -98,6 +99,11 @@ async function getRuntimeDiagnostics() {
     deno: buildCheck(deno.ok, deno.detail, false),
     fasterWhisper: buildCheck(fasterWhisper.ok, fasterWhisper.detail, false),
     openAiWhisper: buildCheck(openAiWhisper.ok, openAiWhisper.detail, false),
+    demucs: buildCheck(
+      demucs.ok,
+      demucs.ok ? "available for weak-transcription vocal separation fallback" : demucs.detail,
+      false
+    ),
     ytDlpCookies: buildCheck(
       Boolean(cookieFile),
       cookieFile || `not configured (add ${path.join(runtimeRoot, "youtube-cookies.txt")} or set YTDLP_COOKIE_FILE)`,

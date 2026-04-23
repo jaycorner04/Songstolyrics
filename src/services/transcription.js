@@ -20,6 +20,11 @@ const TRANSCRIBED_LINE_MAX_MERGED_WORDS = 16;
 const TRANSCRIBED_LINE_MAX_MERGED_CHARS = 118;
 const RAPID_TRANSCRIBED_LINE_GAP_SECONDS = 2.45;
 const RAPID_TRANSCRIBED_LINE_MAX_SPAN_SECONDS = 6.2;
+const DEMUCS_FALLBACK_TIMEOUT_MS = Math.max(
+  60 * 1000,
+  Number(process.env.DEMUCS_FALLBACK_TIMEOUT_MS || 12 * 60 * 1000)
+);
+const DEMUCS_FALLBACK_MODEL = normalizeWhitespace(process.env.DEMUCS_MODEL || "htdemucs");
 const TELUGU_CONTENT_HINT_PATTERN =
   /telugu|tollywood|andhra|telangana|hyderabad|vijayawada|visakhapatnam|vizag|tirupati|mamdi|meena|konala|radhe\s*shyam|pushpa|rrr|baahubali|bahubali|salaar|kalki|prabhas|allu\s*arjun|ram\s*charan|ntr|mahesh\s*babu|pawan\s*kalyan|chiranjeevi|pooja\s*hegde|poojahegde|samantha|rashmika|anirudh|devi\s*sri\s*prasad|dsp|thaman|yuvan\s*shankar\s*raja|sid\s*sriram|harini\s*ivaturi|\.te\b/i;
 
@@ -870,6 +875,204 @@ async function transcribeWithOpenAiWhisper(audioPath, outputDirectory, options =
   return path.join(outputDirectory, `${baseName}.json`);
 }
 
+function getTimedLineCoverageSeconds(lines = []) {
+  return (Array.isArray(lines) ? lines : []).reduce(
+    (sum, line) => sum + Math.max(0.2, Math.min(6, Number(line?.duration || 0))),
+    0
+  );
+}
+
+function getTranscriptRepeatPenalty(lines = []) {
+  const counts = new Map();
+
+  for (const line of Array.isArray(lines) ? lines : []) {
+    const key = normalizeTranscriptKey(line?.text || "");
+
+    if (!key) {
+      continue;
+    }
+
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  const maxCount = Math.max(0, ...counts.values());
+  return lines.length ? maxCount / Math.max(1, lines.length) : 0;
+}
+
+function assessTranscriptionQuality(lines = [], words = [], durationSeconds = 0) {
+  const duration = Math.max(0, Number(durationSeconds || 0));
+  const safeLines = (Array.isArray(lines) ? lines : []).filter((line) => normalizeWhitespace(line?.text || ""));
+  const safeWords = Array.isArray(words) ? words.filter((word) => normalizeWhitespace(word?.text || "")) : [];
+  const meaningfulLineCount = safeLines.filter((line) => getLyricWordCount(line.text) >= 2).length;
+  const wordCount =
+    safeWords.length ||
+    safeLines.reduce((sum, line) => sum + getLyricWordCount(line.text), 0);
+  const coverageRatio = duration > 0 ? getTimedLineCoverageSeconds(safeLines) / duration : 0;
+  const repeatPenalty = getTranscriptRepeatPenalty(safeLines);
+  const reasons = [];
+
+  if (!safeLines.length) {
+    reasons.push("no lyric lines were detected");
+  }
+
+  if (duration >= 40 && meaningfulLineCount < 4) {
+    reasons.push("too few meaningful lyric lines were detected");
+  }
+
+  if (duration >= 90 && meaningfulLineCount < 8 && wordCount < 45) {
+    reasons.push("the transcript is too sparse for a long song");
+  }
+
+  if (duration >= 60 && coverageRatio < 0.055 && wordCount < 35) {
+    reasons.push("detected lyric coverage is very low");
+  }
+
+  if (safeLines.length >= 4 && repeatPenalty >= 0.55) {
+    reasons.push("too many transcript lines repeat the same text");
+  }
+
+  return {
+    weak: reasons.length > 0,
+    reason: reasons.join("; "),
+    lineCount: safeLines.length,
+    meaningfulLineCount,
+    wordCount,
+    coverageRatio,
+    repeatPenalty,
+    score:
+      meaningfulLineCount * 2 +
+      wordCount * 0.32 +
+      Math.min(1, coverageRatio) * 28 -
+      repeatPenalty * 12
+  };
+}
+
+async function findFirstExistingFile(rootDirectory, matcher) {
+  const entries = await fsp.readdir(rootDirectory, { withFileTypes: true }).catch(() => []);
+
+  for (const entry of entries) {
+    const entryPath = path.join(rootDirectory, entry.name);
+
+    if (entry.isFile() && matcher(entryPath)) {
+      return entryPath;
+    }
+
+    if (entry.isDirectory()) {
+      const nestedMatch = await findFirstExistingFile(entryPath, matcher);
+
+      if (nestedMatch) {
+        return nestedMatch;
+      }
+    }
+  }
+
+  return "";
+}
+
+async function separateVocalsWithDemucs(audioPath, outputDirectory, options = {}) {
+  const demucsOutputDirectory = path.join(outputDirectory, "demucs");
+  await fsp.mkdir(demucsOutputDirectory, { recursive: true });
+
+  await runCommand(
+    "python",
+    [
+      "-m",
+      "demucs.separate",
+      "--two-stems",
+      "vocals",
+      "-n",
+      DEMUCS_FALLBACK_MODEL || "htdemucs",
+      "--out",
+      demucsOutputDirectory,
+      audioPath
+    ],
+    {
+      timeout: Number(options.demucsTimeoutMs || DEMUCS_FALLBACK_TIMEOUT_MS)
+    }
+  );
+
+  const vocalsPath = await findFirstExistingFile(
+    demucsOutputDirectory,
+    (filePath) => /(^|[\\/])vocals\.wav$/i.test(filePath)
+  );
+
+  if (!vocalsPath) {
+    throw new Error("Demucs did not create a vocals stem.");
+  }
+
+  return vocalsPath;
+}
+
+async function runWhisperTranscriptionPass(audioPath, outputDirectory, options, transcriptionMode, name) {
+  const outputPath = path.join(outputDirectory, `${name || transcriptionMode}-transcript.json`);
+
+  if (await hasPythonModule("faster_whisper")) {
+    await transcribeWithFasterWhisper(audioPath, outputPath, options);
+    return {
+      engine: "faster-whisper",
+      transcriptPath: outputPath
+    };
+  }
+
+  if (await hasPythonModule("whisper")) {
+    const whisperJsonPath = await transcribeWithOpenAiWhisper(audioPath, outputDirectory, options);
+    return {
+      engine: "openai-whisper",
+      transcriptPath: whisperJsonPath
+    };
+  }
+
+  throw new Error("Whisper transcription is not installed. Install faster-whisper or openai-whisper to transcribe videos with no lyrics.");
+}
+
+function buildTranscriptionResultFromJson(transcriptPath, options, effectiveDurationSeconds, audioDurationSeconds, audioPath, extra = {}) {
+  const lines = filterPreVocalNoiseLines(
+    parseWhisperJson(transcriptPath, effectiveDurationSeconds),
+    {
+      ...options,
+      durationSeconds: effectiveDurationSeconds
+    },
+    effectiveDurationSeconds
+  );
+  const words = parseWhisperWords(transcriptPath, effectiveDurationSeconds);
+  const metadata = readWhisperMetadata(transcriptPath);
+  const transcriptionMode = options.task === "translate" ? "translate" : "transcribe";
+  const quality = assessTranscriptionQuality(lines, words, effectiveDurationSeconds);
+
+  return {
+    source: transcriptionMode === "translate" ? "audio-translation" : "audio-transcription",
+    syncMode: "transcribed",
+    task: transcriptionMode,
+    language: metadata.language,
+    audioDurationSeconds,
+    audioPath,
+    lines,
+    words,
+    transcriptionQuality: quality,
+    ...extra
+  };
+}
+
+function shouldTryDemucsFallback(transcriptionResult, options = {}, durationSeconds = 0) {
+  if (options.demucsFallback !== true) {
+    return false;
+  }
+
+  if (options.preview || options.disableDemucsFallback) {
+    return false;
+  }
+
+  if (transcriptionResult?.usedDemucsFallback) {
+    return false;
+  }
+
+  const duration = Number(durationSeconds || 0);
+  const quality = transcriptionResult?.transcriptionQuality ||
+    assessTranscriptionQuality(transcriptionResult?.lines, transcriptionResult?.words, duration);
+
+  return Boolean(quality.weak);
+}
+
 async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds, options = {}) {
   const outputDirectory = path.join(renderDirectory, "transcription");
   const normalizedOptions = {
@@ -891,58 +1094,94 @@ async function transcribeYouTubeAudio(videoId, renderDirectory, durationSeconds,
   const audioPath = await downloadAudioWithOptions(videoId, outputDirectory, normalizedOptions);
   const audioDurationSeconds = await probeAudioDurationSeconds(audioPath);
   const transcriptionMode = resolvedWhisperOptions.task;
-  const outputPath = path.join(outputDirectory, `${transcriptionMode}-transcript.json`);
   const effectiveDurationSeconds = audioDurationSeconds || durationSeconds;
+  const initialPass = await runWhisperTranscriptionPass(
+    audioPath,
+    outputDirectory,
+    normalizedOptions,
+    transcriptionMode,
+    transcriptionMode
+  );
+  const initialResult = buildTranscriptionResultFromJson(
+    initialPass.transcriptPath,
+    normalizedOptions,
+    effectiveDurationSeconds,
+    audioDurationSeconds,
+    audioPath,
+    {
+      transcriptionEngine: initialPass.engine
+    }
+  );
 
-  if (await hasPythonModule("faster_whisper")) {
-    await transcribeWithFasterWhisper(audioPath, outputPath, normalizedOptions);
-    const lines = filterPreVocalNoiseLines(
-      parseWhisperJson(outputPath, effectiveDurationSeconds),
-      {
-        ...normalizedOptions,
-        durationSeconds: effectiveDurationSeconds
-      },
-      effectiveDurationSeconds
-    );
-    const words = parseWhisperWords(outputPath, effectiveDurationSeconds);
-    const metadata = readWhisperMetadata(outputPath);
+  if (!shouldTryDemucsFallback(initialResult, normalizedOptions, effectiveDurationSeconds)) {
+    return initialResult;
+  }
+
+  if (!(await hasPythonModule("demucs"))) {
     return {
-      source: transcriptionMode === "translate" ? "audio-translation" : "audio-transcription",
-      syncMode: "transcribed",
-      task: transcriptionMode,
-      language: metadata.language,
-      audioDurationSeconds,
-      audioPath,
-      lines,
-      words
+      ...initialResult,
+      demucsFallbackAttempted: false,
+      demucsFallbackSkipped: true,
+      demucsFallbackReason: "Demucs is not installed."
     };
   }
 
-  if (await hasPythonModule("whisper")) {
-    const whisperJsonPath = await transcribeWithOpenAiWhisper(audioPath, outputDirectory, normalizedOptions);
-    const lines = filterPreVocalNoiseLines(
-      parseWhisperJson(whisperJsonPath, effectiveDurationSeconds),
-      {
-        ...normalizedOptions,
-        durationSeconds: effectiveDurationSeconds
-      },
-      effectiveDurationSeconds
+  try {
+    const vocalsPath = await separateVocalsWithDemucs(audioPath, outputDirectory, normalizedOptions);
+    const demucsOptions = {
+      ...normalizedOptions,
+      audioInputPath: vocalsPath,
+      preview: false
+    };
+    const demucsPass = await runWhisperTranscriptionPass(
+      vocalsPath,
+      outputDirectory,
+      demucsOptions,
+      transcriptionMode,
+      `${transcriptionMode}-demucs`
     );
-    const words = parseWhisperWords(whisperJsonPath, effectiveDurationSeconds);
-    const metadata = readWhisperMetadata(whisperJsonPath);
-    return {
-      source: transcriptionMode === "translate" ? "audio-translation" : "audio-transcription",
-      syncMode: "transcribed",
-      task: transcriptionMode,
-      language: metadata.language,
+    const demucsResult = buildTranscriptionResultFromJson(
+      demucsPass.transcriptPath,
+      demucsOptions,
+      effectiveDurationSeconds,
       audioDurationSeconds,
-      audioPath,
-      lines,
-      words
+      vocalsPath,
+      {
+        transcriptionEngine: demucsPass.engine,
+        demucsFallbackAttempted: true,
+        demucsVocalPath: vocalsPath
+      }
+    );
+    const initialScore = Number(initialResult.transcriptionQuality?.score || 0);
+    const demucsScore = Number(demucsResult.transcriptionQuality?.score || 0);
+    const demucsIsMeaningfullyBetter =
+      (!demucsResult.transcriptionQuality?.weak && initialResult.transcriptionQuality?.weak) ||
+      demucsScore >= initialScore + 2.5;
+
+    if (demucsIsMeaningfullyBetter) {
+      return {
+        ...demucsResult,
+        usedDemucsFallback: true,
+        demucsFallbackReason: initialResult.transcriptionQuality?.reason || "the first transcript was weak",
+        originalTranscriptionQuality: initialResult.transcriptionQuality
+      };
+    }
+
+    return {
+      ...initialResult,
+      demucsFallbackAttempted: true,
+      demucsFallbackSkipped: true,
+      demucsFallbackReason: "Demucs did not improve the transcript enough.",
+      demucsTranscriptionQuality: demucsResult.transcriptionQuality
+    };
+  } catch (error) {
+    return {
+      ...initialResult,
+      demucsFallbackAttempted: true,
+      demucsFallbackSkipped: true,
+      demucsFallbackReason: `Demucs fallback failed: ${error.message}`
     };
   }
-
-  throw new Error("Whisper transcription is not installed. Install faster-whisper or openai-whisper to transcribe videos with no lyrics.");
 }
 
 async function probeAudioDurationSeconds(audioPath) {

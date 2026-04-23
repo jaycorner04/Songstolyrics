@@ -7118,6 +7118,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 language: "te"
               }
             : {}),
+          demucsFallback: true,
           audioInputPath: localAudioInputPath
         }
       );
@@ -7136,6 +7137,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
       if (transcription.audioPath) {
         audioUrl = transcription.audioPath;
+      }
+
+      if (transcription.usedDemucsFallback) {
+        renderNotes.push(
+          "The first audio transcript was weak, so the final render separated the vocals with Demucs and rebuilt lyric timing from the cleaner vocal stem."
+        );
       }
 
       cachedTranscriptions.set(cacheKey, transcription);
