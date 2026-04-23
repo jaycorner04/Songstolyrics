@@ -995,7 +995,12 @@ async function getVideoMetadata(videoId, info) {
   const parsedDurationSeconds =
     parseIsoDuration(apiItem?.contentDetails?.duration || "") ||
     Number(parseHtmlValue(html, /"lengthSeconds":"(\d+)"/i) || 0);
-  const ytdlpMetadata = parsedDurationSeconds ? null : await getYtDlpVideoMetadata(videoId);
+  const shortsDetected =
+    /\/shorts\//i.test(info?.watchUrl || "") ||
+    /"webPageType"\s*:\s*"WEB_PAGE_TYPE_SHORTS"/i.test(html) ||
+    /"url"\s*:\s*"\/shorts\//i.test(html);
+  const shouldVerifyDurationWithYtDlp = !parsedDurationSeconds || (parsedDurationSeconds <= 70 && !shortsDetected);
+  const ytdlpMetadata = shouldVerifyDurationWithYtDlp ? await getYtDlpVideoMetadata(videoId) : null;
   const title =
     apiItem?.snippet?.title ||
     oembed.title ||
@@ -1013,11 +1018,7 @@ async function getVideoMetadata(videoId, info) {
     ytdlpMetadata?.description ||
     decodeHtmlEntities(parseHtmlValue(html, /"shortDescription":"([^"]*)"/i)) ||
     "";
-  const shortsDetected =
-    /\/shorts\//i.test(info?.watchUrl || "") ||
-    /"webPageType"\s*:\s*"WEB_PAGE_TYPE_SHORTS"/i.test(html) ||
-    /"url"\s*:\s*"\/shorts\//i.test(html);
-  const durationSeconds = parsedDurationSeconds || Number(ytdlpMetadata?.durationSeconds || 0) || (videoId && shortsDetected ? 60 : 0);
+  const durationSeconds = Number(ytdlpMetadata?.durationSeconds || 0) || parsedDurationSeconds || (videoId && shortsDetected ? 60 : 0);
   const thumbnails = normalizeThumbnails(
     videoId,
     apiItem?.snippet?.thumbnails?.high?.url || oembed.thumbnail_url || ytdlpMetadata?.thumbnail || ""
