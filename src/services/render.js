@@ -538,6 +538,7 @@ const PANEL_CAPTURE_CONCURRENCY = 2;
 const PANEL_PROCESS_CONCURRENCY = 4;
 const PANEL_CAPTURE_TIMEOUT_MS = 25000;
 const PANEL_PROCESS_TIMEOUT_MS = 15000;
+const UPLOADED_BACKGROUND_VIDEO_COMBINE_TIMEOUT_MS = 8 * 60 * 1000;
 const WEB_ART_SCENE_CONCURRENCY = 2;
 const WEB_ART_SEARCH_TIMEOUT_MS = 4500;
 const WEB_ART_DOWNLOAD_TIMEOUT_MS = 8000;
@@ -6267,7 +6268,7 @@ async function combineUploadedBackgroundVideos(
       ],
       {
         cwd: renderDirectory,
-        timeoutMs: RENDER_TIMEOUT_MS
+        timeoutMs: UPLOADED_BACKGROUND_VIDEO_COMBINE_TIMEOUT_MS
       }
     );
 
@@ -6300,7 +6301,7 @@ async function combineUploadedBackgroundVideos(
     ],
     {
       cwd: renderDirectory,
-      timeoutMs: RENDER_TIMEOUT_MS
+      timeoutMs: UPLOADED_BACKGROUND_VIDEO_COMBINE_TIMEOUT_MS
     }
   );
 
