@@ -6,7 +6,14 @@ const fsp = require("fs/promises");
 const ffmpegPath = require("ffmpeg-static");
 const ffprobePath = require("ffprobe-static").path;
 
-const { publicRoot, rendersRoot } = require("../config/runtime");
+const {
+  cacheRoot,
+  previewAudioCacheRoot,
+  publicRoot,
+  renderJobsRoot,
+  rendersRoot,
+  uploadsRoot
+} = require("../config/runtime");
 const { getAdaptiveProfile, recordAdaptiveSignal, recordRenderOutcome } = require("./adaptive-guardrails");
 const { resolveAudioInput, resolveVideoUrl } = require("./audio");
 const { recordLocalDebugEvent } = require("./local-debug");
@@ -551,6 +558,12 @@ const PANEL_PROCESS_CONCURRENCY = 4;
 const PANEL_CAPTURE_TIMEOUT_MS = 25000;
 const PANEL_PROCESS_TIMEOUT_MS = 15000;
 const UPLOADED_BACKGROUND_VIDEO_COMBINE_TIMEOUT_MS = 8 * 60 * 1000;
+const RUNTIME_PRUNE_KEEP_RENDER_COUNT = 18;
+const RUNTIME_PRUNE_KEEP_JOB_COUNT = 40;
+const RUNTIME_PRUNE_RENDER_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+const RUNTIME_PRUNE_JOB_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+const RUNTIME_PRUNE_UPLOAD_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const RUNTIME_PRUNE_CACHE_MAX_AGE_MS = 10 * 60 * 60 * 1000;
 const WEB_ART_SCENE_CONCURRENCY = 2;
 const WEB_ART_SEARCH_TIMEOUT_MS = 4500;
 const WEB_ART_DOWNLOAD_TIMEOUT_MS = 8000;
@@ -2292,6 +2305,10 @@ function buildUserRenderMessage(job = {}) {
   }
 
   if (job.status === "failed") {
+    if (/enospc|no space left on device|disk full|storage full/i.test(`${job.error || ""}`)) {
+      return "The server ran out of storage during this render. Cleanup is in place now, so please try again.";
+    }
+
     if (/YOUTUBE_BOT_BLOCK|not a bot|cookies-from-browser|temporarily blocked audio access/i.test(`${job.error || ""}`)) {
       return "YouTube blocked the video audio for this link. Add a YouTube cookie file on the server or try another link.";
     }
@@ -2430,9 +2447,14 @@ function isRecoverableRenderError(error) {
     return false;
   }
 
-  return /timed out|timeout|ffmpeg|encoder|spawn|stream|youtube|audio|network|econn|enotfound|eai_again|reset|background|panel|artwork|sample|fetch|concat|subtitle|render/.test(
+  return /timed out|timeout|ffmpeg|encoder|spawn|stream|youtube|audio|network|econn|enotfound|eai_again|reset|background|panel|artwork|sample|fetch|concat|subtitle|render|enospc|no space left on device|disk full|storage full/.test(
     message
   );
+}
+
+function isStorageCapacityError(error) {
+  const message = `${error?.message || error || ""}`.toLowerCase();
+  return /enospc|no space left on device|disk full|storage full/.test(message);
 }
 
 function isAudioTransportError(error) {
@@ -2766,6 +2788,70 @@ async function cleanupRetryArtifacts(renderDirectory) {
       } catch {}
     })
   );
+}
+
+async function pruneDirectoryEntries(rootPath, { maxAgeMs = 0, keepCount = 0 } = {}) {
+  let entries = [];
+
+  try {
+    entries = await fsp.readdir(rootPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const stampedEntries = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(rootPath, entry.name);
+
+    try {
+      const stats = await fsp.stat(fullPath);
+      stampedEntries.push({
+        fullPath,
+        modifiedTimeMs: stats.mtimeMs
+      });
+    } catch {}
+  }
+
+  stampedEntries.sort((left, right) => right.modifiedTimeMs - left.modifiedTimeMs);
+  const now = Date.now();
+
+  await Promise.all(
+    stampedEntries.map(async (entry, index) => {
+      const isOlderThanLimit = maxAgeMs > 0 && now - entry.modifiedTimeMs > maxAgeMs;
+      const isBeyondKeepCount = keepCount > 0 && index >= keepCount;
+
+      if (!isOlderThanLimit && !isBeyondKeepCount) {
+        return;
+      }
+
+      try {
+        await fsp.rm(entry.fullPath, { recursive: true, force: true });
+      } catch {}
+    })
+  );
+}
+
+async function pruneRuntimeStorage() {
+  await Promise.all([
+    pruneDirectoryEntries(rendersRoot, {
+      maxAgeMs: RUNTIME_PRUNE_RENDER_MAX_AGE_MS,
+      keepCount: RUNTIME_PRUNE_KEEP_RENDER_COUNT
+    }),
+    pruneDirectoryEntries(renderJobsRoot, {
+      maxAgeMs: RUNTIME_PRUNE_JOB_MAX_AGE_MS,
+      keepCount: RUNTIME_PRUNE_KEEP_JOB_COUNT
+    }),
+    pruneDirectoryEntries(uploadsRoot, {
+      maxAgeMs: RUNTIME_PRUNE_UPLOAD_MAX_AGE_MS
+    }),
+    pruneDirectoryEntries(cacheRoot, {
+      maxAgeMs: RUNTIME_PRUNE_CACHE_MAX_AGE_MS
+    }),
+    pruneDirectoryEntries(previewAudioCacheRoot, {
+      maxAgeMs: RUNTIME_PRUNE_CACHE_MAX_AGE_MS
+    })
+  ]);
 }
 
 function sanitizeLyricLines(lines = [], fallbackDuration = 0) {
@@ -9099,6 +9185,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     const shortError = summarizeErrorMessage(error);
 
     if (attemptNumber < MAX_RENDER_ATTEMPTS && isRecoverableRenderError(error)) {
+      if (isStorageCapacityError(error)) {
+        appendUniqueJobNote(
+          job,
+          "The server storage filled up during this render, so old render files were cleaned before retrying."
+        );
+        await pruneRuntimeStorage();
+      }
+
       appendUniqueJobNote(
         job,
         `Automatic recovery is retrying after: ${shortError}`
@@ -9173,6 +9267,7 @@ async function startRenderJob(payload) {
   const titleSlug = slugify(payload.song?.title || payload.title || videoId) || videoId;
   const createdAt = new Date().toISOString();
 
+  await pruneRuntimeStorage();
   await ensureDirectory(rendersRoot);
 
   const job = {
