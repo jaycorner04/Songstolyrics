@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="build-marker" content="__BUILD_MARKER__" />
+    <meta name="local-debug-base-url" content="__LOCAL_DEBUG_BASE_URL__" />
+    <title>Song to Lyrics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Syne:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css?v=__BUILD_MARKER__" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="ambient ambient-one"></div>
+      <div class="ambient ambient-two"></div>
+
+      <div class="mobile-topbar" aria-label="Mobile page title">
+        <div class="mobile-topbar-mark" aria-hidden="true">SL</div>
+        <div class="mobile-topbar-copy">
+          <p class="mobile-topbar-title">song into a living lyric sheet.</p>
+          <p class="mobile-topbar-signature">BY ABHISHEK.</p>
+        </div>
+      </div>
+
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Interactive lyric studio</p>
+          <div class="hero-title-wrap">
+            <h1>Turn a YouTube song into a living lyric sheet.</h1>
+            <p class="hero-signature">BY ABHISHEK.</p>
+          </div>
+          <p class="hero-text">
+            Paste a YouTube link to pull the song, build a comic-style lyric video, preview it, and
+            download the finished export.
+          </p>
+          <div class="hero-stats" aria-label="Site stats">
+            <article class="hero-stat-card">
+              <strong>148K+</strong>
+              <span>Visited</span>
+            </article>
+            <article class="hero-stat-card">
+              <strong>61K+</strong>
+              <span>Downloads</span>
+            </article>
+            <article class="hero-stat-card">
+              <strong>34K+</strong>
+              <span>Users</span>
+            </article>
+            <article class="hero-stat-card">
+              <strong>92K+</strong>
+              <span>Created</span>
+            </article>
+          </div>
+
+          <section class="style-preview-card hero-preview-card" aria-label="Lyrics preview panel">
+            <div class="style-preview-topline">
+              <p class="eyebrow">Live preview</p>
+              <span id="lyric-preview-style-badge" class="style-preview-badge">Auto mix</span>
+            </div>
+
+            <div class="style-preview-copy">
+              <h2>See the lyric look before you render.</h2>
+              <p>Animated sample lyrics cycle through a real multi-line flow when users change the style or font.</p>
+            </div>
+
+            <div id="lyric-style-preview" class="lyric-style-preview is-auto">
+              <img
+                id="lyric-style-preview-image"
+                class="lyric-style-preview-media"
+                alt="Live lyric preview background"
+                hidden
+              />
+              <video
+                id="lyric-style-preview-video"
+                class="lyric-style-preview-media"
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                hidden
+              ></video>
+              <div class="lyric-style-preview-backdrop" aria-hidden="true"></div>
+              <div class="lyric-style-preview-glow" aria-hidden="true"></div>
+              <div class="lyric-style-preview-frame">
+                <span class="preview-chip">Preview output</span>
+                <div id="lyric-preview-drag-surface" class="lyric-preview-drag-surface">
+                  <div class="preview-drag-tip" aria-hidden="true">Drag lyrics to the safe area</div>
+                  <button
+                    id="lyric-preview-move-button"
+                    type="button"
+                    class="lyric-preview-move-button"
+                    aria-pressed="false"
+                  >
+                    Move lyrics
+                  </button>
+                  <div
+                    id="preview-lines-shell"
+                    class="preview-lines-shell"
+                    tabindex="0"
+                    aria-label="Drag lyric preview to place the lyrics"
+                  >
+                    <div class="preview-lines">
+                      <p id="preview-line-1" class="preview-line preview-line-1">City lights in stereo</p>
+                      <p id="preview-line-2" class="preview-line preview-line-2">Street drums wake the silence</p>
+                      <p id="preview-line-3" class="preview-line preview-line-3 is-active">You keep running through my mind</p>
+                      <p id="preview-line-4" class="preview-line preview-line-4">Every shadow turns to color</p>
+                      <p id="preview-line-5" class="preview-line preview-line-5">Tonight the echo feels alive</p>
+                      <p id="preview-line-6" class="preview-line preview-line-6">We hold the hook a little longer</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="style-preview-meta">
+              <div class="style-preview-pill">
+                <span>Font</span>
+                <strong id="lyric-preview-font-label">Arial</strong>
+              </div>
+              <div class="style-preview-pill">
+                <span>Motion</span>
+                <strong id="lyric-preview-motion-label">Balanced</strong>
+              </div>
+            </div>
+
+            <div class="preview-position-card">
+              <div class="preview-position-copy">
+                <span>Placement</span>
+                <strong>Move lyrics away from faces</strong>
+                <p id="lyric-position-status">
+                  Upload a background, then drag the live preview lyrics where you want them to sit in the final render.
+                </p>
+              </div>
+              <div class="preview-position-actions">
+                <button id="lyric-position-reset-button" type="button" class="mini-action-button">
+                  Reset position
+                </button>
+              </div>
+            </div>
+
+            <div class="preview-insight-strip" aria-label="Preview insights">
+              <article class="preview-insight-card">
+                <span>Live</span>
+                <strong>Style updates instantly</strong>
+                <p>Change font, motion, or color and preview the look before you render.</p>
+              </article>
+              <article class="preview-insight-card">
+                <span>Output</span>
+                <strong>Readable by default</strong>
+                <p>The final export keeps lyrics bold and centered even when styles get more dramatic.</p>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <div class="hero-side">
+          <form id="converter-form" class="converter-card">
+            <label class="input-label" for="video-url">YouTube video link</label>
+            <div class="input-row">
+              <input
+                id="video-url"
+                name="url"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                autocomplete="off"
+              />
+              <button
+                id="upload-audio-inline-button"
+                type="button"
+                class="input-row-secondary-button"
+              >
+                Add audio
+              </button>
+              <button id="submit-button" type="submit">Create</button>
+            </div>
+            <div
+              id="inline-audio-status"
+              class="inline-audio-status"
+              aria-live="polite"
+              hidden
+            ></div>
+            <p class="helper-text">
+              Music videos and lyric videos work best. You can paste a YouTube link, or upload the
+              song audio directly and create from that without a link.
+            </p>
+
+            <div class="background-controls">
+              <div class="upload-field">
+                <label class="input-label" for="background-images">Background images</label>
+                <input
+                  id="background-images"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                />
+                <p class="helper-text">
+                  Add up to 5 images. Portrait images render as mobile video in Auto mode.
+                </p>
+                <div class="upload-preview-actions">
+                  <button id="change-uploaded-images-button" type="button" class="mini-action-button">
+                    Change images
+                  </button>
+                  <button id="delete-uploaded-images-button" type="button" class="mini-action-button is-muted">
+                    Delete images
+                  </button>
+                </div>
+                <div id="upload-preview-strip" class="upload-preview-strip" aria-live="polite"></div>
+              </div>
+
+              <div class="upload-field">
+                <label class="input-label" for="background-video">Background video</label>
+                <input
+                  id="background-video"
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                />
+                <p class="helper-text">
+                  Optional. Add one video and the renderer will sample moving scenes from it.
+                </p>
+                <div id="background-video-meta" class="video-upload-meta" aria-live="polite">
+                  No background video selected.
+                </div>
+              </div>
+
+              <div id="audio-fallback-field" class="upload-field audio-fallback-field">
+                <label class="input-label" for="audio-fallback">Audio fallback</label>
+                <div id="audio-fallback-state" class="audio-fallback-state">
+                  Audio status will show here after you load a song.
+                </div>
+                <input
+                  id="audio-fallback"
+                  type="file"
+                  accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,audio/webm,video/mp4,video/webm,video/quicktime"
+                />
+                <p class="helper-text">
+                  Optional. If YouTube blocks server audio, upload the song audio here and the render will use it.
+                </p>
+                <div class="upload-preview-actions">
+                  <button id="change-audio-fallback-button" type="button" class="mini-action-button">
+                    Change audio
+                  </button>
+                  <button id="delete-audio-fallback-button" type="button" class="mini-action-button is-muted">
+                    Remove audio
+                  </button>
+                </div>
+                <div id="audio-fallback-meta" class="video-upload-meta" aria-live="polite">
+                  No audio fallback selected.
+                </div>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="output-format">Output size</label>
+                <select id="output-format">
+                  <option value="auto">Auto</option>
+                  <option value="desktop">Desktop 16:9</option>
+                  <option value="mobile">Mobile 9:16</option>
+                </select>
+                <p class="helper-text">
+                  Auto uses a mobile layout on phones and portrait uploads, and a desktop layout on larger screens.
+                </p>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="render-mode">Render speed</label>
+                <select id="render-mode">
+                  <option value="standard">Standard quality</option>
+                  <option value="fast">Fast render</option>
+                </select>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="lyric-style">Lyrics style</label>
+                <select id="lyric-style">
+                  <option value="auto">Auto mix</option>
+                  <option value="comic">Comic style</option>
+                  <option value="aa">AA</option>
+                  <option value="line-by-line">Line by line</option>
+                  <option value="cinematic">Cinematic</option>
+                  <option value="bounce">Bounce</option>
+                  <option value="side-by-side">Side by side</option>
+                  <option value="typewriter">Typewriter</option>
+                  <option value="spotlight">Spotlight</option>
+                  <option value="magic">Magic</option>
+                  <option value="neon">Neon glow</option>
+                  <option value="glitch">Glitch hit</option>
+                  <option value="karaoke">Karaoke box</option>
+                  <option value="whisper">Whisper</option>
+                  <option value="stacked">Stacked</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="fulllength">Fulllength style</option>
+                </select>
+              </div>
+
+              <div id="neon-style-controls" class="style-tuning-card">
+                <div class="style-tuning-head">
+                  <label class="input-label" for="neon-color">Style color</label>
+                  <span class="helper-inline">Keeps the default look unless you enable a custom color.</span>
+                </div>
+                <label class="style-toggle">
+                  <input id="use-style-color" type="checkbox" />
+                  <span>Use custom color</span>
+                </label>
+                <div class="style-tuning-grid">
+                  <div class="style-tuning-item">
+                    <input id="neon-color" type="color" value="#7fe8ff" />
+                  </div>
+                  <div id="neon-glow-shell" class="style-tuning-item" hidden>
+                    <label class="input-label" for="neon-glow">Glow strength</label>
+                    <input id="neon-glow" type="range" min="10" max="100" step="5" value="70" />
+                    <p id="neon-glow-value" class="helper-text">70%</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="format-field">
+                <label class="input-label" for="lyric-font">Lyrics font</label>
+                <div id="lyric-font-dropdown" class="font-dropdown">
+                  <button
+                    id="lyric-font-trigger"
+                    type="button"
+                    class="font-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="lyric-font-menu"
+                  >
+                    <span id="lyric-font-trigger-label">Arial</span>
+                    <span class="font-dropdown-chevron" aria-hidden="true">▾</span>
+                  </button>
+                  <div id="lyric-font-menu" class="font-dropdown-menu" role="listbox" hidden></div>
+                </div>
+                <select id="lyric-font" class="font-dropdown-native">
+                  <optgroup label="Clean">
+                    <option value="arial" data-font-family="Arial, sans-serif">Arial</option>
+                    <option value="trebuchet" data-font-family="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                    <option value="verdana" data-font-family="Verdana, sans-serif">Verdana</option>
+                    <option value="tahoma" data-font-family="Tahoma, sans-serif">Tahoma</option>
+                    <option value="century-gothic" data-font-family="'Century Gothic', 'Segoe UI', sans-serif">Century Gothic</option>
+                    <option value="sora" data-font-family="'Sora', sans-serif">Sora</option>
+                    <option value="montserrat" data-font-family="'Montserrat', sans-serif">Montserrat</option>
+                    <option value="titillium-web" data-font-family="'Titillium Web', sans-serif">Titillium Web</option>
+                    <option value="kanit" data-font-family="'Kanit', sans-serif">Kanit</option>
+                  </optgroup>
+                  <optgroup label="Bold">
+                    <option value="arial-black" data-font-family="'Arial Black', Arial, sans-serif">Arial Black</option>
+                    <option value="impact" data-font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option>
+                    <option value="archivo-black" data-font-family="'Archivo Black', sans-serif">Archivo Black</option>
+                    <option value="fjalla-one" data-font-family="'Fjalla One', sans-serif">Fjalla One</option>
+                    <option value="righteous" data-font-family="'Righteous', sans-serif">Righteous</option>
+                  </optgroup>
+                  <optgroup label="Poster">
+                    <option value="anton" data-font-family="'Anton', sans-serif">Anton</option>
+                    <option value="bebas-neue" data-font-family="'Bebas Neue', sans-serif">Bebas Neue</option>
+                    <option value="oswald" data-font-family="'Oswald', sans-serif">Oswald</option>
+                    <option value="rubik-mono-one" data-font-family="'Rubik Mono One', sans-serif">Rubik Mono One</option>
+                  </optgroup>
+                  <optgroup label="Serif">
+                    <option value="georgia" data-font-family="Georgia, serif">Georgia</option>
+                    <option value="palatino" data-font-family="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino Linotype</option>
+                  </optgroup>
+                  <optgroup label="Stylized">
+                    <option value="comic-sans" data-font-family="'Comic Sans MS', 'Comic Sans', cursive">Comic Sans MS</option>
+                    <option value="bangers" data-font-family="'Bangers', cursive">Bangers</option>
+                    <option value="monoton" data-font-family="'Monoton', cursive">Monoton</option>
+                  </optgroup>
+                </select>
+                <p id="lyric-font-count" class="helper-text">Fonts available: 23</p>
+              </div>
+
+              <div class="style-tuning-card lyric-size-card">
+                <div class="style-tuning-head">
+                  <label class="input-label" for="lyric-font-zoom">Lyrics size</label>
+                  <span id="lyric-font-zoom-value" class="helper-inline">100%</span>
+                </div>
+                <div class="lyric-size-controls">
+                  <button id="lyric-font-zoom-out" type="button" class="mini-action-button is-muted" aria-label="Decrease lyrics size">
+                    A-
+                  </button>
+                  <input id="lyric-font-zoom" type="range" min="70" max="200" step="5" value="100" />
+                  <button id="lyric-font-zoom-in" type="button" class="mini-action-button" aria-label="Increase lyrics size">
+                    A+
+                  </button>
+                </div>
+                <p class="helper-text">
+                  Adjust the lyric text size for both the preview and the final rendered video.
+                </p>
+              </div>
+            </div>
+          </form>
+
+        </div>
+      </header>
+
+      <section id="status-card" class="status-card" aria-live="polite">
+        <p id="status-text">Ready when you are.</p>
+      </section>
+
+      <main id="result-panel" class="result-panel" hidden>
+        <section class="media-column">
+          <div class="track-card">
+            <div class="track-heading">
+              <p class="eyebrow">Now loading</p>
+              <h2 id="track-title">Track title</h2>
+              <p id="track-artist" class="track-artist"></p>
+            </div>
+
+            <div class="meta-badges">
+              <span id="lyrics-source" class="badge">Lyrics source</span>
+              <span id="sync-mode" class="badge">Sync mode</span>
+              <span id="audio-status-badge" class="badge">Audio status</span>
+            </div>
+
+            <div id="desktop-audio-access-slot">
+              <div id="audio-access-shell" class="audio-access-shell">
+                <div class="audio-access-copy">
+                  <p id="audio-access-eyebrow" class="audio-access-eyebrow">Sound mode</p>
+                  <strong id="audio-access-title">Checking the soundtrack path</strong>
+                  <p id="audio-access-text">
+                    The app will decide whether this link can use live YouTube audio, protected server recovery,
+                    or an uploaded soundtrack.
+                  </p>
+                </div>
+                <button id="audio-access-action" type="button" class="mini-action-button" hidden>
+                  Upload audio
+                </button>
+              </div>
+            </div>
+
+            <div id="desktop-audio-preview-slot">
+              <audio id="audio-player" controls preload="metadata"></audio>
+            </div>
+
+            <button id="share-button" type="button" class="share-button">Copy share link</button>
+
+            <div class="render-tools">
+              <button id="render-button" type="button" class="render-button">
+                Create Downloadable Lyric Video
+              </button>
+              <p id="render-text" class="render-text">
+                Build a comic-panel lyric video inspired by your reference.
+              </p>
+              <div class="progress-meta">
+                <span class="progress-label">Progress</span>
+                <span id="render-progress-percent" class="progress-percent">0%</span>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div id="render-progress-bar" class="progress-bar"></div>
+              </div>
+              <div id="render-stage-card" class="render-stage-card" hidden>
+                <div class="render-stage-head">
+                  <span class="render-stage-title">Stage timings</span>
+                  <span id="render-stage-total-time" class="render-stage-total-time">0s</span>
+                </div>
+                <div id="render-stage-list" class="render-stage-list"></div>
+              </div>
+            </div>
+
+            <div id="warnings" class="warning-list"></div>
+          </div>
+
+          <div id="mobile-stage-card" class="support-card mobile-support-card" hidden>
+            <div class="card-head compact-card-head">
+              <h3>Stage timings</h3>
+              <p>Live render timing moves here on mobile.</p>
+            </div>
+            <div id="mobile-stage-slot" class="mobile-support-slot"></div>
+          </div>
+
+          <div class="poster-frame">
+            <img id="poster-image" alt="Video artwork" />
+          </div>
+
+          <div class="thumbnail-card">
+            <div class="card-head">
+              <h3>Artwork</h3>
+              <p>Tap a frame to swap the feature image.</p>
+            </div>
+            <div id="thumbnail-strip" class="thumbnail-strip"></div>
+          </div>
+
+          <div id="video-output-card" class="video-output-card" hidden>
+            <div class="card-head">
+              <h3>Finished video</h3>
+              <p>Preview it here, then save the final `.mp4` when the render finishes.</p>
+            </div>
+
+            <div id="live-background-preview" class="live-background-preview" hidden>
+              <img
+                id="live-background-preview-image"
+                class="live-background-preview-media"
+                alt="Live background preview"
+                hidden
+              />
+              <video
+                id="live-background-preview-video"
+                class="live-background-preview-media"
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                hidden
+              ></video>
+              <div class="live-background-preview-copy">
+                <span>Live background preview</span>
+                <p>
+                  Your selected background appears here instantly. The finished download stays the
+                  same until you rebuild the final video.
+                </p>
+              </div>
+            </div>
+
+            <div class="video-shell">
+              <video id="rendered-video" controls playsinline preload="metadata"></video>
+            </div>
+
+            <a id="download-video-link" class="download-link" href="#" download>Download video</a>
+
+            <div id="post-render-actions" class="post-render-actions" hidden>
+              <div class="card-head">
+                <h3>Change background</h3>
+                <p>Swap the background instantly here. Rebuild the MP4 only when you want the export changed.</p>
+              </div>
+
+              <div class="post-render-button-grid">
+                <button
+                  id="change-background-images-button"
+                  type="button"
+                  class="secondary-action-button"
+                >
+                  Change images
+                </button>
+                <button
+                  id="change-background-video-button"
+                  type="button"
+                  class="secondary-action-button"
+                >
+                  Change video
+                </button>
+                <button
+                  id="clear-background-button"
+                  type="button"
+                  class="secondary-action-button is-muted"
+                >
+                  Clear custom background
+                </button>
+                <button
+                  id="rerender-background-button"
+                  type="button"
+                  class="secondary-action-button is-primary"
+                >
+                  Rebuild final video
+                </button>
+              </div>
+
+              <p id="post-render-background-status" class="post-render-status">
+                No custom background override is selected yet.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="lyrics-column">
+          <div class="lyrics-card">
+            <div class="card-head">
+              <h3>Lyrics</h3>
+              <p>Click any line to jump to that moment.</p>
+            </div>
+
+            <div id="lyrics-list" class="lyrics-list"></div>
+          </div>
+        </section>
+      </main>
+
+      <div id="audio-fallback-popup" class="audio-fallback-popup" hidden>
+        <div class="audio-fallback-popup-copy">
+          <div class="audio-fallback-popup-head">
+            <span class="audio-fallback-popup-label">Audio needed</span>
+            <button
+              id="audio-fallback-popup-close"
+              type="button"
+              class="audio-fallback-popup-close"
+              aria-label="Dismiss audio popup"
+            >
+              X
+            </button>
+          </div>
+          <strong id="audio-fallback-popup-title">This link needs uploaded audio</strong>
+          <p id="audio-fallback-popup-text">
+            Add the song audio file here to keep sound in the final video.
+          </p>
+        </div>
+        <button id="audio-fallback-popup-button" type="button" class="mini-action-button">
+          Add audio now
+        </button>
+      </div>
+
+      <section id="local-debug-shell" class="local-debug-shell" hidden>
+        <div id="local-debug-card" class="local-debug-card" hidden>
+          <div class="card-head">
+            <h3>Local debug errors</h3>
+            <p>Visible only on localhost. Error IDs help you trace and fix issues.</p>
+          </div>
+
+          <div class="local-debug-actions">
+            <button id="local-debug-refresh-button" type="button" class="mini-action-button">
+              Refresh
+            </button>
+            <button id="local-debug-clear-button" type="button" class="mini-action-button is-muted">
+              Clear errors
+            </button>
+          </div>
+
+          <div id="local-debug-banner" class="local-debug-banner" aria-live="polite">
+            Checking debug feed...
+          </div>
+
+          <div id="local-debug-status" class="local-debug-status" aria-live="polite">
+            Waiting for live debug status...
+          </div>
+
+          <div id="local-debug-list" class="local-debug-list"></div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js?v=__BUILD_MARKER__"></script>
+  </body>
+</html>

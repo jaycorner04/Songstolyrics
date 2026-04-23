@@ -1,0 +1,43 @@
+{
+  "name": "song-to-lyrics",
+  "version": "1.0.0",
+  "description": "Convert a YouTube song link into an interactive lyric experience with artwork and audio playback.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "doctor": "node scripts/doctor.js",
+    "smoke": "node scripts/smoke.js",
+    "e2e": "node scripts/e2e.js",
+    "predeploy:check": "node scripts/predeploy.js",
+    "clean:runtime": "node scripts/clean-runtime.js",
+    "live-debug:start": "powershell -ExecutionPolicy Bypass -File scripts/start-live-debug-tunnel.ps1",
+    "live-debug:watch": "powershell -ExecutionPolicy Bypass -File scripts/start-live-debug-watchdog.ps1",
+    "live-debug:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-live-debug-tunnel.ps1",
+    "autopush": "node scripts/auto-push.js",
+    "autopush:start": "powershell -ExecutionPolicy Bypass -File scripts/start-autopush.ps1",
+    "autopush:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-autopush.ps1"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "youtube",
+    "lyrics",
+    "express",
+    "audio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@danielxceron/youtube-transcript": "^1.2.6",
+    "@distube/ytdl-core": "^4.16.12",
+    "compression": "^1.8.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.1.1"
+  }
+}

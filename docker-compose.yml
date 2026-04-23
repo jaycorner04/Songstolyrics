@@ -1,0 +1,48 @@
+services:
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    container_name: bgutil-provider
+    restart: unless-stopped
+
+  song-to-lyrics:
+    build: .
+    container_name: song-to-lyrics
+    restart: unless-stopped
+    depends_on:
+      - bgutil-provider
+    ports:
+      - "3000:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      RUNTIME_ROOT: /data
+      TRUST_PROXY: "true"
+      ALLOW_BROWSER_COOKIES: "false"
+      ALLOW_SILENT_AUDIO_FALLBACK: ${ALLOW_SILENT_AUDIO_FALLBACK:-false}
+      RENDER_CONTINUE_ON_AUDIO_BLOCK: ${RENDER_CONTINUE_ON_AUDIO_BLOCK:-true}
+      YTDLP_COOKIE_FILE: ${YTDLP_COOKIE_FILE:-/data/youtube-cookies.txt}
+      YTDLP_PROXY_URL: ${YTDLP_PROXY_URL:-}
+      YTDL_CORE_PROXY_URL: ${YTDL_CORE_PROXY_URL:-}
+      YTDLP_REMOTE_COMPONENTS: ${YTDLP_REMOTE_COMPONENTS:-}
+      YTDLP_JS_RUNTIMES: ${YTDLP_JS_RUNTIMES:-}
+      YTDLP_PLUGIN_DIRS: ${YTDLP_PLUGIN_DIRS:-}
+      YTDLP_BGUTIL_BASE_URL: ${YTDLP_BGUTIL_BASE_URL:-http://bgutil-provider:4416}
+      YTDLP_BGUTIL_SERVER_HOME: ${YTDLP_BGUTIL_SERVER_HOME:-}
+      YTDLP_EXTRACTOR_ARGS_EXTRA: ${YTDLP_EXTRACTOR_ARGS_EXTRA:-}
+      YTDLP_PROFILE_CHAIN: ${YTDLP_PROFILE_CHAIN:-default,ejs,bgutil,aggressive}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      LYRICS_OVH_BASE_URL: ${LYRICS_OVH_BASE_URL:-https://api.lyrics.ovh}
+    volumes:
+      - ./runtime:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
