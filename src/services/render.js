@@ -3621,6 +3621,40 @@ function shouldRefreshUploadedAudioTranscript(lines = [], durationSeconds = 0) {
   return shouldPreferAudioTranscription(lines, durationSeconds, "transcribed");
 }
 
+function getUploadedAudioFinalTranscriptionOptions(
+  durationSeconds = 0,
+  renderProfile = {},
+  extraOptions = {}
+) {
+  const isFastMode = Boolean(renderProfile?.fastMode);
+  const duration = Math.max(Number(durationSeconds || 0), MIN_RENDER_DURATION_SECONDS);
+  const baseOptions = {
+    passName: "uploaded-final-full",
+    conditionOnPreviousText: false,
+    vadFilter: false
+  };
+
+  if (isFastMode) {
+    return {
+      ...baseOptions,
+      modelName: process.env.WHISPER_UPLOADED_FAST_MODEL || "base",
+      beamSize: duration >= 240 ? 1 : 2,
+      timeoutMs: 4 * 60 * 1000,
+      downloadTimeoutMs: 4 * 60 * 1000,
+      ...extraOptions
+    };
+  }
+
+  return {
+    ...baseOptions,
+    modelName: process.env.WHISPER_UPLOADED_FINAL_MODEL || "small",
+    beamSize: 4,
+    timeoutMs: 8 * 60 * 1000,
+    downloadTimeoutMs: 6 * 60 * 1000,
+    ...extraOptions
+  };
+}
+
 function getSourceTimingMetrics(lines = [], durationSeconds = 0) {
   const sanitizedLines = sanitizeLyricLines(lines, durationSeconds);
   const coverageMetrics = getLyricCoverageMetrics(sanitizedLines, durationSeconds);
@@ -7640,30 +7674,27 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           let useDirectUploadedTranscript = false;
           let uploadedAudioTimelineDecision = null;
           let useStrictUploadedAudioTimeline = false;
+          const shouldRunFullUploadedAudioRetranscription =
+            shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds);
 
-          if (shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) || isUploadedAudioSource) {
+          if (shouldRunFullUploadedAudioRetranscription) {
             try {
-              const fullUploadedTranscription = await getTranscription(
-                "Re-transcribing uploaded audio for full-song lyric timing",
-                0.18,
+              const uploadedFinalTranscriptionOptions = getUploadedAudioFinalTranscriptionOptions(
+                durationSeconds,
+                renderProfile,
                 shouldUseRomanizedTeluguLyrics
                   ? {
                       task: "transcribe",
-                      language: "te",
-                      passName: "uploaded-final-full",
-                      modelName: process.env.WHISPER_UPLOADED_FINAL_MODEL || "small",
-                      beamSize: 6,
-                      conditionOnPreviousText: false,
-                      vadFilter: false
+                      language: "te"
                     }
                   : {
-                      task: "transcribe",
-                      passName: "uploaded-final-full",
-                      modelName: process.env.WHISPER_UPLOADED_FINAL_MODEL || "small",
-                      beamSize: 6,
-                      conditionOnPreviousText: false,
-                      vadFilter: false
+                      task: "transcribe"
                     }
+              );
+              const fullUploadedTranscription = await getTranscription(
+                "Re-transcribing uploaded audio for full-song lyric timing",
+                0.18,
+                uploadedFinalTranscriptionOptions
               );
               const refreshedUploadedTranscriptLines = limitLyricLines(
                 sanitizeLyricLines(
@@ -7695,7 +7726,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 refreshedUploadedTranscriptLines.length &&
                 (
                   refreshedTranscriptIsUsableFullSongSource ||
-                  shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+                  shouldRunFullUploadedAudioRetranscription ||
                   refreshedTranscriptMetrics.lastEnd > currentTranscriptMetrics.lastEnd + 8 ||
                   refreshedTranscriptMetrics.meaningfulCount > currentTranscriptMetrics.meaningfulCount + 2 ||
                   refreshedTranscriptMetrics.coverageRatio > currentTranscriptMetrics.coverageRatio + 0.08
@@ -7711,7 +7742,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 renderNotes.push(
                   refreshedTranscriptIsUsableFullSongSource
                     ? "The final render rebuilt lyrics from a full-song uploaded-audio transcription so subtitles stay locked to the vocals across the track."
-                    : "Uploaded-audio preview lyrics covered only the opening section, so the render re-transcribed the full song and used that timing."
+                    : renderProfile.fastMode
+                      ? "Fast render detected weak uploaded-audio timing, so it ran a lighter full-song transcription pass before export."
+                      : "Uploaded-audio preview lyrics covered only the opening section, so the render re-transcribed the full song and used that timing."
                 );
               }
             } catch (error) {
