@@ -9,6 +9,8 @@ renders/
 tmp/
 tmp-*/
 *.log
+__pycache__/
+*.pyc
 *-player-script.js
 check-out-*.png
 ref-frame-*.png
