@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -19,6 +19,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Validate deployment secrets
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -60,7 +63,8 @@ jobs:
           APP_URL="${EC2_APP_URL:-http://127.0.0.1:${EC2_APP_PORT:-3000}}"
           SSH_OPTS="-i $HOME/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o ConnectTimeout=20"
 
-          ssh $SSH_OPTS "${EC2_USER}@${EC2_HOST}" <<EOF
+          set +e
+          ssh $SSH_OPTS "${EC2_USER}@${EC2_HOST}" <<EOF 2>&1 | tee deploy-output.log
           set -euo pipefail
           export APP_DIR="${EC2_APP_DIR}"
           export APP_URL="${APP_URL}"
@@ -72,3 +76,32 @@ jobs:
           chmod +x scripts/deploy-remote.sh
           APP_URL="\$APP_URL" DEPLOY_BRANCH="\$DEPLOY_BRANCH" ./scripts/deploy-remote.sh
           EOF
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Publish deploy failure log
+        if: failure()
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-debug
+          {
+            echo "# Latest EC2 Deploy Failure"
+            echo
+            echo "Run: ${GITHUB_RUN_ID}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo '```text'
+            if [[ -f deploy-output.log ]]; then
+              tail -n 240 deploy-output.log
+            else
+              echo "No deploy-output.log was captured."
+            fi
+            echo '```'
+          } > deploy-debug/latest-deploy.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy-debug/latest-deploy.log
+          git commit -m "chore: capture deploy failure [skip ci]" || exit 0
+          git push
