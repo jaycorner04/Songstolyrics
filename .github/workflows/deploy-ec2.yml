@@ -50,6 +50,16 @@ jobs:
             echo "ssh-keyscan could not fetch host keys for $EC2_HOST; continuing with accept-new during ssh."
           fi
 
+      - name: Install recovery deploy key
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          RECOVERY_PUBLIC_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICz8uVjyLDDjBdE9P7/deHsrAefG6eIEhzhEtRKeAfN1 abhishek@DESKTOP-AH3OJI3
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-i $HOME/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o ConnectTimeout=20"
+          ssh $SSH_OPTS "${EC2_USER}@${EC2_HOST}" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && grep -qxF '${RECOVERY_PUBLIC_KEY}' ~/.ssh/authorized_keys || printf '%s\n' '${RECOVERY_PUBLIC_KEY}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+
       - name: Deploy on EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
