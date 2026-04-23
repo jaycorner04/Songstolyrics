@@ -3152,14 +3152,75 @@ function enforceMinimumLyricPacing(lines = [], durationSeconds = 0) {
   }
 
   const duration = Number(durationSeconds || 0);
+  const minimumStartGapSeconds = 2.05;
+  const minimumDisplaySeconds = 1.8;
+  const maximumDisplaySeconds = 6.0;
+  const maximumMergedWords = 18;
+  const maximumMergedChars = 128;
+  const orderedLines = lines
+    .map((line) => ({
+      ...line,
+      text: normalizeWhitespace(line?.text || ""),
+      start: Math.max(0, Number(line?.start || 0)),
+      duration: Math.max(0.2, Number(line?.duration || minimumDisplaySeconds))
+    }))
+    .filter((line) => line.text)
+    .sort((left, right) => left.start - right.start);
+  const mergedLines = [];
 
-  return lines.map((line, index) => {
-    const nextStart = Number(lines[index + 1]?.start ?? (duration || Number(line.start || 0) + 6));
-    const naturalGap = nextStart - Number(line.start || 0);
+  for (const line of orderedLines) {
+    const previousLine = mergedLines.at(-1);
+
+    if (!previousLine) {
+      mergedLines.push({ ...line });
+      continue;
+    }
+
+    const startGap = line.start - previousLine.start;
+    const combinedText = normalizeWhitespace(`${previousLine.text} ${line.text}`);
+    const combinedWordCount = combinedText.split(/\s+/).filter(Boolean).length;
+
+    if (
+      startGap > 0 &&
+      startGap < minimumStartGapSeconds &&
+      combinedWordCount <= maximumMergedWords &&
+      combinedText.length <= maximumMergedChars
+    ) {
+      const combinedEnd = Math.max(
+        previousLine.start + previousLine.duration,
+        line.start + line.duration
+      );
+      previousLine.text = combinedText;
+      previousLine.duration = Math.max(minimumDisplaySeconds, combinedEnd - previousLine.start);
+      continue;
+    }
+
+    mergedLines.push({ ...line });
+  }
+
+  const pacedLines = [];
+
+  for (const line of mergedLines) {
+    const previousLine = pacedLines.at(-1);
+    const start = previousLine
+      ? Math.max(line.start, previousLine.start + minimumStartGapSeconds)
+      : line.start;
+
+    pacedLines.push({
+      ...line,
+      start: roundTimeValue(start)
+    });
+  }
+
+  return pacedLines.map((line, index) => {
+    const nextStart = Number(
+      pacedLines[index + 1]?.start ?? (duration || Number(line.start || 0) + maximumDisplaySeconds)
+    );
+    const naturalGap = Math.max(minimumDisplaySeconds, nextStart - Number(line.start || 0) - 0.06);
 
     return {
       ...line,
-      duration: roundTimeValue(Math.max(1.8, Math.min(naturalGap, 6.0)))
+      duration: roundTimeValue(Math.max(minimumDisplaySeconds, Math.min(naturalGap, maximumDisplaySeconds)))
     };
   });
 }
