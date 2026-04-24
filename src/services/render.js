@@ -2095,8 +2095,14 @@ function applyFinalLyricTimingMode(lines = [], durationSeconds = 0, options = {}
         hasNextLine && nextStart > originalStart
           ? Math.max(0.18, nextStart - originalStart - transitionGapSeconds)
           : fallbackDuration;
+      const availableHoldDuration = hasNextLine && nextStart > originalStart
+        ? nextBoundaryDuration
+        : Math.max(measuredDuration, fallbackDuration);
       const vocalDuration = audioTimed
-        ? Math.min(measuredDuration, nextBoundaryDuration)
+        ? Math.min(
+            Math.max(measuredDuration, availableHoldDuration),
+            hasNextLine && nextStart > originalStart ? nextBoundaryDuration : maximumDisplaySeconds
+          )
         : Math.max(measuredDuration, nextBoundaryDuration);
       const start = Math.max(0, originalStart - preRollSeconds);
       const end = Math.min(
