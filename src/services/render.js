@@ -8410,21 +8410,18 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       payload?.syncMode === "synced-lyrics" ||
       (
         hasLoadedRenderableLyrics &&
-        (
-          (isUploadedAudioSource && renderLineSyncSource === "transcribed") ||
-          (isShortFormSource && shortFormTrustedSyncModes.has(renderLineSyncSource))
-        )
+        isShortFormSource &&
+        shortFormTrustedSyncModes.has(renderLineSyncSource)
       );
+    let completedStrictSyncVerification = false;
 
     if (shouldSkipTrustedSyncedLyricVerification) {
       renderNotes.push(
         payload?.syncMode === "synced-lyrics"
           ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
-          : isUploadedAudioSource && renderLineSyncSource === "transcribed"
-            ? "Final sync verification was skipped because this uploaded-audio render is already using lyrics created from the uploaded soundtrack."
-            : isShortFormSource
-              ? "Final sync verification was skipped because this short-form render already has usable loaded lyric timing."
-              : "Final sync verification was skipped."
+          : isShortFormSource
+            ? "Final sync verification was skipped because this short-form render already has usable loaded lyric timing."
+            : "Final sync verification was skipped."
       );
     } else if (payload.requireVerifiedSync !== false && canUseAudioTranscription) {
       updateJob(job, {
@@ -8727,6 +8724,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       }
 
       renderNotes.push(formatStrictSyncApprovalSummary(strictSyncReport));
+      completedStrictSyncVerification = true;
     }
 
     if (!shouldSkipTrustedSyncedLyricVerification && payload.requireVerifiedSync !== false && !canUseAudioTranscription) {
@@ -8735,7 +8733,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       );
     }
 
-    if (renderLines.length && isUploadedAudioSource) {
+    if (renderLines.length && isUploadedAudioSource && !completedStrictSyncVerification) {
       const lateUploadedAudioTiming = fitLateUploadedAudioLyricsToAudioWindow(renderLines, durationSeconds);
 
       if (lateUploadedAudioTiming.changed) {
