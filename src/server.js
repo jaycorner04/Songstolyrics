@@ -810,6 +810,54 @@ function hasUsablePreviewLyrics(lines = [], durationSeconds = 0) {
   return false;
 }
 
+function hasStrongUploadedAudioPreviewTranscript(transcription = {}, assessedLines = [], durationSeconds = 0) {
+  const safeLines = Array.isArray(assessedLines)
+    ? assessedLines.filter((line) => normalizeWhitespace(line?.text || ""))
+    : [];
+  const getWordCount = (text = "") =>
+    normalizeWhitespace(text)
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter(Boolean).length;
+  const effectiveDuration = Math.max(
+    Number(transcription?.audioDurationSeconds || durationSeconds || 0),
+    1
+  );
+  const quality = transcription?.transcriptionQuality || {};
+  const meaningfulLineCount = safeLines.filter((line) => getWordCount(line.text) >= 2).length;
+  const earlyWindowSeconds = Math.min(12, Math.max(4, effectiveDuration * 0.12));
+  const earlyMeaningfulWordCount = safeLines.reduce((sum, line) => {
+    if (Number(line?.start || 0) > earlyWindowSeconds) {
+      return sum;
+    }
+
+    return sum + getWordCount(line?.text || "");
+  }, 0);
+  const firstMeaningfulStart =
+    safeLines.find((line) => getWordCount(line.text) >= 2)?.start ?? effectiveDuration;
+  const minimumMeaningfulLines = Math.max(
+    effectiveDuration >= 150 ? 12 : 8,
+    Math.round(effectiveDuration / 22)
+  );
+  const minimumWordCount = Math.max(
+    effectiveDuration >= 150 ? 52 : 28,
+    Math.round(effectiveDuration / 4.5)
+  );
+  const minimumCoverageRatio = effectiveDuration >= 150 ? 0.1 : 0.075;
+  const hasCredibleEarlyVocals =
+    effectiveDuration < 120 ||
+    firstMeaningfulStart >= 2.5 ||
+    earlyMeaningfulWordCount >= 12;
+
+  return (
+    !Boolean(quality.weak) &&
+    meaningfulLineCount >= minimumMeaningfulLines &&
+    Number(quality.wordCount || 0) >= minimumWordCount &&
+    Number(quality.coverageRatio || 0) >= minimumCoverageRatio &&
+    hasCredibleEarlyVocals
+  );
+}
+
 function getTimedRowsDurationSeconds(rows = []) {
   return (Array.isArray(rows) ? rows : []).reduce((maxEnd, row) => {
     const start = Number(row?.start || 0);
@@ -1350,6 +1398,12 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
   let uploadedAudioPreviewStrong = false;
   let effectiveDurationSeconds = durationFromBody;
   let teluguRomanized = false;
+  const uploadedPreviewModelName =
+    process.env.WHISPER_UPLOADED_PREVIEW_MODEL ||
+    process.env.WHISPER_MODEL ||
+    process.env.WHISPER_ADAPTIVE_MODEL ||
+    "base";
+  const uploadedPreviewTimeoutMs = durationFromBody >= 150 ? 180000 : 120000;
 
   try {
     if (startupDiagnostics.transcriptionReady) {
@@ -1361,9 +1415,10 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
           {
             audioInputPath: audioFile.path,
             preview: true,
+            modelName: uploadedPreviewModelName,
             filename: audioFile.originalname || originalName || "",
             title: fallbackSong.title || uploadedTitle || "",
-            timeoutMs: 120000,
+            timeoutMs: uploadedPreviewTimeoutMs,
             downloadTimeoutMs: 15000,
             ...(shouldForceTeluguUploadTranscription
               ? {
@@ -1399,9 +1454,10 @@ async function buildUploadedAudioProjectPayload(audioFile, requestBody = {}) {
         transcriptPreviewWords = Array.isArray(transcription?.words) ? transcription.words : [];
         uploadedAudioPreviewStrong =
           Boolean(assessedTranscription?.usable) &&
-          (
-            transcriptPreviewWords.length >= Math.max(24, Math.round(effectiveDurationSeconds / 3)) ||
-            transcriptPreviewLines.length >= Math.max(8, Math.round(effectiveDurationSeconds / 18))
+          hasStrongUploadedAudioPreviewTranscript(
+            transcription,
+            transcriptPreviewLines,
+            effectiveDurationSeconds
           );
 
         if (assessedTranscription.usable || assessedTranscription.lines.length >= 2) {

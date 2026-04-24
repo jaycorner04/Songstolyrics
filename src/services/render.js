@@ -3662,14 +3662,15 @@ function shouldRomanizeTeluguLyrics(lines = [], payload = {}) {
     return true;
   }
 
-  if (containsRomanizedTeluguHint(titleText) || containsRomanizedTeluguHint(sampledText)) {
+  if (containsRomanizedTeluguHint(titleText)) {
     return true;
   }
 
   if (
     (String(payload?.syncMode || "").toLowerCase() === "transcribed" ||
       String(payload?.videoId || "").startsWith("upload-")) &&
-    (containsIndicPhoneticScript(sampledText) || containsRomanizedTeluguHint(sampledText))
+    containsRomanizedTeluguHint(titleText) &&
+    containsIndicPhoneticScript(sampledText)
   ) {
     return true;
   }
@@ -4205,17 +4206,6 @@ function selectUploadedAudioLyricTimeline({
       transcriptMetrics.coverageRatio >= 0.14
     );
 
-  if (transcriptIsStrongFullSongSource) {
-    return {
-      applied: true,
-      key: "full-transcript",
-      lines: safeTranscriptLines,
-      transcriptDerived: true,
-      note:
-        "Uploaded-audio final render is using one full-song transcription timeline, so subtitles stay attached to the detected vocals across the whole track."
-    };
-  }
-
   const candidates = [];
 
   if (safeReferenceLines.length && transcriptMetrics.reliableForWindowFit) {
@@ -4292,6 +4282,17 @@ function selectUploadedAudioLyricTimeline({
     return {
       applied: true,
       ...approvedReferenceCandidate
+    };
+  }
+
+  if (transcriptIsStrongFullSongSource) {
+    return {
+      applied: true,
+      key: "full-transcript",
+      lines: safeTranscriptLines,
+      transcriptDerived: true,
+      note:
+        "Uploaded-audio final render is using one full-song transcription timeline, so subtitles stay attached to the detected vocals across the whole track."
     };
   }
 
