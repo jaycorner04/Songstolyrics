@@ -145,7 +145,7 @@ const dismissedAudioFallbackPopupKeys = new Set();
 const AUDIO_POPUP_DISMISSED_STORAGE_KEY = "song-to-lyrics-audio-popup-dismissed";
 const UPLOADED_AUDIO_JOB_POLL_MS = 3000;
 const UPLOADED_AUDIO_JOB_TIMEOUT_MS = 12 * 60 * 1000;
-const RENDER_POLL_REQUEST_TIMEOUT_MS = 12000;
+const RENDER_POLL_REQUEST_TIMEOUT_MS = 20000;
 const RENDER_POLL_RETRY_BASE_MS = 2500;
 const MAX_TRANSIENT_RENDER_POLL_FAILURES = 8;
 const LOCAL_DEBUG_CACHE_STORAGE_KEY = "song-to-lyrics-local-debug-cache";
@@ -2322,12 +2322,17 @@ function wait(ms) {
 function isTransientRenderStartError(error) {
   const statusCode = Number(error?.statusCode || 0);
   const message = `${error?.message || error || ""}`.toLowerCase();
+  const errorName = `${error?.name || ""}`.toLowerCase();
 
   if ([408, 425, 429, 499, 500, 502, 503, 504].includes(statusCode)) {
     return true;
   }
 
-  return /request aborted|failed to fetch|networkerror|network request failed|load failed|timeout|timed out|econnreset|socket hang up|fetch failed/.test(
+  if (errorName === "aborterror" || errorName === "timeouterror") {
+    return true;
+  }
+
+  return /request aborted|failed to fetch|networkerror|network request failed|load failed|timeout|timed out|econnreset|socket hang up|fetch failed|signal is aborted|aborted without reason/.test(
     message
   );
 }
@@ -3582,7 +3587,7 @@ function clearRenderPolling() {
 async function fetchRenderJobStatus(jobId) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => {
-    controller.abort();
+    controller.abort(new DOMException("Render progress check timed out.", "TimeoutError"));
   }, RENDER_POLL_REQUEST_TIMEOUT_MS);
 
   try {
