@@ -1421,11 +1421,13 @@ function isTranscribedOrUploadedAudioRender(payload = {}) {
 }
 
 function resolveEffectiveLyricStyleKey(payload = {}) {
-  if (isTranscribedOrUploadedAudioRender(payload)) {
+  const requestedStyleKey = `${payload?.lyricStyle || "auto"}`.trim() || "auto";
+
+  if (isTranscribedOrUploadedAudioRender(payload) && requestedStyleKey === "auto") {
     return "line-by-line";
   }
 
-  return `${payload?.lyricStyle || "auto"}`;
+  return requestedStyleKey;
 }
 
 function resolveLyricFontPreset(fontKey = "arial") {
