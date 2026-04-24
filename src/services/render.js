@@ -4973,18 +4973,24 @@ function createAssSubtitleContent(
       selectedVariant,
       textLines
     );
+    const lineByLineAudioTailSeconds =
+      selectedVariant === "line-by-line" && isTranscribedOrUploadedAudioRender(payload)
+        ? 0.32
+        : 0;
     const dialogueStartSeconds = roundTimeValue(
       Math.max(0, Number(line.start || 0) - resolveLyricVisualLeadInSeconds(line, motionProfile, selectedVariant))
     );
-    const minimumReadableEndSeconds = dialogueStartSeconds + Math.min(
-      MAX_LYRIC_HOLD_SECONDS,
-      Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0), 0.9)
-    );
+    const minimumReadableEndSeconds =
+      Number(line.start || 0) +
+      Math.min(
+        MAX_LYRIC_HOLD_SECONDS,
+        Math.max(MIN_LYRIC_DURATION_SECONDS, Number(line.duration || 0), 0.9) + lineByLineAudioTailSeconds
+      );
     const desiredEndSeconds = Math.max(rawEndSeconds, minimumReadableEndSeconds);
     const timelineEndLimit = durationSeconds ? Number(durationSeconds) : desiredEndSeconds;
     const nextLineStartSeconds = nextLine ? Math.max(dialogueStartSeconds + 0.24, Number(nextLine.start || 0)) : null;
     const overlapSafeEndLimit = nextLineStartSeconds
-      ? Math.max(dialogueStartSeconds + 0.24, nextLineStartSeconds - 0.06)
+      ? Math.max(dialogueStartSeconds + 0.24, nextLineStartSeconds + lineByLineAudioTailSeconds - 0.06)
       : timelineEndLimit;
     const endLimit = Math.min(timelineEndLimit, overlapSafeEndLimit);
     const endSeconds = roundTimeValue(
