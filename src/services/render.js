@@ -8583,8 +8583,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       "captions",
       "estimated"
     ]);
+    const canTrustUploadedAudioTranscriptTiming =
+      isUploadedAudioSource &&
+      renderLineSyncSource === "transcribed" &&
+      renderLinesAreTranscriptDerived &&
+      getSourceTimingMetrics(renderLines, durationSeconds).meaningfulCount >= Math.max(
+        6,
+        Math.min(18, Math.round(Math.max(durationSeconds, 30) / 24))
+      );
     const shouldSkipTrustedSyncedLyricVerification =
       payload?.syncMode === "synced-lyrics" ||
+      canTrustUploadedAudioTranscriptTiming ||
       (
         hasLoadedRenderableLyrics &&
         isShortFormSource &&
@@ -8596,6 +8605,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       renderNotes.push(
         payload?.syncMode === "synced-lyrics"
           ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
+          : canTrustUploadedAudioTranscriptTiming
+            ? "Final sync verification was skipped because these uploaded-audio lyrics were already rebuilt directly from the same audio track."
           : isShortFormSource
             ? "Final sync verification was skipped because this short-form render already has usable loaded lyric timing."
             : "Final sync verification was skipped."
