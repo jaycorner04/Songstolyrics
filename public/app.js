@@ -889,6 +889,83 @@ function mergeUploadedAudioProjectResult(serverResult = {}, audioMeta = uploaded
   };
 }
 
+function getPreparedUploadedAudioProject(audioMeta = uploadedAudioFallback) {
+  if (!audioMeta?.file) {
+    return null;
+  }
+
+  const cacheKey = getUploadedAudioProjectCacheKey(audioMeta);
+
+  if (!audioMeta.preparedProject || audioMeta.preparedProjectCacheKey !== cacheKey) {
+    return null;
+  }
+
+  return mergeUploadedAudioProjectResult(audioMeta.preparedProject, audioMeta);
+}
+
+function queueUploadedAudioProjectPreparation(
+  audioMeta = uploadedAudioFallback,
+  { silent = true, refreshCurrentResult = false } = {}
+) {
+  if (!audioMeta?.file) {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = getUploadedAudioProjectCacheKey(audioMeta);
+  const preparedProject = getPreparedUploadedAudioProject(audioMeta);
+
+  if (preparedProject) {
+    return Promise.resolve(preparedProject);
+  }
+
+  if (
+    audioMeta.preparedProjectPromise &&
+    audioMeta.preparedProjectPromiseCacheKey === cacheKey
+  ) {
+    return audioMeta.preparedProjectPromise;
+  }
+
+  const preparationPromise = (async () => {
+    try {
+      const project = await prepareUploadedAudioProject(audioMeta);
+
+      if (
+        refreshCurrentResult &&
+        isUploadedAudioProject(currentResult) &&
+        uploadedAudioFallback === audioMeta &&
+        !activeRenderJobId
+      ) {
+        await renderResult(project);
+        syncIdleRenderCta();
+        setStatus(
+          `Uploaded audio ready: ${audioMeta.name}. Lyrics were prepared in the background so rendering can start faster now.`,
+          false
+        );
+      }
+
+      return project;
+    } catch (error) {
+      if (!silent) {
+        setStatus(
+          error?.message ||
+            "The uploaded audio preview could not be prepared yet. The final render will still build from the file.",
+          true
+        );
+      }
+      return null;
+    } finally {
+      if (audioMeta.preparedProjectPromise === preparationPromise) {
+        audioMeta.preparedProjectPromise = null;
+        audioMeta.preparedProjectPromiseCacheKey = "";
+      }
+    }
+  })();
+
+  audioMeta.preparedProjectPromise = preparationPromise;
+  audioMeta.preparedProjectPromiseCacheKey = cacheKey;
+  return preparationPromise;
+}
+
 async function prepareUploadedAudioProject(audioMeta = uploadedAudioFallback) {
   if (!audioMeta?.file) {
     throw new Error("Upload audio before starting an audio-only project.");
@@ -3340,6 +3417,10 @@ async function handleAudioFallbackUpload() {
           false
         );
         await renderResult(uploadedAudioProject);
+        queueUploadedAudioProjectPreparation(uploadedAudioFallback, {
+          silent: true,
+          refreshCurrentResult: true
+        });
       } else {
         setStatus("Listening to the uploaded audio and building lyrics...");
         await renderResult(await prepareUploadedAudioProject(uploadedAudioFallback));
@@ -3382,6 +3463,10 @@ async function handleAudioFallbackUpload() {
           ];
         }
         await renderResult(uploadedAudioProject);
+        queueUploadedAudioProjectPreparation(uploadedAudioFallback, {
+          silent: true,
+          refreshCurrentResult: true
+        });
       } else {
         applyAudioAccessState();
       }
@@ -4495,6 +4580,20 @@ async function handleSubmit(event) {
         isUploadedAudioProject(currentResult) && Array.isArray(currentResult?.lines)
           ? currentResult
           : null;
+
+      if (!uploadedAudioProject) {
+        uploadedAudioProject = getPreparedUploadedAudioProject(uploadedAudioFallback);
+      }
+
+      if (!uploadedAudioProject && mobileSafeMode) {
+        uploadedAudioProject = await Promise.race([
+          queueUploadedAudioProjectPreparation(uploadedAudioFallback, {
+            silent: true,
+            refreshCurrentResult: false
+          }),
+          wait(5000).then(() => null)
+        ]);
+      }
 
       if (!uploadedAudioProject && mobileSafeMode) {
         uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
