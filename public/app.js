@@ -3314,6 +3314,7 @@ async function handleBackgroundVideoUpload() {
 
 async function handleAudioFallbackUpload() {
   const [file] = Array.from(audioFallbackInput.files || []);
+  const mobileSafeMode = isCompactMobileLayout();
   revokeUploadedAudioPreviewUrl();
   uploadedAudioFallback = null;
   renderAudioFallbackMeta();
@@ -3328,8 +3329,21 @@ async function handleAudioFallbackUpload() {
     uploadedAudioFallback = await readAudioFileMetadata(file);
     renderAudioFallbackMeta();
     if (!urlInput.value.trim() && (!currentResult || isUploadedAudioProject(currentResult))) {
-      setStatus("Listening to the uploaded audio and building lyrics...");
-      await renderResult(await prepareUploadedAudioProject(uploadedAudioFallback));
+      if (mobileSafeMode) {
+        const uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+        uploadedAudioProject.warnings = [
+          ...(uploadedAudioProject.warnings || []),
+          "Mobile upload mode skips the slow preview lyric analysis and starts from your uploaded audio directly."
+        ];
+        setStatus(
+          "Mobile upload mode is preparing the render directly from your uploaded audio...",
+          false
+        );
+        await renderResult(uploadedAudioProject);
+      } else {
+        setStatus("Listening to the uploaded audio and building lyrics...");
+        await renderResult(await prepareUploadedAudioProject(uploadedAudioFallback));
+      }
     } else {
       applyAudioAccessState();
     }
@@ -3360,7 +3374,14 @@ async function handleAudioFallbackUpload() {
       renderAudioFallbackMeta();
 
       if (!urlInput.value.trim() && (!currentResult || isUploadedAudioProject(currentResult))) {
-        await renderResult(buildUploadedAudioProjectResult(uploadedAudioFallback));
+        const uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+        if (mobileSafeMode) {
+          uploadedAudioProject.warnings = [
+            ...(uploadedAudioProject.warnings || []),
+            "Mobile upload mode is using the uploaded audio directly because preview lyric analysis could not finish on this device."
+          ];
+        }
+        await renderResult(uploadedAudioProject);
       } else {
         applyAudioAccessState();
       }
