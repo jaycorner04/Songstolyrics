@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
 const fsp = require("fs/promises");
 
@@ -28,6 +29,10 @@ const { transcribeYouTubeAudio } = require("./transcription");
 const { extractVideoId } = require("./youtube");
 
 const PUBLIC_FONTS_ROOT = path.join(publicRoot, "fonts");
+const UPLOADED_AUDIO_TRANSCRIPTION_CACHE_ROOT = path.join(
+  cacheRoot,
+  "uploaded-audio-transcriptions"
+);
 const VIDEO_SIZE = {
   width: 1280,
   height: 720
@@ -6474,6 +6479,86 @@ async function saveUploadedAudioFile(payload, renderDirectory) {
   };
 }
 
+async function computeUploadedAudioCacheKey(uploadedAudioFile, options = {}) {
+  if (!uploadedAudioFile?.filePath || !fs.existsSync(uploadedAudioFile.filePath)) {
+    return "";
+  }
+
+  const hash = crypto.createHash("sha1");
+
+  await new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(uploadedAudioFile.filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+
+  hash.update(`|lang:${options.language || "auto"}`);
+  hash.update(`|task:${options.task || "transcribe"}`);
+  hash.update(`|romanized:${options.romanized ? "1" : "0"}`);
+  return hash.digest("hex");
+}
+
+function getUploadedAudioTranscriptionCachePath(cacheKey = "") {
+  const safeKey = normalizeWhitespace(cacheKey);
+  return safeKey
+    ? path.join(UPLOADED_AUDIO_TRANSCRIPTION_CACHE_ROOT, `${safeKey}.json`)
+    : "";
+}
+
+async function readUploadedAudioTranscriptionCache(cacheKey = "") {
+  const cachePath = getUploadedAudioTranscriptionCachePath(cacheKey);
+
+  if (!cachePath || !fs.existsSync(cachePath)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(await fsp.readFile(cachePath, "utf8"));
+    const lines = limitLyricLines(
+      sanitizeLyricLines(Array.isArray(payload?.lines) ? payload.lines : [], Number(payload?.durationSeconds || 0)),
+      Number(payload?.durationSeconds || 0)
+    );
+    const words = Array.isArray(payload?.words) ? payload.words : [];
+
+    if (!lines.length) {
+      return null;
+    }
+
+    return {
+      lines,
+      words,
+      durationSeconds: Number(payload?.durationSeconds || 0)
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeUploadedAudioTranscriptionCache(cacheKey = "", payload = {}) {
+  const cachePath = getUploadedAudioTranscriptionCachePath(cacheKey);
+
+  if (!cachePath) {
+    return;
+  }
+
+  await ensureDirectory(UPLOADED_AUDIO_TRANSCRIPTION_CACHE_ROOT);
+  await fsp.writeFile(
+    cachePath,
+    JSON.stringify(
+      {
+        lines: Array.isArray(payload?.lines) ? payload.lines : [],
+        words: Array.isArray(payload?.words) ? payload.words : [],
+        durationSeconds: Number(payload?.durationSeconds || 0),
+        cachedAt: new Date().toISOString()
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+}
+
 async function createUploadedBackgroundPlates(job, uploadedPaths, renderDirectory, backgroundPlan, videoSize) {
   updateJob(job, {
     stage: "Preparing uploaded image backgrounds",
@@ -7788,6 +7873,35 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           let useDirectUploadedTranscript = false;
           let uploadedAudioTimelineDecision = null;
           let useStrictUploadedAudioTimeline = false;
+          let uploadedAudioTranscriptionCacheKey = "";
+          const uploadedAudioTranscriptionCacheOptions = {
+            language: shouldUseRomanizedTeluguLyrics ? "te" : "auto",
+            task: "transcribe",
+            romanized: shouldUseRomanizedTeluguLyrics
+          };
+          if (!payload?.fullUploadedAudioTranscriptionReady && uploadedAudioFile?.filePath) {
+            uploadedAudioTranscriptionCacheKey = await computeUploadedAudioCacheKey(
+              uploadedAudioFile,
+              uploadedAudioTranscriptionCacheOptions
+            );
+            const cachedUploadedTranscription = await readUploadedAudioTranscriptionCache(
+              uploadedAudioTranscriptionCacheKey
+            );
+
+            if (cachedUploadedTranscription?.lines?.length) {
+              payload.fullUploadedAudioTranscriptLines = cachedUploadedTranscription.lines;
+              payload.fullUploadedAudioTranscriptWords = cachedUploadedTranscription.words;
+              payload.fullUploadedAudioTranscriptionReady = true;
+              stabilizedUploadedTranscriptLines = cachedUploadedTranscription.lines;
+              stabilizedUploadedTranscriptWords = cachedUploadedTranscription.words;
+              payload.transcriptLines = cachedUploadedTranscription.lines;
+              payload.transcriptWords = cachedUploadedTranscription.words;
+              payload.uploadedAudioPreviewStrong = true;
+              renderNotes.push(
+                "A cached full-song uploaded-audio transcript was reused so the render could skip repeating the long lyric timing pass."
+              );
+            }
+          }
           const hasPersistedFullUploadedAudioTranscription = Boolean(
             payload?.fullUploadedAudioTranscriptionReady
           );
@@ -7839,6 +7953,19 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
               payload.fullUploadedAudioTranscriptLines = refreshedUploadedTranscriptLines;
               payload.fullUploadedAudioTranscriptWords = refreshedUploadedTranscriptWords;
               payload.fullUploadedAudioTranscriptionReady = true;
+              if (!uploadedAudioTranscriptionCacheKey && uploadedAudioFile?.filePath) {
+                uploadedAudioTranscriptionCacheKey = await computeUploadedAudioCacheKey(
+                  uploadedAudioFile,
+                  uploadedAudioTranscriptionCacheOptions
+                );
+              }
+              if (uploadedAudioTranscriptionCacheKey) {
+                await writeUploadedAudioTranscriptionCache(uploadedAudioTranscriptionCacheKey, {
+                  lines: refreshedUploadedTranscriptLines,
+                  words: refreshedUploadedTranscriptWords,
+                  durationSeconds
+                });
+              }
               const currentTranscriptMetrics = getSourceTimingMetrics(
                 stabilizedUploadedTranscriptLines,
                 durationSeconds
