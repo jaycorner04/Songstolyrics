@@ -8,6 +8,7 @@ HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-240}"
 BUILD_MARKER="${BUILD_MARKER:-}"
 APP_NETWORK="${APP_NETWORK:-song-to-lyrics-net}"
 BGUTIL_PROVIDER_IMAGE="${BGUTIL_PROVIDER_IMAGE:-brainicism/bgutil-ytdlp-pot-provider}"
+ACTIVE_RENDER_WAIT_SECONDS="${ACTIVE_RENDER_WAIT_SECONDS:-900}"
 
 log() {
   printf '[deploy-remote] %s\n' "$1"
@@ -54,6 +55,60 @@ fetch_url() {
   fi
 
   node -e "fetch(process.argv[1]).then(async (res) => { if (!res.ok) process.exit(1); process.stdout.write(await res.text()); }).catch(() => process.exit(1));" "$url"
+}
+
+count_active_render_jobs() {
+  local jobs_dir="${1:-}"
+
+  if [[ -z "$jobs_dir" || ! -d "$jobs_dir" ]]; then
+    printf '0\n'
+    return 0
+  fi
+
+  node -e '
+const fs = require("fs");
+const path = process.argv[1];
+let count = 0;
+for (const name of fs.readdirSync(path)) {
+  if (!name.endsWith(".json")) continue;
+  try {
+    const job = JSON.parse(fs.readFileSync(`${path}/${name}`, "utf8"));
+    if (job && (job.status === "queued" || job.status === "running")) {
+      count += 1;
+    }
+  } catch {}
+}
+process.stdout.write(String(count));
+' "$jobs_dir"
+}
+
+wait_for_active_renders() {
+  local jobs_dir="$(pwd)/runtime/jobs"
+
+  if (( ACTIVE_RENDER_WAIT_SECONDS <= 0 )); then
+    return 0
+  fi
+
+  if [[ ! -d "$jobs_dir" ]]; then
+    return 0
+  fi
+
+  local deadline=$((SECONDS + ACTIVE_RENDER_WAIT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    local active_count
+    active_count="$(count_active_render_jobs "$jobs_dir")"
+
+    if [[ "$active_count" == "0" ]]; then
+      return 0
+    fi
+
+    log "waiting for ${active_count} active render job(s) to finish before deploy"
+    sleep 15
+  done
+
+  log "active renders did not finish before timeout; continuing deploy"
+  return 0
 }
 
 wait_for_build_marker() {
@@ -183,6 +238,7 @@ fi
 
 log "deploying branch ${DEPLOY_BRANCH} from $(pwd)"
 BUILD_MARKER="${BUILD_MARKER:-$(git rev-parse --short HEAD)}"
+wait_for_active_renders
 
 if command -v docker >/dev/null 2>&1 && docker_container_available; then
   deploy_with_docker_container
