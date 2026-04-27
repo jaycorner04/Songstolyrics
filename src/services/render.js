@@ -7757,9 +7757,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           String(payload?.videoId || "").startsWith("upload-") || Boolean(payload?.customAudioUpload);
 
         if (isUploadedAudioSource) {
-          const uploadedAudioTranscriptSourceLines = transcriptTimingLines.length
-            ? transcriptTimingLines
-            : renderLines;
+          const persistedFullUploadedTranscriptLines = limitLyricLines(
+            sanitizeLyricLines(
+              Array.isArray(payload?.fullUploadedAudioTranscriptLines)
+                ? payload.fullUploadedAudioTranscriptLines
+                : [],
+              durationSeconds
+            ),
+            durationSeconds
+          );
+          const uploadedAudioTranscriptSourceLines = persistedFullUploadedTranscriptLines.length
+            ? persistedFullUploadedTranscriptLines
+            : transcriptTimingLines.length
+              ? transcriptTimingLines
+              : renderLines;
           let stabilizedUploadedTranscriptLines = limitLyricLines(
             sanitizeLyricLines(
               smoothTranscribedLyricGaps(uploadedAudioTranscriptSourceLines, durationSeconds),
@@ -7767,9 +7778,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             ),
             durationSeconds
           );
-          let stabilizedUploadedTranscriptWords = Array.isArray(payload?.transcriptWords)
-            ? payload.transcriptWords
-            : [];
+          let stabilizedUploadedTranscriptWords = Array.isArray(payload?.fullUploadedAudioTranscriptWords)
+            ? payload.fullUploadedAudioTranscriptWords
+            : Array.isArray(payload?.transcriptWords)
+              ? payload.transcriptWords
+              : [];
           let uploadedAudioRenderLines = stabilizedUploadedTranscriptLines;
           let preservedUploadedIntroCount = 0;
           let useDirectUploadedTranscript = false;
@@ -7820,6 +7833,12 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 ),
                 durationSeconds
               );
+              const refreshedUploadedTranscriptWords = Array.isArray(fullUploadedTranscription.words)
+                ? fullUploadedTranscription.words
+                : [];
+              payload.fullUploadedAudioTranscriptLines = refreshedUploadedTranscriptLines;
+              payload.fullUploadedAudioTranscriptWords = refreshedUploadedTranscriptWords;
+              payload.fullUploadedAudioTranscriptionReady = true;
               const currentTranscriptMetrics = getSourceTimingMetrics(
                 stabilizedUploadedTranscriptLines,
                 durationSeconds
@@ -7848,9 +7867,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 )
               ) {
                 stabilizedUploadedTranscriptLines = refreshedUploadedTranscriptLines;
-                stabilizedUploadedTranscriptWords = Array.isArray(fullUploadedTranscription.words)
-                  ? fullUploadedTranscription.words
-                  : [];
+                stabilizedUploadedTranscriptWords = refreshedUploadedTranscriptWords;
                 payload.transcriptLines = refreshedUploadedTranscriptLines;
                 payload.transcriptWords = stabilizedUploadedTranscriptWords;
                 payload.uploadedAudioPreviewStrong = true;
