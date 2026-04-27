@@ -4475,6 +4475,18 @@ async function handleSubmit(event) {
           ? currentResult
           : null;
 
+      if (!uploadedAudioProject && mobileSafeMode) {
+        uploadedAudioProject = buildUploadedAudioProjectResult(uploadedAudioFallback);
+        uploadedAudioProject.warnings = [
+          ...(uploadedAudioProject.warnings || []),
+          "Mobile upload mode skips the slow preview lyric analysis and starts the final render directly from your uploaded audio."
+        ];
+        setStatus(
+          "Mobile upload mode is starting the render directly from your uploaded audio...",
+          false
+        );
+      }
+
       if (!uploadedAudioProject) {
         try {
           uploadedAudioProject = await prepareUploadedAudioProject(uploadedAudioFallback);
