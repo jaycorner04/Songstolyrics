@@ -65,21 +65,28 @@ count_active_render_jobs() {
     return 0
   fi
 
-  node -e '
-const fs = require("fs");
-const path = process.argv[1];
-let count = 0;
-for (const name of fs.readdirSync(path)) {
-  if (!name.endsWith(".json")) continue;
-  try {
-    const job = JSON.parse(fs.readFileSync(`${path}/${name}`, "utf8"));
-    if (job && (job.status === "queued" || job.status === "running")) {
-      count += 1;
-    }
-  } catch {}
-}
-process.stdout.write(String(count));
-' "$jobs_dir"
+  python3 - "$jobs_dir" <<'PY'
+import json
+import os
+import sys
+
+jobs_dir = sys.argv[1]
+count = 0
+
+for name in os.listdir(jobs_dir):
+    if not name.endswith(".json"):
+        continue
+    path = os.path.join(jobs_dir, name)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            job = json.load(handle)
+        if job.get("status") in {"queued", "running"}:
+            count += 1
+    except Exception:
+        pass
+
+print(count, end="")
+PY
 }
 
 wait_for_active_renders() {
