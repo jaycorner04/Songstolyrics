@@ -7775,10 +7775,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           let useDirectUploadedTranscript = false;
           let uploadedAudioTimelineDecision = null;
           let useStrictUploadedAudioTimeline = false;
+          const hasPersistedFullUploadedAudioTranscription = Boolean(
+            payload?.fullUploadedAudioTranscriptionReady
+          );
           const shouldForceFullUploadedAudioRetranscription =
-            isUploadedAudioSource && !Boolean(payload?.uploadedAudioPreviewStrong);
+            isUploadedAudioSource &&
+            !Boolean(payload?.uploadedAudioPreviewStrong) &&
+            !hasPersistedFullUploadedAudioTranscription;
           if (
-            shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds) ||
+            (!hasPersistedFullUploadedAudioTranscription &&
+              shouldRefreshUploadedAudioTranscript(stabilizedUploadedTranscriptLines, durationSeconds)) ||
             shouldForceFullUploadedAudioRetranscription
           ) {
             try {
@@ -7845,6 +7851,10 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 stabilizedUploadedTranscriptWords = Array.isArray(fullUploadedTranscription.words)
                   ? fullUploadedTranscription.words
                   : [];
+                payload.transcriptLines = refreshedUploadedTranscriptLines;
+                payload.transcriptWords = stabilizedUploadedTranscriptWords;
+                payload.uploadedAudioPreviewStrong = true;
+                payload.fullUploadedAudioTranscriptionReady = true;
                 uploadedAudioRenderLines = refreshedUploadedTranscriptLines;
                 renderLinesAreTranscriptDerived = true;
                 useDirectUploadedTranscript = true;
