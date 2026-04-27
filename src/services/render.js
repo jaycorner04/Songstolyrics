@@ -6439,8 +6439,9 @@ async function combineUploadedBackgroundVideos(
 
 async function saveUploadedAudioFile(payload, renderDirectory) {
   const uploadedAudio = payload.customAudioUpload;
+  const sourcePath = uploadedAudio?.filePath || uploadedAudio?.savedPath || uploadedAudio?.tempPath;
 
-  if (!uploadedAudio?.tempPath || !fs.existsSync(uploadedAudio.tempPath)) {
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
     return null;
   }
 
@@ -6449,11 +6450,19 @@ async function saveUploadedAudioFile(payload, renderDirectory) {
     `uploaded-audio${resolveUploadedAudioExtension(uploadedAudio)}`
   );
 
-  await fsp.copyFile(uploadedAudio.tempPath, targetPath);
+  if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
+    await fsp.copyFile(sourcePath, targetPath);
 
-  try {
-    await fsp.unlink(uploadedAudio.tempPath);
-  } catch {}
+    if (sourcePath === uploadedAudio.tempPath) {
+      try {
+        await fsp.unlink(uploadedAudio.tempPath);
+      } catch {}
+    }
+  }
+
+  uploadedAudio.tempPath = targetPath;
+  uploadedAudio.savedPath = targetPath;
+  uploadedAudio.filePath = targetPath;
 
   return {
     filePath: targetPath,
