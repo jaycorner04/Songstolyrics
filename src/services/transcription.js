@@ -240,6 +240,9 @@ async function downloadAudioWithOptions(videoId, outputDirectory, options = {}) 
 
   if (existingAudioPath) {
     if (options.audioInputPath && path.resolve(existingAudioPath) === path.resolve(options.audioInputPath)) {
+      if (/\.wav$/i.test(existingAudioPath)) {
+        return existingAudioPath;
+      }
       return transcodeAudioSourceToWav(
         existingAudioPath,
         path.join(outputDirectory, "uploaded-audio.wav"),
