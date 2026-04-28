@@ -8971,6 +8971,26 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           const structuredSourceStart = Number(renderLines[0]?.start || 0);
           const transcriptWindowStartsNearSource =
             Number(normalizedValidationTranscript[0]?.start || 0) >= Math.max(0, structuredSourceStart - 8);
+          const firstMeaningfulOpeningTranscript = normalizedValidationTranscript.find((line) => {
+            const transcriptStart = Number(line?.start || 0);
+            const transcriptWords = getAlignmentWords(line?.text || "");
+            const uniqueRatio = transcriptWords.length
+              ? new Set(transcriptWords).size / transcriptWords.length
+              : 0;
+
+            if (transcriptStart < Math.max(0, structuredSourceStart - 2)) {
+              return false;
+            }
+
+            if (transcriptWords.length < 2 || isIntroAdlibLine(line?.text || "")) {
+              return false;
+            }
+
+            return uniqueRatio >= 0.34;
+          });
+          const meaningfulOpeningShift = firstMeaningfulOpeningTranscript
+            ? roundTimeValue(Number(firstMeaningfulOpeningTranscript.start || 0) - structuredSourceStart)
+            : 0;
           const anchoredStructuredLyrics = alignLyricLinesToTranscription(
             renderLines,
             normalizedValidationTranscript,
@@ -9008,12 +9028,20 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             !shouldUseAnchorFit &&
             transcriptWindowStartsNearSource &&
             (audioWindowFit.appliedShift > 0 || Math.abs(audioWindowFit.appliedScale - 1) >= 0.05);
+          const shouldUseMeaningfulOpeningShift =
+            !shouldUseAnchorFit &&
+            !shouldUseTranscriptWindowFit &&
+            !shouldUseAudioWindowFit &&
+            meaningfulOpeningShift >= 1.2 &&
+            meaningfulOpeningShift <= 8;
           const fittedStructuredLines = shouldUseAnchorFit
             ? anchoredStructuredLyrics.lines
             : shouldUseTranscriptWindowFit
                 ? transcriptWindowFit.lines
                 : shouldUseAudioWindowFit
                   ? audioWindowFit.lines
+                  : shouldUseMeaningfulOpeningShift
+                    ? shiftLyricLines(renderLines, meaningfulOpeningShift, durationSeconds)
                   : [];
 
           if (fittedStructuredLines.length) {
@@ -9023,7 +9051,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
                 ? `Strict sync verification kept the lyric sheet and aligned it to ${anchoredStructuredLyrics.anchorCount} stable lyric/audio anchors from the sung section.`
                 : shouldUseTranscriptWindowFit
                 ? `Strict sync verification kept the lyric sheet and fit it to the sung lyric window (shift ${roundTimeValue(transcriptWindowFit.appliedShift)}s, scale ${roundTimeValue(transcriptWindowFit.appliedScale)}x).`
-                : `Strict sync verification kept the lyric sheet and fit it across the detected sung audio span (shift ${roundTimeValue(audioWindowFit.appliedShift)}s, scale ${roundTimeValue(audioWindowFit.appliedScale)}x).`
+                : shouldUseAudioWindowFit
+                  ? `Strict sync verification kept the lyric sheet and fit it across the detected sung audio span (shift ${roundTimeValue(audioWindowFit.appliedShift)}s, scale ${roundTimeValue(audioWindowFit.appliedScale)}x).`
+                  : `Strict sync verification kept the lyric sheet and delayed its opening by ${roundTimeValue(meaningfulOpeningShift)}s to match the first meaningful sung transcript line.`
             );
           }
         }
