@@ -4945,16 +4945,11 @@ function createAssSubtitleContent(
         break;
       case "fulllength":
         {
-          const preferredSide = placementMap[index]?.side || (index % 2 === 0 ? "left" : "right");
-          const isLeftSide = preferredSide === "left";
-          targetCenterX = Math.round(videoSize.width * (isLeftSide ? (isPortrait ? 0.2 : 0.18) : (isPortrait ? 0.8 : 0.82)));
-          targetCenterY = Math.round(
-            videoSize.height *
-              (isLeftSide
-                ? (isPortrait ? 0.49 : 0.47)
-                : (isPortrait ? 0.5 : 0.48))
-          );
-          alignmentTag = preferredSide === "left" ? "\\an4" : "\\an6";
+          const posterYOffsetPattern = [0, isPortrait ? 22 : 18, isPortrait ? -16 : -12, isPortrait ? 10 : 8];
+          targetCenterX = Math.round(videoSize.width * (isPortrait ? 0.16 : 0.14));
+          targetCenterY = Math.round(videoSize.height * (isPortrait ? 0.56 : 0.54));
+          targetCenterY += posterYOffsetPattern[index % posterYOffsetPattern.length];
+          alignmentTag = "\\an4";
         }
         break;
       default:
@@ -5382,23 +5377,32 @@ function createAssSubtitleContent(
     }
 
     if (selectedVariant === "fulllength") {
-      const posterTextHex = customStyleColorHex || contrastStyle.accentHex || accentHex;
-      const posterOutlineHex = contrastStyle.outlineHex || "#1a1a1a";
+      const posterTextHex = customStyleColorHex || "#ffb088";
+      const posterOutlineHex = contrastStyle.outlineHex || "#24121d";
+      const posterShadowHex = "#120812";
       const slideDirection = index % 2 === 0 ? -1 : 1;
       const arrivalX = centerX;
-      const startPosterX = centerX + slideDirection * Math.round(videoSize.width * 0.05);
+      const startPosterX = centerX + slideDirection * Math.round(videoSize.width * 0.1);
+      const arrivalY = centerY;
+      const startPosterY = centerY + Math.round(baseFontSize * 0.12);
       const styledText = buildStyledLyricText(displayText, posterTextHex, effectiveWrapLength, {
         emojiAssetMap,
         baseTextHex: posterTextHex,
         disableHighlight: true
       });
-      const textTag = `{${alignmentTag}\\move(${startPosterX},${centerY},${arrivalX},${centerY},0,${Math.round(
+      const backPlateTag = `{${alignmentTag}\\move(${startPosterX},${startPosterY},${arrivalX},${arrivalY},0,${Math.round(
         revealMs * 0.95
-      )})\\fad(${Math.round(fadeInMs * 0.8)},${Math.round(fadeOutMs * 0.82)})\\fscx98\\fscy98\\bord1.4\\shad0.4\\blur0.05\\fsp-0.25\\b1\\c${hexToAssColor(
+      )})\\fad(${Math.round(fadeInMs * 0.7)},${Math.round(fadeOutMs * 0.72)})\\1a&H7A&\\fscx110\\fscy114\\bord7\\shad0\\blur0.6\\fsp0.4\\b1\\c${hexToAssColor(
+        posterShadowHex
+      )}\\3c${hexToAssColor(posterShadowHex)}}`;
+      const textTag = `{${alignmentTag}\\move(${startPosterX},${startPosterY},${arrivalX},${arrivalY},0,${Math.round(
+        revealMs * 0.95
+      )})\\fad(${Math.round(fadeInMs * 0.78)},${Math.round(fadeOutMs * 0.8)})\\fscx104\\fscy110\\bord2.2\\shad0.9\\blur0.12\\fsp0.18\\b1\\c${hexToAssColor(
         posterTextHex
       )}\\3c${hexToAssColor(posterOutlineHex)}}`;
 
       return [
+        `Dialogue: 0,${start},${end},FullLengthText,,0,0,0,,${backPlateTag}${styledText}`,
         `Dialogue: 0,${start},${end},FullLengthText,,0,0,0,,${textTag}${styledText}`
       ];
     }
