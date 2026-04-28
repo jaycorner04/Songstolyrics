@@ -289,9 +289,9 @@ const LYRIC_RENDER_FONT_FALLBACKS = {
   trebuchet: "titillium-web",
   verdana: "sora",
   tahoma: "kanit",
-  georgia: "montserrat",
-  palatino: "montserrat",
-  "century-gothic": "montserrat",
+  georgia: "righteous",
+  palatino: "titillium-web",
+  "century-gothic": "sora",
   "comic-sans": "bangers"
 };
 const LYRIC_STYLE_PRESETS = {
@@ -1452,6 +1452,17 @@ function resolveLyricRenderFontPreset(fontKey = "arial") {
 
 function resolveLyricFontName(fontKey = "arial") {
   return resolveLyricRenderFontPreset(fontKey).fontName;
+}
+
+function getRenderLyricFontDebugLabel(fontKey = "arial") {
+  const requestedPreset = resolveLyricFontPreset(fontKey);
+  const renderPreset = resolveLyricRenderFontPreset(fontKey);
+
+  if (requestedPreset.key === renderPreset.key) {
+    return requestedPreset.label;
+  }
+
+  return `${requestedPreset.label} -> ${renderPreset.label}`;
 }
 
 async function prepareLyricFontAssets(renderDirectory, fontPresets = []) {
@@ -4806,8 +4817,8 @@ function createAssSubtitleContent(
   const prefersReadableTranscribedSizing =
     isTranscribedOrUploadedAudioRender(payload) || lyricStylePreset.key === "line-by-line";
   const baseFontRatio = prefersReadableTranscribedSizing
-    ? (isPortrait ? 0.082 : 0.087)
-    : (isPortrait ? 0.074 : 0.082);
+    ? (isPortrait ? 0.09 : 0.094)
+    : (isPortrait ? 0.08 : 0.086);
   const baseFontSize = clamp(
     Math.round(
         Math.min(videoSize.width, videoSize.height) *
@@ -4816,8 +4827,8 @@ function createAssSubtitleContent(
         renderFontPreset.sizeScale *
         lyricFontZoom
     ),
-    Math.round((isPortrait ? 46 : 54) * Math.min(1, fontZoomBoost)),
-    Math.round((isPortrait ? 72 : 92) * Math.max(1, fontZoomBoost))
+    Math.round((isPortrait ? 52 : 60) * Math.max(0.92, fontZoomBoost)),
+    Math.round((isPortrait ? 96 : 122) * Math.max(1, fontZoomBoost * 1.08))
   );
   const fontScaleX = Math.round(renderFontPreset.scaleX || 100);
   const fontScaleY = Math.round(renderFontPreset.scaleY || 100);
@@ -7544,14 +7555,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
       "Rendered in a dynamic kinetic lyric-video style inspired by the Envato text preset reference."
     ];
     const effectiveLyricStyleKey = resolveEffectiveLyricStyleKey(payload);
+    const requestedLyricStyleKey = `${payload?.lyricStyle || "auto"}`.trim() || "auto";
     renderNotes.push(
-      `Lyrics style: ${resolveLyricStylePreset(effectiveLyricStyleKey).label}; font: ${resolveLyricFontPreset(
+      `Lyrics style: ${resolveLyricStylePreset(effectiveLyricStyleKey).label}; font: ${getRenderLyricFontDebugLabel(
         payload.lyricFont || "arial"
-      ).label}.`
+      )}; size: ${Math.round(resolveLyricFontZoomValue(payload?.lyricFontZoom || 100) * 100)}%.`
     );
-    if (effectiveLyricStyleKey !== `${payload.lyricStyle || "auto"}`) {
+    if (effectiveLyricStyleKey !== requestedLyricStyleKey) {
       renderNotes.push(
-        "Transcribed/uploaded audio uses the clean line-by-line lyric style so auto karaoke boxes are not selected."
+        `Requested style ${resolveLyricStylePreset(requestedLyricStyleKey).label} was normalized to ${resolveLyricStylePreset(
+          effectiveLyricStyleKey
+        ).label} for this render path.`
       );
     }
 
