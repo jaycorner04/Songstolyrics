@@ -8968,6 +8968,11 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           strictSyncReport.approvalMode === "structured-source-fallback" &&
           normalizedValidationTranscript.length
         ) {
+          const anchoredStructuredLyrics = alignLyricLinesToTranscription(
+            renderLines,
+            normalizedValidationTranscript,
+            durationSeconds
+          );
           const transcriptWindowFit = fitLyricLinesToTranscriptWindow(
             renderLines,
             normalizedValidationTranscript,
@@ -8978,20 +8983,27 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             durationSeconds,
             normalizedValidationTranscript[0]?.start || 0
           );
+          const shouldUseAnchorFit = anchoredStructuredLyrics.anchorCount >= 2;
           const shouldUseTranscriptWindowFit =
-            transcriptWindowFit.appliedShift > 0 || Math.abs(transcriptWindowFit.appliedScale - 1) >= 0.05;
+            !shouldUseAnchorFit &&
+            (transcriptWindowFit.appliedShift > 0 || Math.abs(transcriptWindowFit.appliedScale - 1) >= 0.05);
           const shouldUseAudioWindowFit =
-            audioWindowFit.appliedShift > 0 || Math.abs(audioWindowFit.appliedScale - 1) >= 0.05;
-          const fittedStructuredLines = shouldUseTranscriptWindowFit
-            ? transcriptWindowFit.lines
-            : shouldUseAudioWindowFit
-              ? audioWindowFit.lines
-              : [];
+            !shouldUseAnchorFit &&
+            (audioWindowFit.appliedShift > 0 || Math.abs(audioWindowFit.appliedScale - 1) >= 0.05);
+          const fittedStructuredLines = shouldUseAnchorFit
+            ? anchoredStructuredLyrics.lines
+            : shouldUseTranscriptWindowFit
+                ? transcriptWindowFit.lines
+                : shouldUseAudioWindowFit
+                  ? audioWindowFit.lines
+                  : [];
 
           if (fittedStructuredLines.length) {
             renderLines = limitLyricLines(fittedStructuredLines, durationSeconds);
             renderNotes.push(
-              shouldUseTranscriptWindowFit
+              shouldUseAnchorFit
+                ? `Strict sync verification kept the lyric sheet and aligned it to ${anchoredStructuredLyrics.anchorCount} stable lyric/audio anchors from the sung section.`
+                : shouldUseTranscriptWindowFit
                 ? `Strict sync verification kept the lyric sheet and fit it to the sung lyric window (shift ${roundTimeValue(transcriptWindowFit.appliedShift)}s, scale ${roundTimeValue(transcriptWindowFit.appliedScale)}x).`
                 : `Strict sync verification kept the lyric sheet and fit it across the detected sung audio span (shift ${roundTimeValue(audioWindowFit.appliedShift)}s, scale ${roundTimeValue(audioWindowFit.appliedScale)}x).`
             );
