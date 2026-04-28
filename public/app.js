@@ -4191,9 +4191,18 @@ function updateRenderJobUi(job) {
     renderButton.disabled = false;
     setRenderProgress(1);
     videoOutputCard.hidden = false;
-    renderedVideo.src = job.videoUrl;
+    const cacheBustValue = encodeURIComponent(
+      `${job.completedAt || ""}-${job.id || ""}-${job.updatedAt || ""}` || `${Date.now()}`
+    );
+    const renderedVideoUrl = job.videoUrl
+      ? `${job.videoUrl}${job.videoUrl.includes("?") ? "&" : "?"}v=${cacheBustValue}`
+      : "";
+    const renderedDownloadUrl = job.downloadUrl
+      ? `${job.downloadUrl}${job.downloadUrl.includes("?") ? "&" : "?"}v=${cacheBustValue}`
+      : "";
+    renderedVideo.src = renderedVideoUrl;
     renderedVideo.load();
-    downloadVideoLink.href = job.downloadUrl;
+    downloadVideoLink.href = renderedDownloadUrl;
     downloadVideoLink.download = `${currentResult?.videoId || persistedJob?.videoId || job.videoId || "lyric-video"}.mp4`;
     setPostRenderActionsVisible(true);
     if (rerenderBackgroundButton) {
