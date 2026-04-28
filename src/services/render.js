@@ -8976,6 +8976,17 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             normalizedValidationTranscript,
             durationSeconds
           );
+          const openingStructuredAnchors = anchoredStructuredLyrics.anchors.filter(
+            (anchor) =>
+              anchor.sourceIndex <= Math.min(5, Math.max(0, renderLines.length - 1)) &&
+              anchor.transcriptIndex <= Math.min(5, Math.max(0, normalizedValidationTranscript.length - 1)) &&
+              Number(anchor.score || 0) >= 0.34
+          );
+          const firstStructuredAnchor = anchoredStructuredLyrics.anchors[0] || null;
+          const anchorStartsNearOpening =
+            !!firstStructuredAnchor &&
+            firstStructuredAnchor.sourceIndex <= Math.min(6, Math.max(0, renderLines.length - 1)) &&
+            firstStructuredAnchor.transcriptIndex <= Math.min(6, Math.max(0, normalizedValidationTranscript.length - 1));
           const transcriptWindowFit = fitLyricLinesToTranscriptWindow(
             renderLines,
             normalizedValidationTranscript,
@@ -8986,7 +8997,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             durationSeconds,
             normalizedValidationTranscript[0]?.start || 0
           );
-          const shouldUseAnchorFit = anchoredStructuredLyrics.anchorCount >= 1;
+          const shouldUseAnchorFit =
+            openingStructuredAnchors.length >= 1 ||
+            (anchoredStructuredLyrics.anchorCount >= 2 && anchorStartsNearOpening);
           const shouldUseTranscriptWindowFit =
             !shouldUseAnchorFit &&
             transcriptWindowStartsNearSource &&
