@@ -5381,8 +5381,16 @@ function createAssSubtitleContent(
       const posterOutlineHex = contrastStyle.outlineHex || "#24121d";
       const posterShadowHex = "#120812";
       const slideDirection = index % 2 === 0 ? -1 : 1;
-      const arrivalX = centerX;
-      const startPosterX = centerX + slideDirection * Math.round(videoSize.width * 0.1);
+      const maxPosterLeft = Math.max(safeMargin, videoSize.width - safeMargin - boxWidth);
+      const preferredPosterLeft = Math.round(videoSize.width * (isPortrait ? 0.1 : 0.12));
+      const arrivalX = Math.round(clamp(preferredPosterLeft, safeMargin, maxPosterLeft));
+      const startPosterX = Math.round(
+        clamp(
+          arrivalX + slideDirection * Math.round(videoSize.width * 0.08),
+          safeMargin,
+          maxPosterLeft
+        )
+      );
       const arrivalY = centerY;
       const startPosterY = centerY + Math.round(baseFontSize * 0.12);
       const styledText = buildStyledLyricText(displayText, posterTextHex, effectiveWrapLength, {
