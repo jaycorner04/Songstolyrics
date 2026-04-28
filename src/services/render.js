@@ -4127,9 +4127,9 @@ function buildStrictSyncValidationReport({
     approved = false;
     reason = "No usable lyric lines were available after the audio sync pass.";
   } else if (structuredSourceFallbackApproved) {
-    approved = false;
-    reason =
-      "The audio transcription was too sparse to confirm that the lyric sheet stays locked to the vocals.";
+    approved = true;
+    reason = "";
+    approvalMode = "structured-source-fallback";
   } else if (!transcriptMetrics.reliableForWindowFit) {
     approved = false;
     reason = "The audio transcription did not provide stable enough timing to verify the lyrics safely.";
