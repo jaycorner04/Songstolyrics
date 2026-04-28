@@ -8963,6 +8963,41 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           }
         }
 
+        if (
+          strictSyncReport.approved &&
+          strictSyncReport.approvalMode === "structured-source-fallback" &&
+          normalizedValidationTranscript.length
+        ) {
+          const transcriptWindowFit = fitLyricLinesToTranscriptWindow(
+            renderLines,
+            normalizedValidationTranscript,
+            durationSeconds
+          );
+          const audioWindowFit = fitLyricLinesToAudioWindow(
+            renderLines,
+            durationSeconds,
+            normalizedValidationTranscript[0]?.start || 0
+          );
+          const shouldUseTranscriptWindowFit =
+            transcriptWindowFit.appliedShift > 0 || Math.abs(transcriptWindowFit.appliedScale - 1) >= 0.05;
+          const shouldUseAudioWindowFit =
+            audioWindowFit.appliedShift > 0 || Math.abs(audioWindowFit.appliedScale - 1) >= 0.05;
+          const fittedStructuredLines = shouldUseTranscriptWindowFit
+            ? transcriptWindowFit.lines
+            : shouldUseAudioWindowFit
+              ? audioWindowFit.lines
+              : [];
+
+          if (fittedStructuredLines.length) {
+            renderLines = limitLyricLines(fittedStructuredLines, durationSeconds);
+            renderNotes.push(
+              shouldUseTranscriptWindowFit
+                ? `Strict sync verification kept the lyric sheet and fit it to the sung lyric window (shift ${roundTimeValue(transcriptWindowFit.appliedShift)}s, scale ${roundTimeValue(transcriptWindowFit.appliedScale)}x).`
+                : `Strict sync verification kept the lyric sheet and fit it across the detected sung audio span (shift ${roundTimeValue(audioWindowFit.appliedShift)}s, scale ${roundTimeValue(audioWindowFit.appliedScale)}x).`
+            );
+          }
+        }
+
         return {
           strictSyncReport
         };
