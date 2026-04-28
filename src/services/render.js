@@ -8968,6 +8968,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           strictSyncReport.approvalMode === "structured-source-fallback" &&
           normalizedValidationTranscript.length
         ) {
+          const structuredSourceStart = Number(renderLines[0]?.start || 0);
+          const transcriptWindowStartsNearSource =
+            Number(normalizedValidationTranscript[0]?.start || 0) >= Math.max(0, structuredSourceStart - 8);
           const anchoredStructuredLyrics = alignLyricLinesToTranscription(
             renderLines,
             normalizedValidationTranscript,
@@ -8983,12 +8986,14 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
             durationSeconds,
             normalizedValidationTranscript[0]?.start || 0
           );
-          const shouldUseAnchorFit = anchoredStructuredLyrics.anchorCount >= 2;
+          const shouldUseAnchorFit = anchoredStructuredLyrics.anchorCount >= 1;
           const shouldUseTranscriptWindowFit =
             !shouldUseAnchorFit &&
+            transcriptWindowStartsNearSource &&
             (transcriptWindowFit.appliedShift > 0 || Math.abs(transcriptWindowFit.appliedScale - 1) >= 0.05);
           const shouldUseAudioWindowFit =
             !shouldUseAnchorFit &&
+            transcriptWindowStartsNearSource &&
             (audioWindowFit.appliedShift > 0 || Math.abs(audioWindowFit.appliedScale - 1) >= 0.05);
           const fittedStructuredLines = shouldUseAnchorFit
             ? anchoredStructuredLyrics.lines
