@@ -8709,19 +8709,21 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         Math.min(18, Math.round(Math.max(durationSeconds, 30) / 24))
       );
     const shouldSkipTrustedSyncedLyricVerification =
-      payload?.syncMode === "synced-lyrics" ||
       canTrustUploadedAudioTranscriptTiming ||
       (
         hasLoadedRenderableLyrics &&
         isShortFormSource &&
-        shortFormTrustedSyncModes.has(renderLineSyncSource)
+        (
+          shortFormTrustedSyncModes.has(renderLineSyncSource) ||
+          payload?.syncMode === "synced-lyrics"
+        )
       );
     let completedStrictSyncVerification = false;
 
     if (shouldSkipTrustedSyncedLyricVerification) {
       renderNotes.push(
         payload?.syncMode === "synced-lyrics"
-          ? "Final sync verification was skipped because synced web lyrics are already trusted as the timing source."
+          ? "Final sync verification was skipped because these synced web lyrics already have usable short-form timing."
           : canTrustUploadedAudioTranscriptTiming
             ? "Final sync verification was skipped because these uploaded-audio lyrics were already rebuilt directly from the same audio track."
           : isShortFormSource
