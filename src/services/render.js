@@ -7454,6 +7454,29 @@ async function createSilentAudioFallback(outputPath, durationSeconds) {
   return outputPath;
 }
 
+function getReusablePreviewAudioUrl(payload = {}) {
+  if (payload?.audioPreviewBlocked) {
+    return "";
+  }
+
+  const rawAudioUrl = normalizeWhitespace(payload?.audioUrl || "");
+
+  if (!rawAudioUrl) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(rawAudioUrl)) {
+    return rawAudioUrl;
+  }
+
+  if (!rawAudioUrl.startsWith("/api/audio/")) {
+    return "";
+  }
+
+  const appPort = Number(process.env.PORT || 3000) || 3000;
+  return `http://127.0.0.1:${appPort}${rawAudioUrl}`;
+}
+
 async function runRenderWorkflow(job, payload, attemptNumber = 1) {
   const renderDirectory = path.join(rendersRoot, job.id);
   await ensureDirectory(renderDirectory);
@@ -7556,6 +7579,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
+    const reusablePreviewAudioUrl = getReusablePreviewAudioUrl(payload);
     const audioUrlPromise = uploadedAudioFile
       ? Promise.resolve({
           audioSource: {
@@ -7566,6 +7590,16 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           },
           error: null
         })
+      : reusablePreviewAudioUrl
+        ? Promise.resolve({
+            audioSource: {
+              input: reusablePreviewAudioUrl,
+              sourceType: "remote",
+              recovered: true,
+              mimeType: "audio/mpeg"
+            },
+            error: null
+          })
       : resolveAudioInput(payload.videoId, {
           outputDirectory: audioInputDirectory,
           allowDownloadFallback: true,
@@ -7632,7 +7666,9 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     if (audioResolution.audioSource?.recovered) {
       renderNotes.push(
-        "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
+        reusablePreviewAudioUrl
+          ? "The final render reused the preview audio path that was already working on the server."
+          : "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
       );
     }
 

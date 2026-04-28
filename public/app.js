@@ -4414,6 +4414,7 @@ async function handleRender() {
       referenceLyricsLines: currentResult.referenceLyricsLines,
       song: currentResult.song,
       syncMode: currentResult.syncMode,
+      audioUrl: currentResult.audioUrl || "",
       audioPreviewBlocked: Boolean(currentResult.audioPreviewBlocked),
       poster: currentResult.poster,
       thumbnails: currentResult.thumbnails,

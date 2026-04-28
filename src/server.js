@@ -1959,6 +1959,7 @@ app.post(
       uploadedAudioPreviewStrong: Boolean(body?.uploadedAudioPreviewStrong),
       song: renderSong,
       syncMode: body?.syncMode || "none",
+      audioUrl: `${body?.audioUrl || ""}`,
       poster: body?.poster || "",
       thumbnails: Array.isArray(body?.thumbnails) ? body.thumbnails : [],
       customBackgrounds: Array.isArray(body?.customBackgrounds) ? body.customBackgrounds : [],
