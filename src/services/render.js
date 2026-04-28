@@ -7465,16 +7465,50 @@ function getReusablePreviewAudioUrl(payload = {}) {
     return "";
   }
 
-  if (/^https?:\/\//i.test(rawAudioUrl)) {
+  if (/^https?:\/\//i.test(rawAudioUrl) && !/\/api\/audio\/[a-zA-Z0-9_-]{11}(?:[/?#]|$)/i.test(rawAudioUrl)) {
     return rawAudioUrl;
   }
 
-  if (!rawAudioUrl.startsWith("/api/audio/")) {
-    return "";
+  return "";
+}
+
+async function resolveReusablePreviewAudioSource(payload = {}) {
+  if (payload?.audioPreviewBlocked) {
+    return null;
   }
 
-  const appPort = Number(process.env.PORT || 3000) || 3000;
-  return `http://127.0.0.1:${appPort}${rawAudioUrl}`;
+  const rawAudioUrl = normalizeWhitespace(payload?.audioUrl || "");
+
+  if (!rawAudioUrl) {
+    return null;
+  }
+
+  const reusableRemoteUrl = getReusablePreviewAudioUrl(payload);
+
+  if (reusableRemoteUrl) {
+    return {
+      input: reusableRemoteUrl,
+      sourceType: "remote",
+      recovered: true,
+      mimeType: "audio/mpeg"
+    };
+  }
+
+  const previewAudioMatch = rawAudioUrl.match(/\/api\/audio\/([a-zA-Z0-9_-]{11})(?:[/?#]|$)/i);
+  const previewVideoId = previewAudioMatch?.[1] || `${payload?.videoId || ""}`.trim();
+
+  if (!previewVideoId) {
+    return null;
+  }
+
+  return resolveAudioInput(previewVideoId, {
+    outputDirectory: path.join(previewAudioCacheRoot, previewVideoId),
+    allowDownloadFallback: true,
+    preferKnownBlockRecovery: true
+  }).then((audioSource) => ({
+    ...audioSource,
+    recovered: true
+  }));
 }
 
 async function runRenderWorkflow(job, payload, attemptNumber = 1) {
@@ -7579,7 +7613,8 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
     }
 
     const audioInputDirectory = path.join(renderDirectory, "audio-input");
-    const reusablePreviewAudioUrl = getReusablePreviewAudioUrl(payload);
+    const requestedReusablePreviewAudio =
+      !payload?.audioPreviewBlocked && Boolean(normalizeWhitespace(payload?.audioUrl || ""));
     const audioUrlPromise = uploadedAudioFile
       ? Promise.resolve({
           audioSource: {
@@ -7590,31 +7625,41 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
           },
           error: null
         })
-      : reusablePreviewAudioUrl
-        ? Promise.resolve({
-            audioSource: {
-              input: reusablePreviewAudioUrl,
-              sourceType: "remote",
-              recovered: true,
-              mimeType: "audio/mpeg"
-            },
-            error: null
-          })
-      : resolveAudioInput(payload.videoId, {
-          outputDirectory: audioInputDirectory,
-          allowDownloadFallback: true,
-          preferLocal: true,
-          preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
-        }).then(
-          (audioSource) => ({
-            audioSource,
-            error: null
-          }),
-          (error) => ({
-            audioSource: null,
-            error
-          })
-        );
+      : (async () => {
+          let previewAudioError = null;
+
+          try {
+            const previewAudioSource = await resolveReusablePreviewAudioSource(payload);
+
+            if (previewAudioSource) {
+              return {
+                audioSource: previewAudioSource,
+                error: null
+              };
+            }
+          } catch (error) {
+            previewAudioError = error;
+          }
+
+          try {
+            const audioSource = await resolveAudioInput(payload.videoId, {
+              outputDirectory: audioInputDirectory,
+              allowDownloadFallback: true,
+              preferLocal: true,
+              preferKnownBlockRecovery: adaptiveProfile.preferKnownAudioBlockRecovery
+            });
+
+            return {
+              audioSource,
+              error: null
+            };
+          } catch (error) {
+            return {
+              audioSource: null,
+              error: previewAudioError || error
+            };
+          }
+        })();
     updateJob(job, {
       stage: "Resolving video audio",
       progress: 0.12
@@ -7666,7 +7711,7 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
 
     if (audioResolution.audioSource?.recovered) {
       renderNotes.push(
-        reusablePreviewAudioUrl
+        requestedReusablePreviewAudio
           ? "The final render reused the preview audio path that was already working on the server."
           : "The live YouTube audio stream was unstable, so the app downloaded a local audio fallback automatically before rendering."
       );

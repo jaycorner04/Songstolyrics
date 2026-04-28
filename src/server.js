@@ -1794,6 +1794,15 @@ app.post(
       captionCues
     );
 
+    if (!audioPreviewBlocked) {
+      void resolveAudioInput(videoId, {
+        outputDirectory: path.join(previewAudioCacheRoot, videoId),
+        allowDownloadFallback: true,
+        preferKnownBlockRecovery: true,
+        downloadTimeoutMs: 120000
+      }).catch(() => null);
+    }
+
     res.json({
       inputUrl: videoUrl,
       videoId,

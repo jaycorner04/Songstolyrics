@@ -12,6 +12,12 @@ function assertIncludes(snippet, message) {
   }
 }
 
+function assertMatches(pattern, message) {
+  if (!pattern.test(renderSource)) {
+    throw new Error(message);
+  }
+}
+
 function assertNotIncludes(snippet, message) {
   if (renderSource.includes(snippet)) {
     throw new Error(message);
@@ -23,8 +29,8 @@ assertIncludes(
   "Uploaded-audio lyric protection failed: smart uploaded-audio retranscription gate is missing."
 );
 
-assertIncludes(
-  "isUploadedAudioSource && !Boolean(payload?.uploadedAudioPreviewStrong);",
+assertMatches(
+  /const shouldForceFullUploadedAudioRetranscription =[\s\S]*isUploadedAudioSource[\s\S]*!Boolean\(payload\?\.uploadedAudioPreviewStrong\)[\s\S]*;/,
   "Uploaded-audio lyric protection failed: strong uploaded-audio preview bypass is missing."
 );
 
