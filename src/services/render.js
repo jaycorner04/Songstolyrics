@@ -4357,6 +4357,10 @@ function formatStrictSyncApprovalSummary(report = {}) {
     return `Strict sync verification kept the full lyric sheet because the detected audio transcript was too sparse to safely replace it.`;
   }
 
+  if (report.approvalMode === "trusted-source-timeout-fallback") {
+    return `Strict sync verification kept the current lyric sheet because the deeper audio check timed out before it could finish.`;
+  }
+
   if (report.approvalMode === "validation-transcript-intro-preserved") {
     return `Strict sync verification approved the render by keeping the trusted intro lyrics and matching the rest to the audio transcript.`;
   }
@@ -8982,6 +8986,19 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         );
       }
 
+      function canRecoverFromSyncRetryFailure(error) {
+        const message = summarizeErrorMessage(error).toLowerCase();
+        return (
+          canUseStrongSourceValidationFallback &&
+          renderLines.length > 0 &&
+          (
+            message.includes("timed out") ||
+            message.includes("timeout") ||
+            message.includes("aborted")
+          )
+        );
+      }
+
       let validationTranscription = null;
       let strictSyncReport = null;
       let usedDeeperSyncRetry = false;
@@ -9005,22 +9022,47 @@ async function runRenderWorkflow(job, payload, attemptNumber = 1) {
         canUseStrongSourceValidationFallback &&
         shouldDeepenValidationTranscription(validationTranscription, durationSeconds)
       ) {
-        validationTranscription = await runDeeperSyncRetry(
-          validationOptions,
-          "Quick sync validation was too sparse across the song, so the render reran a deeper audio check before export."
-        );
-        usedDeeperSyncRetry = true;
+        try {
+          validationTranscription = await runDeeperSyncRetry(
+            validationOptions,
+            "Quick sync validation was too sparse across the song, so the render reran a deeper audio check before export."
+          );
+          usedDeeperSyncRetry = true;
+        } catch (error) {
+          if (!canRecoverFromSyncRetryFailure(error)) {
+            throw error;
+          }
+
+          renderNotes.push(
+            `The deeper sync retry could not finish (${summarizeErrorMessage(error)}), so the render kept the stronger first sync check and continued with the current lyric timing.`
+          );
+        }
       }
 
       ({ strictSyncReport } = await evaluateStrictSyncValidationPass(validationTranscription));
 
       if (!strictSyncReport.approved && !usedDeeperSyncRetry) {
-        validationTranscription = await runDeeperSyncRetry(
-          validationOptions,
-          `The first lyric/audio sync pass stayed too weak because ${normalizeWhitespace(strictSyncReport.reason || "the timing could not be verified")}, so the render is retrying a deeper sync pass before export.`
-        );
-        usedDeeperSyncRetry = true;
-        ({ strictSyncReport } = await evaluateStrictSyncValidationPass(validationTranscription));
+        try {
+          validationTranscription = await runDeeperSyncRetry(
+            validationOptions,
+            `The first lyric/audio sync pass stayed too weak because ${normalizeWhitespace(strictSyncReport.reason || "the timing could not be verified")}, so the render is retrying a deeper sync pass before export.`
+          );
+          usedDeeperSyncRetry = true;
+          ({ strictSyncReport } = await evaluateStrictSyncValidationPass(validationTranscription));
+        } catch (error) {
+          if (!canRecoverFromSyncRetryFailure(error)) {
+            throw error;
+          }
+
+          renderNotes.push(
+            `The deeper sync retry could not finish (${summarizeErrorMessage(error)}), so the render kept the existing lyric sheet instead of failing on the timeout.`
+          );
+          strictSyncReport = {
+            approved: true,
+            reason: "",
+            approvalMode: "trusted-source-timeout-fallback"
+          };
+        }
       }
 
       if (!strictSyncReport.approved) {
